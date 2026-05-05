@@ -5,7 +5,11 @@
  * Manages user ID persistence in localStorage.
  */
 
-const API_BASE = '/api';
+// For desktop apps running via file://, we need to point to the local Express server explicitly.
+// In development/web mode, Vite proxies '/api' correctly.
+const API_BASE = window.location.protocol === 'file:' 
+  ? 'http://localhost:3001/api' 
+  : '/api';
 
 /**
  * Get or create a persistent user ID.

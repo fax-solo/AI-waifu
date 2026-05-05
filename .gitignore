@@ -1,5 +1,47 @@
+# Node.js
 node_modules/
-dist/
+npm-debug.log*
+package-lock.json
+
+# Environment Variables
 .env
-data/
+.env.local
+.env.*.local
+
+# Build outputs (IMPORTANT: skip these!)
+dist/
+dist-desktop/
+client/dist/
+build/
+
+# Electron
+out/
+.webpack/
+
+# Python Virtual Environments
+python/venv/
+python/.venv/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# AI Models and Weights
+*.onnx
+*.bin
+*.pt
+*.pth
+*.weights
+*.h5
+
+# Local Databases
+server/data/*.sqlite
+server/data/*.sqlite-journal
 *.db
+
+# IDEs and System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

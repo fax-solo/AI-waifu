@@ -9,15 +9,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@pixiv/three-vrm": "^3.5.2",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "lucide-react": "^0.510.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
-    "lucide-react": "^0.510.0"
+    "three": "^0.184.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.5.2",
-    "vite": "^6.3.5",
     "@tailwindcss/vite": "^4.1.5",
-    "tailwindcss": "^4.1.5"
+    "@vitejs/plugin-react": "^4.5.2",
+    "tailwindcss": "^4.1.5",
+    "vite": "^6.3.5"
   }
 }

@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { X, User, Sparkles, Key, Brain, Shield } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, User, Sparkles, Key, Brain, Shield, Image } from 'lucide-react';
 import * as api from '../../utils/api.js';
 
-export default function Settings({ onClose }) {
+export default function Settings({ onClose, onVRMFileSelected }) {
   const [settings, setSettings] = useState(null);
   const [displayName, setDisplayName] = useState('');
   const [companion, setCompanion] = useState({
@@ -17,6 +17,8 @@ export default function Settings({ onClose }) {
   const [saveMessage, setSaveMessage] = useState('');
   const [memories, setMemories] = useState([]);
   const [activeTab, setActiveTab] = useState('profile');
+  const [currentVRMName, setCurrentVRMName] = useState(null);
+  const fileInputRef = useRef(null);
 
   // Load settings
   useEffect(() => {
@@ -38,6 +40,12 @@ export default function Settings({ onClose }) {
     }
     load();
     loadMemories();
+
+    // Check for saved VRM name
+    const savedName = localStorage.getItem('waifu-vrm-name');
+    if (savedName) {
+      setCurrentVRMName(savedName);
+    }
   }, []);
 
   const loadMemories = async () => {
@@ -96,9 +104,33 @@ export default function Settings({ onClose }) {
     }
   };
 
+  const handleVRMFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file && file.name.endsWith('.vrm')) {
+      setCurrentVRMName(file.name);
+      localStorage.setItem('waifu-vrm-name', file.name);
+      if (onVRMFileSelected) {
+        onVRMFileSelected(file);
+      }
+      setSaveMessage('Avatar model loaded! 🎭');
+      setTimeout(() => setSaveMessage(''), 3000);
+    }
+  };
+
+  const handleRemoveVRM = () => {
+    setCurrentVRMName(null);
+    localStorage.removeItem('waifu-vrm-name');
+    if (onVRMFileSelected) {
+      onVRMFileSelected(null); // Signal to clear the model
+    }
+    setSaveMessage('Avatar model removed.');
+    setTimeout(() => setSaveMessage(''), 3000);
+  };
+
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'companion', label: 'Companion', icon: Sparkles },
+    { id: 'avatar', label: 'Avatar', icon: Image },
     { id: 'apikey', label: 'API Key', icon: Key },
     { id: 'memories', label: 'Memories', icon: Brain },
   ];
@@ -119,6 +151,7 @@ export default function Settings({ onClose }) {
           gap: 4,
           padding: '12px 24px 0',
           borderBottom: '1px solid var(--color-border)',
+          overflowX: 'auto',
         }}>
           {tabs.map((tab) => (
             <button
@@ -139,6 +172,7 @@ export default function Settings({ onClose }) {
                 alignItems: 'center',
                 gap: 6,
                 transition: 'all 0.15s ease',
+                whiteSpace: 'nowrap',
               }}
             >
               <tab.icon size={14} />
@@ -223,6 +257,70 @@ export default function Settings({ onClose }) {
               <button className="btn btn-primary btn-save" onClick={handleSave} disabled={saving}>
                 {saving ? 'Saving...' : 'Save Personality'}
               </button>
+            </div>
+          )}
+
+          {/* Avatar Tab */}
+          {activeTab === 'avatar' && (
+            <div className="settings-section">
+              <div className="settings-section-title">
+                <Image size={18} className="icon" />
+                Avatar Model
+              </div>
+
+              <div className="api-key-section">
+                <div className={`api-key-status ${currentVRMName ? 'active' : 'inactive'}`}>
+                  🎭 {currentVRMName
+                    ? `Current model: ${currentVRMName}`
+                    : 'No avatar model loaded'}
+                </div>
+
+                <div className="form-group" style={{ marginTop: 12 }}>
+                  <div className="hint" style={{ marginBottom: 12 }}>
+                    Upload a <strong>.vrm</strong> file to display a 3D avatar alongside your chat.
+                    You can find free VRM models on{' '}
+                    <a
+                      href="https://hub.vroid.com/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: 'var(--color-accent-light)' }}
+                    >
+                      VRoid Hub
+                    </a>{' '}
+                    or create your own with{' '}
+                    <a
+                      href="https://vroid.com/studio"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: 'var(--color-accent-light)' }}
+                    >
+                      VRoid Studio
+                    </a>.
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    {currentVRMName ? 'Change Model' : 'Upload VRM File'}
+                  </button>
+                  {currentVRMName && (
+                    <button className="btn btn-danger" onClick={handleRemoveVRM}>
+                      Remove Model
+                    </button>
+                  )}
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".vrm"
+                  onChange={handleVRMFileChange}
+                  style={{ display: 'none' }}
+                />
+              </div>
             </div>
           )}
 

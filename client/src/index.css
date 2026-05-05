@@ -90,6 +90,381 @@ body {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
+  background: var(--color-bg-primary);
+}
+
+.app-layout.resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+.main-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Avatar Panel */
+.avatar-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-primary);
+  border-right: 1px solid var(--color-border);
+  position: relative;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  min-width: 0;
+  z-index: 5;
+}
+
+.avatar-panel.collapsed {
+  width: 0 !important;
+  border-right: none;
+}
+
+/* Resizer Handle */
+.layout-resizer {
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.2s ease;
+  z-index: 30;
+  position: relative;
+  margin-left: -2px;
+  margin-right: -2px;
+}
+
+.layout-resizer:hover, .layout-resizer.dragging {
+  background: var(--color-accent-glow);
+}
+
+.layout-resizer::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  background: var(--color-border);
+  border-radius: 1px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.layout-resizer:hover::after {
+  opacity: 1;
+}
+
+/* Collapse/Expand Button (Floating) */
+.avatar-collapse-btn {
+  position: absolute;
+  top: 16px;
+  z-index: 100;
+  width: 32px;
+  height: 32px;
+  background: var(--color-bg-tertiary);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: transform 0.2s ease, background 0.2s ease, left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.avatar-collapse-btn.is-collapsed {
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  background: var(--color-accent);
+  color: white;
+}
+
+.avatar-collapse-btn:hover {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+  transform: scale(1.1);
+}
+
+/* ── Avatar Viewport ───────────────────────────────────────────── */
+.avatar-viewport {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: radial-gradient(ellipse at 50% 80%, rgba(168, 130, 255, 0.06) 0%, transparent 70%),
+              var(--color-bg-primary);
+}
+
+.avatar-canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.avatar-viewport.drag-over {
+  outline: 2px dashed var(--color-accent);
+  outline-offset: -4px;
+}
+
+/* Avatar: Empty State */
+.avatar-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  text-align: center;
+  pointer-events: auto;
+}
+
+.avatar-empty-icon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.avatar-empty p {
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  max-width: 200px;
+  text-align: center;
+}
+
+.avatar-upload-btn {
+  padding: 10px 24px;
+  background: linear-gradient(135deg, var(--color-accent-dark), var(--color-accent));
+  border-radius: var(--radius-md);
+  color: white;
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--shadow-glow);
+}
+
+.avatar-upload-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 30px var(--color-accent-glow);
+}
+
+/* Avatar: Loading */
+.avatar-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: rgba(10, 10, 15, 0.8);
+  backdrop-filter: blur(4px);
+  z-index: 5;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+}
+
+.avatar-loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Avatar: Error */
+.avatar-error {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  padding: 10px 16px;
+  background: rgba(255, 107, 122, 0.12);
+  border: 1px solid rgba(255, 107, 122, 0.25);
+  border-radius: var(--radius-md);
+  color: var(--color-error);
+  font-size: 0.82rem;
+  text-align: center;
+  z-index: 5;
+}
+
+/* Avatar: Change Button */
+.avatar-change-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  transition: all 0.2s ease;
+}
+
+.avatar-change-btn:hover {
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--color-text-primary);
+  transform: scale(1.1);
+}
+
+/* Avatar: Drag Overlay */
+.avatar-drag-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(168, 130, 255, 0.08);
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  pointer-events: none;
+  font-size: 1.1rem;
+  color: var(--color-accent-light);
+  font-weight: 600;
+}
+
+/* Avatar: Controls Toggle Button */
+.avatar-controls-toggle {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 10;
+  width: 36px;
+  height: 36px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-full);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.2s ease;
+}
+
+.avatar-controls-toggle:hover {
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--color-text-primary);
+  transform: scale(1.1);
+}
+
+/* Avatar: Adjustment Controls Panel */
+.avatar-controls {
+  position: absolute;
+  bottom: 60px;
+  right: 12px;
+  z-index: 15;
+  width: 220px;
+  background: rgba(15, 15, 22, 0.92);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  animation: fade-in 0.2s ease;
+}
+
+.avatar-controls-title {
+  font-family: var(--font-display);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.avatar-control-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.avatar-control-row:last-of-type {
+  margin-bottom: 12px;
+}
+
+.avatar-control-row label {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  width: 52px;
+  flex-shrink: 0;
+}
+
+.avatar-control-row input[type="range"] {
+  flex: 1;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--color-bg-hover);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.avatar-control-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--color-accent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.avatar-control-row input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+}
+
+.avatar-control-value {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  width: 32px;
+  text-align: right;
+  font-family: monospace;
+}
+
+.avatar-controls-reset {
+  width: 100%;
+  padding: 6px 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.avatar-controls-reset:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text-primary);
 }
 
 /* ── Sidebar ───────────────────────────────────────────────────── */
@@ -881,6 +1256,13 @@ body {
 }
 
 /* ── Responsive ────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .avatar-panel {
+    width: 300px;
+    min-width: 300px;
+  }
+}
+
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
@@ -908,5 +1290,9 @@ body {
 
   .message-input-container {
     padding: 12px 16px 16px;
+  }
+
+  .avatar-panel {
+    display: none;
   }
 }

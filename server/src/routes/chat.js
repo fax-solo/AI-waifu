@@ -94,28 +94,33 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
     }
 
     // Call Gemini
-    const aiResponse = await geminiChat({
+    const { text, emotion } = await geminiChat({
       apiKey,
       systemPrompt,
       history,
       userMessage: message.trim(),
     });
 
-    // Save AI response
-    saveMessage(conversationId, 'assistant', aiResponse);
+    // Save AI response (just the text, not the tag)
+    saveMessage(conversationId, 'assistant', text);
 
     // Send response with rate limit info
     res.json({
-      message: aiResponse,
+      message: text,
+      emotion: emotion,
       conversationId,
       rateLimit: req.rateLimit || null,
     });
   } catch (error) {
     console.error('Chat error:', error.message);
 
-    const status = error.message.includes('Rate limit') ? 429
-      : error.message.includes('API key') ? 401
-      : 500;
+    // Classify error for proper HTTP status
+    let status = 500;
+    if (error.message.includes('API key') || error.message.includes('No API key')) {
+      status = 401;
+    } else if (error.message.includes('rate limit') || error.message.includes('Rate limit') || error.message.includes('RESOURCE_EXHAUSTED')) {
+      status = 429;
+    }
 
     res.status(status).json({ error: error.message });
   }

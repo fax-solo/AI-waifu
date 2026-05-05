@@ -31,59 +31,100 @@ function getClient(apiKey) {
  * @param {string} options.systemPrompt - System instructions for the AI
  * @param {Array} options.history - Conversation history in Gemini format
  * @param {string} options.userMessage - The new user message
- * @returns {Promise<string>} The AI's response text
+ * @returns {Promise<{text: string, emotion: string}>} The AI's response text and detected emotion
  */
 export async function chat({ apiKey, systemPrompt, history, userMessage }) {
-  const key = apiKey || process.env.GEMINI_API_KEY;
+  // Resolve the API key: prefer user-provided, fall back to server key
+  const key = (apiKey && apiKey.trim()) || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim());
 
   if (!key) {
-    throw new Error('No API key available. Please set GEMINI_API_KEY or provide your own.');
+    throw new Error(
+      'No API key configured. Please add your Gemini API key in Settings, or set GEMINI_API_KEY in the server .env file. Get a free key at https://aistudio.google.com/app/apikey'
+    );
   }
 
   const client = getClient(key);
+  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  let lastError = null;
 
-  const model = client.getGenerativeModel({
-    model: 'gemini-2.0-flash',
-    systemInstruction: systemPrompt,
-    generationConfig: {
-      temperature: 0.9,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 1024,
-    },
-    safetySettings: [
-      { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-      { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-      { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-      { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-    ],
-  });
+  for (const modelName of modelsToTry) {
+    try {
+      const model = client.getGenerativeModel({
+        model: modelName,
+        systemInstruction: systemPrompt,
+        generationConfig: {
+          temperature: 0.9,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 1024,
+        },
+      });
 
-  try {
-    const chatSession = model.startChat({
-      history: history || [],
-    });
+      const chatSession = model.startChat({
+        history: history || [],
+      });
 
-    const result = await chatSession.sendMessage(userMessage);
-    const response = result.response;
-    const text = response.text();
+      const result = await chatSession.sendMessage(userMessage);
+      const fullText = result.response.text();
+      
+      // Parse emotion tag: [emotion] message
+      const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised)\]\s*(.*)/i);
+      
+      if (emotionMatch) {
+        return {
+          emotion: emotionMatch[1].toLowerCase(),
+          text: emotionMatch[2].trim()
+        };
+      }
 
-    return text;
-  } catch (error) {
-    // Handle specific Gemini API errors
-    if (error.message?.includes('API key')) {
-      throw new Error('Invalid API key. Please check your Gemini API key.');
+      return {
+        emotion: 'neutral',
+        text: fullText.trim()
+      };
+    } catch (error) {
+      lastError = error;
+      // ... existing error handling ...
+      console.warn(`Gemini attempt with ${modelName} failed:`, error.message);
+
+      // If it's an API key error, don't bother retrying with other models
+      if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('API key not valid')) {
+        break;
+      }
+      
+      // If it's a quota/rate limit error, don't retry immediately
+      if (error.message?.includes('quota') || error.message?.includes('429')) {
+        break;
+      }
+
+      // If it's a 503 (High demand) or 500, we'll try the next model in the list
+      if (error.message?.includes('503') || error.message?.includes('500')) {
+        continue;
+      }
+
+      // For other errors (like safety), stop and return the specialized message
+      if (error.message?.includes('blocked') || error.message?.includes('safety')) {
+        return "Hmm, I couldn't quite figure out how to respond to that... Can we talk about something else? (◕‿◕)";
+      }
     }
-    if (error.message?.includes('quota') || error.message?.includes('429')) {
-      throw new Error('Rate limit exceeded. Please wait a moment before trying again.');
-    }
-    if (error.message?.includes('blocked') || error.message?.includes('safety')) {
-      return "Hmm, I couldn't quite figure out how to respond to that... Can we talk about something else? (◕‿◕)";
-    }
-
-    console.error('Gemini API error:', error.message);
-    throw new Error('Failed to get a response. Please try again.');
   }
+
+  // If we get here, all models failed
+  const error = lastError;
+  if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('API key not valid')) {
+    throw new Error('Invalid API key. Please check your Gemini API key and try again.');
+  }
+  if (error.message?.includes('API key')) {
+    throw new Error('API key error. Please check your Gemini API key in Settings or server .env file.');
+  }
+  if (error.message?.includes('quota') || error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
+    throw new Error('Gemini API rate limit hit. Please wait a minute before trying again.');
+  }
+  if (error.message?.includes('503')) {
+    throw new Error('Gemini servers are currently overloaded due to high demand. Please try again in a few seconds.');
+  }
+
+  console.error('Gemini API error after fallbacks:', error.message);
+  throw new Error('Failed to get a response from Gemini. Please try again.');
 }
 
 export default { chat };

@@ -4,7 +4,21 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DB_PATH = path.join(__dirname, '..', '..', 'data', 'waifu.db');
+
+// Determine if we are running in Electron (packaged or dev)
+const isElectron = !!process.versions.electron;
+
+// Determine the database path. 
+const appDataPath = process.env.APPDATA || (process.platform === 'darwin' ? path.join(process.env.HOME, 'Library', 'Application Support') : path.join(process.env.HOME, '.local', 'share'));
+const DB_NAME = 'waifu.db';
+const APP_NAME = 'WaifuAI';
+
+// Use AppData for persistence in Electron, fallback to local data dir for standalone Node dev
+const DB_PATH = isElectron
+  ? path.join(appDataPath, APP_NAME, DB_NAME)
+  : path.join(__dirname, '..', '..', 'data', DB_NAME);
+
+console.log(`[Database] Using path: ${DB_PATH}`);
 
 // Ensure data directory exists
 const dataDir = path.dirname(DB_PATH);

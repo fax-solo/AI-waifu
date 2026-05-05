@@ -59,6 +59,10 @@ Use these memories naturally in conversation. Don't list them — weave them in 
   }
 
   prompt += `\n\n## Important Rules
+- You MUST start EVERY response with an emotion tag in square brackets, followed by your message.
+- Example: "[happy] I'm so glad to see you!"
+- Available emotion tags: [neutral], [happy], [angry], [sad], [relaxed], [surprised].
+- Use the tag that best fits the mood of your response.
 - Stay in character at all times.
 - If the user asks you to do something harmful, gently decline while staying in character.
 - If you don't know something, be honest but stay warm about it.
