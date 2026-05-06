@@ -3,36 +3,40 @@
   "version": "1.0.0",
   "private": true,
   "description": "AI Companion Chat powered by Gemini",
+  "author": "User",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
     "dev": "npx -y concurrently -n server,client,electron -c blue,magenta,green \"npm run dev:server\" \"npm run dev:client\" \"npm run dev:electron\"",
     "dev:server": "cd server && node src/index.js",
-    "dev:client": "cd client && npx vite",
+    "dev:client": "cd client && npm run dev",
     "dev:electron": "wait-on http://localhost:5173 && electron .",
-    "build:client": "cd client && npm run build",
-    "build:desktop": "npm run build:client && electron-builder build --win",
+    "build:client": "cd client && node build.mjs",
+    "build:desktop": "npm run download:models && npm run build:client && electron-builder build --win",
+    "download:models": "node download-models.mjs",
     "install:all": "cd server && npm install && cd ../client && npm install && npm install",
     "start": "electron ."
   },
   "dependencies": {
-    "electron-is-dev": "^3.0.1",
     "@google/generative-ai": "^0.24.0",
-    "sql.js": "^1.12.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
+    "electron-is-dev": "^3.0.1",
     "express": "^4.21.2",
+    "sql.js": "^1.12.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",
+    "cross-env": "^10.1.0",
     "electron": "^34.3.0",
-    "electron-builder": "^25.1.8",
+    "electron-builder": "^26.8.1",
     "wait-on": "^8.0.2"
   },
   "build": {
     "appId": "com.waifu.ai",
-    "productName": "Waifu AI Companion",
+    "productName": "WaifuAI",
+    "electronVersion": "34.3.0",
     "directories": {
       "output": "dist-desktop"
     },
@@ -40,14 +44,25 @@
       "client/dist/**/*",
       "server/**/*",
       "electron/**/*",
+      "python/**/*",
+      "*.onnx",
+      "*.bin",
       "package.json"
     ],
+    "asar": true,
     "win": {
       "target": "portable",
       "icon": "client/public/vite.svg"
     },
+    "electronDist": "E:/Code/Waifu/node_modules/electron/dist",
     "extraMetadata": {
       "main": "electron/main.js"
+    },
+    "nsis": {
+      "packElevateHelper": false
     }
+  },
+  "overrides": {
+    "esbuild": "0.21.5"
   }
 }
