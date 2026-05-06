@@ -40,6 +40,10 @@ router.get('/', (req, res) => {
       tone: companion?.tone || 'cute, friendly, emotional',
       personality: companion?.personality || 'You are a loving and caring companion who deeply cares about the user.',
       backstory: companion?.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
+      ttsEnabled: !!(companion?.tts_enabled ?? 1),
+      ttsVoice: companion?.tts_voice || 'af_bella',
+      audioInputDevice: companion?.audio_input_device || 'default',
+      audioOutputDevice: companion?.audio_output_device || 'default',
     },
     hasCustomApiKey: hasCustomKey,
   });
@@ -50,53 +54,72 @@ router.get('/', (req, res) => {
  * Update user display name and/or companion settings.
  */
 router.put('/', (req, res) => {
-  const userId = req.headers['x-user-id'];
-  const { displayName, companion } = req.body;
+  try {
+    const userId = req.headers['x-user-id'];
+    const { displayName, companion } = req.body;
 
-  // Update user display name
-  if (displayName !== undefined) {
-    db.prepare(
-      'UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-    ).run(displayName, userId);
-  }
+    console.log('[Settings] Saving for user:', userId);
 
-  // Update companion settings
-  if (companion) {
-    const existing = db.prepare(
-      'SELECT user_id FROM companion_settings WHERE user_id = ?'
-    ).get(userId);
-
-    if (existing) {
-      db.prepare(`
-        UPDATE companion_settings
-        SET name = COALESCE(?, name),
-            tone = COALESCE(?, tone),
-            personality = COALESCE(?, personality),
-            backstory = COALESCE(?, backstory),
-            updated_at = CURRENT_TIMESTAMP
-        WHERE user_id = ?
-      `).run(
-        companion.name,
-        companion.tone,
-        companion.personality,
-        companion.backstory,
-        userId
-      );
-    } else {
-      db.prepare(`
-        INSERT INTO companion_settings (user_id, name, tone, personality, backstory)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(
-        userId,
-        companion.name || 'Aria',
-        companion.tone || 'cute, friendly, emotional',
-        companion.personality || 'You are a loving and caring companion who deeply cares about the user.',
-        companion.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.'
-      );
+    // Update user display name
+    if (displayName !== undefined) {
+      db.prepare(
+        'UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+      ).run(displayName, userId);
     }
-  }
 
-  res.json({ success: true });
+    // Update companion settings
+    if (companion) {
+      const existing = db.prepare(
+        'SELECT user_id FROM companion_settings WHERE user_id = ?'
+      ).get(userId);
+
+      if (existing) {
+        db.prepare(`
+          UPDATE companion_settings
+          SET name = COALESCE(?, name),
+              tone = COALESCE(?, tone),
+              personality = COALESCE(?, personality),
+              backstory = COALESCE(?, backstory),
+              tts_enabled = COALESCE(?, tts_enabled),
+              tts_voice = COALESCE(?, tts_voice),
+              audio_input_device = COALESCE(?, audio_input_device),
+              audio_output_device = COALESCE(?, audio_output_device),
+              updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ?
+        `).run(
+          companion.name || null,
+          companion.tone || null,
+          companion.personality || null,
+          companion.backstory || null,
+          companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : null,
+          companion.ttsVoice || null,
+          companion.audioInputDevice || null,
+          companion.audioOutputDevice || null,
+          userId
+        );
+      } else {
+        db.prepare(`
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          userId,
+          companion.name || 'Aria',
+          companion.tone || 'cute, friendly, emotional',
+          companion.personality || 'You are a loving and caring companion who deeply cares about the user.',
+          companion.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
+          companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : 1,
+          companion.ttsVoice || 'af_bella',
+          companion.audioInputDevice || 'default',
+          companion.audioOutputDevice || 'default'
+        );
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Settings] SAVE ERROR:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /**

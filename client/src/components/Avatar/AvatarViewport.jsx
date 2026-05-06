@@ -41,7 +41,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({ emotion, visemeData 
   const rendererRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
-  const clockRef = useRef(new THREE.Clock());
+  const lastTimeRef = useRef(performance.now());
   const animFrameRef = useRef(null);
   const modelContainerRef = useRef(new THREE.Group());
 
@@ -76,7 +76,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({ emotion, visemeData 
       antialias: true,
       alpha: true,
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(1); // Cap at 1.0 to save CPU/GPU on weak machines
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.2;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -139,7 +139,9 @@ const AvatarViewport = forwardRef(function AvatarViewport({ emotion, visemeData 
     // Render loop
     const animate = () => {
       animFrameRef.current = requestAnimationFrame(animate);
-      const delta = clockRef.current.getDelta();
+      const now = performance.now();
+      const delta = (now - lastTimeRef.current) / 1000;
+      lastTimeRef.current = now;
 
       if (vrm) {
         updateIdle(vrm, delta);

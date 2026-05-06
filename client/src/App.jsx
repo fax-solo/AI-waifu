@@ -30,7 +30,14 @@ export default function App() {
 
   const [showSettings, setShowSettings] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [companionName, setCompanionName] = useState('Aria');
+  const [companionSettings, setCompanionSettings] = useState({
+    name: 'Aria',
+    backstory: 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
+    ttsEnabled: true,
+    ttsVoice: 'af_bella',
+    audioInputDevice: 'default',
+    audioOutputDevice: 'default'
+  });
   const [currentEmotion, setCurrentEmotion] = useState('neutral');
   const [avatarCollapsed, setAvatarCollapsed] = useState(false);
   const { speak } = useTTS();
@@ -43,19 +50,38 @@ export default function App() {
   const [isResizing, setIsResizing] = useState(false);
   
   const avatarRef = useRef(null);
+
+  // Load settings on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const res = await fetch('http://localhost:3001/api/settings', {
+          headers: { 'x-user-id': 'current-user' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.displayName) setDisplayName(data.displayName);
+          if (data.companion) setCompanionSettings(data.companion);
+        }
+      } catch (err) {
+        console.error('Failed to load settings:', err);
+      }
+    };
+    loadSettings();
+  }, []);
   const resizerRef = useRef(null);
 
-  // Load companion name
+  // Load companion settings
   useEffect(() => {
-    async function loadName() {
+    async function loadSettings() {
       try {
         const data = await api.getSettings();
-        setCompanionName(data.companion.name || 'Aria');
+        setCompanionSettings(data.companion);
       } catch (err) {
         // Ignore
       }
     }
-    loadName();
+    loadSettings();
   }, [showSettings]);
 
   // Resizing logic
@@ -71,14 +97,20 @@ export default function App() {
   const resize = useCallback((e) => {
     if (!isResizing) return;
     
-    // Calculate new width (X position of mouse - sidebar width if it's fixed, but here we just need relative to window)
-    const newWidth = e.clientX - (sidebarOpen ? 300 : 0);
+    // Calculate new width
+    const sidebarWidth = sidebarOpen ? 300 : 0;
+    const newWidth = e.clientX - sidebarWidth;
     
     if (newWidth >= MIN_PANEL_WIDTH && newWidth <= window.innerWidth * 0.7) {
       setPanelWidth(newWidth);
-      localStorage.setItem('waifu-panel-width', newWidth.toString());
     }
   }, [isResizing, sidebarOpen]);
+
+  useEffect(() => {
+    if (!isResizing) {
+      localStorage.setItem('waifu-panel-width', panelWidth.toString());
+    }
+  }, [isResizing, panelWidth]);
 
   useEffect(() => {
     if (isResizing) {
@@ -116,7 +148,13 @@ export default function App() {
       setCurrentEmotion(result.emotion);
     }
     if (result?.message) {
-      speak(result.message);
+      if (companionSettings.ttsEnabled) {
+        speak(result.message, {
+          enabled: companionSettings.ttsEnabled,
+          voice: companionSettings.ttsVoice,
+          outputDeviceId: companionSettings.audioOutputDevice
+        });
+      }
     }
   };
 
@@ -171,7 +209,7 @@ export default function App() {
           error={error}
           rateLimit={rateLimit}
           messagesEndRef={messagesEndRef}
-          companionName={companionName}
+          companionName={companionSettings.name}
           onSend={handleSendMessage}
           onError={setError}
           onToggleSidebar={() => setSidebarOpen((p) => !p)}

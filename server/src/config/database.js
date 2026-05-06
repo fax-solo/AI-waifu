@@ -75,6 +75,10 @@ async function initDb() {
       personality TEXT DEFAULT 'You are a loving and caring companion who deeply cares about the user.',
       backstory TEXT DEFAULT 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
       custom_api_key_encrypted TEXT,
+      tts_enabled INTEGER DEFAULT 1,
+      tts_voice TEXT DEFAULT 'af_bella',
+      audio_input_device TEXT DEFAULT 'default',
+      audio_output_device TEXT DEFAULT 'default',
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
@@ -96,6 +100,40 @@ async function initDb() {
       PRIMARY KEY (user_id, date)
     );
   `);
+
+  // Migration: Add missing columns for existing databases
+  const tableInfo = db.prepare('PRAGMA table_info(companion_settings)');
+  const existingCols = [];
+  while (tableInfo.step()) {
+    existingCols.push(tableInfo.getAsObject().name);
+  }
+  tableInfo.free();
+
+  const requiredCols = [
+    { name: 'tts_enabled', type: 'INTEGER DEFAULT 1' },
+    { name: 'tts_voice', type: 'TEXT DEFAULT "af_bella"' },
+    { name: 'audio_input_device', type: 'TEXT DEFAULT "default"' },
+    { name: 'audio_output_device', type: 'TEXT DEFAULT "default"' }
+  ];
+
+  let migrationsApplied = false;
+  for (const col of requiredCols) {
+    if (!existingCols.includes(col.name)) {
+      console.log(`[Database] Migrating: Adding ${col.name} to companion_settings...`);
+      try {
+        db.run(`ALTER TABLE companion_settings ADD COLUMN ${col.name} ${col.type}`);
+        migrationsApplied = true;
+      } catch (err) {
+        console.error(`[Database] Migration failed for ${col.name}:`, err);
+      }
+    }
+  }
+
+  if (migrationsApplied) {
+    const data = db.export();
+    fs.writeFileSync(DB_PATH, Buffer.from(data));
+    console.log('[Database] Migrations persisted successfully.');
+  }
 
   // Create indexes (ignore if already exist)
   try { db.run('CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id)'); } catch {}
