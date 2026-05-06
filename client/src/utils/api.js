@@ -133,3 +133,21 @@ export async function getMemories() {
 export async function deleteMemory(id) {
   return request(`/settings/memories/${id}`, { method: 'DELETE' });
 }
+
+export async function getTTS(text, voice = 'af_bella', speed = 1.0) {
+  const userId = getUserId();
+  const response = await fetch(`${API_BASE}/tts`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+    },
+    body: JSON.stringify({ text, voice, speed }),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to generate speech');
+  }
+
+  return response.blob();
+}

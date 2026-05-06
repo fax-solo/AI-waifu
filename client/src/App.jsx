@@ -17,6 +17,7 @@ export default function App() {
     messages,
     isLoading,
     isSending,
+    isSearching,
     error,
     rateLimit,
     messagesEndRef,
@@ -152,9 +153,23 @@ export default function App() {
         speak(result.message, {
           enabled: companionSettings.ttsEnabled,
           voice: companionSettings.ttsVoice,
-          outputDeviceId: companionSettings.audioOutputDevice
+          outputDeviceId: companionSettings.audioOutputDevice,
+          device: companionSettings.ttsDevice || 'cpu',
+          engine: companionSettings.ttsEngine || 'onnx'
         });
       }
+    }
+  };
+
+  const handleToggleTTS = async () => {
+    const newState = !companionSettings.ttsEnabled;
+    const updated = { ...companionSettings, ttsEnabled: newState };
+    setCompanionSettings(updated);
+    
+    try {
+      await api.updateSettings({ companion: { ttsEnabled: newState } });
+    } catch (err) {
+      console.error('Failed to save TTS setting:', err);
     }
   };
 
@@ -206,6 +221,7 @@ export default function App() {
           messages={messages}
           isLoading={isLoading}
           isSending={isSending}
+          isSearching={isSearching}
           error={error}
           rateLimit={rateLimit}
           messagesEndRef={messagesEndRef}
@@ -213,6 +229,8 @@ export default function App() {
           onSend={handleSendMessage}
           onError={setError}
           onToggleSidebar={() => setSidebarOpen((p) => !p)}
+          ttsEnabled={companionSettings.ttsEnabled}
+          onToggleTTS={handleToggleTTS}
         />
       </div>
 

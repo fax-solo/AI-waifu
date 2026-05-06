@@ -20,33 +20,43 @@ const router = Router();
  * Get all settings for the current user.
  */
 router.get('/', (req, res) => {
-  const userId = req.headers['x-user-id'];
+  try {
+    const userId = req.headers['x-user-id'];
+    console.log('[Settings] GET requested for user:', userId);
 
-  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
-  const companion = db.prepare(
-    'SELECT * FROM companion_settings WHERE user_id = ?'
-  ).get(userId);
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId);
+    const companion = db.prepare(
+      'SELECT * FROM companion_settings WHERE user_id = ?'
+    ).get(userId);
 
-  // Don't send the actual encrypted key, just whether one exists
-  const hasCustomKey = !!companion?.custom_api_key_encrypted;
+    console.log('[Settings] Found user:', !!user, 'Found companion:', !!companion);
 
-  res.json({
-    user: {
-      id: user?.id,
-      displayName: user?.display_name || 'User',
-    },
-    companion: {
-      name: companion?.name || 'Aria',
-      tone: companion?.tone || 'cute, friendly, emotional',
-      personality: companion?.personality || 'You are a loving and caring companion who deeply cares about the user.',
-      backstory: companion?.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
-      ttsEnabled: !!(companion?.tts_enabled ?? 1),
-      ttsVoice: companion?.tts_voice || 'af_bella',
-      audioInputDevice: companion?.audio_input_device || 'default',
-      audioOutputDevice: companion?.audio_output_device || 'default',
-    },
-    hasCustomApiKey: hasCustomKey,
-  });
+    // Don't send the actual encrypted key, just whether one exists
+    const hasCustomKey = !!companion?.custom_api_key_encrypted;
+
+    res.json({
+      user: {
+        id: user?.id,
+        displayName: user?.display_name || 'User',
+      },
+      companion: {
+        name: companion?.name || 'Aria',
+        tone: companion?.tone || 'cute, friendly, emotional',
+        personality: companion?.personality || 'You are a loving and caring companion who deeply cares about the user.',
+        backstory: companion?.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
+        ttsEnabled: !!(companion?.tts_enabled ?? 1),
+        ttsVoice: companion?.tts_voice || 'af_bella',
+        audioInputDevice: companion?.audio_input_device || 'default',
+        audioOutputDevice: companion?.audio_output_device || 'default',
+        ttsDevice: companion?.tts_device || 'cpu',
+        ttsEngine: companion?.tts_engine || 'onnx',
+      },
+      hasCustomApiKey: hasCustomKey,
+    });
+  } catch (err) {
+    console.error('[Settings] GET ERROR:', err);
+    res.status(500).json({ error: 'Failed to load settings' });
+  }
 });
 
 /**
@@ -84,6 +94,8 @@ router.put('/', (req, res) => {
               tts_voice = COALESCE(?, tts_voice),
               audio_input_device = COALESCE(?, audio_input_device),
               audio_output_device = COALESCE(?, audio_output_device),
+              tts_device = COALESCE(?, tts_device),
+              tts_engine = COALESCE(?, tts_engine),
               updated_at = CURRENT_TIMESTAMP
           WHERE user_id = ?
         `).run(
@@ -95,12 +107,14 @@ router.put('/', (req, res) => {
           companion.ttsVoice || null,
           companion.audioInputDevice || null,
           companion.audioOutputDevice || null,
+          companion.ttsDevice || null,
+          companion.ttsEngine || null,
           userId
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
           companion.name || 'Aria',
@@ -110,7 +124,9 @@ router.put('/', (req, res) => {
           companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : 1,
           companion.ttsVoice || 'af_bella',
           companion.audioInputDevice || 'default',
-          companion.audioOutputDevice || 'default'
+          companion.audioOutputDevice || 'default',
+          companion.ttsDevice || 'cpu',
+          companion.ttsEngine || 'onnx'
         );
       }
     }

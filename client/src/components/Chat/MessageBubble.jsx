@@ -27,7 +27,12 @@ export default function MessageBubble({ message }) {
             <p>{message.content}</p>
           )}
         </div>
-        <div className="message-time">{time}</div>
+        <div className="message-info">
+          <span className="message-time">{time}</span>
+          {message.isSearching && (
+            <span className="search-indicator">🔎 Using live web data</span>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -38,7 +38,8 @@ export default function Settings({ onClose, onVRMFileSelected }) {
     ttsEnabled: true,
     ttsVoice: 'af_bella',
     audioInputDevice: 'default',
-    audioOutputDevice: 'default'
+    audioOutputDevice: 'default',
+    ttsDevice: 'cpu'
   });
   const [apiKey, setApiKey] = useState('');
   const [hasCustomApiKey, setHasCustomApiKey] = useState(false);
@@ -330,6 +331,38 @@ export default function Settings({ onClose, onVRMFileSelected }) {
 
                     <div className="settings-card">
                       <div className="form-group">
+                        <label>Hardware Acceleration</label>
+                        <select 
+                          value={companion.ttsDevice} 
+                          onChange={(e) => setCompanion({ ...companion, ttsDevice: e.target.value })}
+                        >
+                          <option value="cpu">CPU (Standard)</option>
+                          <option value="gpu">GPU (Hardware Accelerated)</option>
+                        </select>
+                        <p className="help-text">
+                          {companion.ttsDevice === 'gpu' 
+                            ? "Using GPU acceleration (CUDA/DirectML)."
+                            : "Using optimized INT8 model on your CPU."}
+                        </p>
+                      </div>
+
+                      <div className="form-group">
+                        <label>TTS Engine</label>
+                        <select 
+                          value={companion.ttsEngine || 'onnx'} 
+                          onChange={(e) => setCompanion({ ...companion, ttsEngine: e.target.value })}
+                        >
+                          <option value="onnx">ONNX (Standard)</option>
+                          <option value="torch">PyTorch (Requires torch)</option>
+                        </select>
+                        <p className="help-text">
+                          {companion.ttsEngine === 'torch' 
+                            ? "Using full PyTorch engine. Needs 'torch' and 'kokoro' installed."
+                            : "Using high-speed ONNX engine (Recommended)."}
+                        </p>
+                      </div>
+
+                      <div className="form-group">
                         <label>Microphone (Input)</label>
                         <select 
                           value={companion.audioInputDevice} 
@@ -379,7 +412,9 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                               speak(testText, {
                                 enabled: true,
                                 voice: companion.ttsVoice,
-                                outputDeviceId: companion.audioOutputDevice
+                                outputDeviceId: companion.audioOutputDevice,
+                                device: companion.ttsDevice || 'cpu',
+                                engine: companion.ttsEngine || 'onnx'
                               });
                             }}
                             disabled={isTestingVoice || !testText.trim()}

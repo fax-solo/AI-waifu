@@ -1,9 +1,9 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'path';
+import os from 'os';
 import isDev from 'electron-is-dev';
 import { fileURLToPath } from 'url';
-import { spawn, execSync } from 'child_process';
-
+import { spawn } from 'child_process';
 import fs from 'fs';
 
 // Only import the server if we are NOT in dev mode
@@ -53,18 +53,20 @@ function startTTSSidecar() {
   console.log('[TTS] Starting sidecar server...');
   console.log(`[TTS] Command: ${pythonPath} ${scriptPath}`);
 
-  // Auto-install missing packages if in dev mode
-  if (isDev) {
-    try {
-      execSync(`${pythonPath} -m pip install fastapi uvicorn kokoro-onnx soundfile`, { stdio: 'inherit' });
-    } catch (e) {
-      console.warn('[TTS] Failed to auto-install dependencies, server might crash.');
-    }
-  }
+  // NOTE: Do not auto-run pip install here — it reinstalls base onnxruntime
+  // which conflicts with onnxruntime-directml. Run pip manually if needed.
 
+  // Pass OMP/MKL thread counts so ONNX uses all available CPU cores
+  const cpuCount = os.cpus().length;
   ttsProcess = spawn(pythonPath, [scriptPath], {
     cwd: path.dirname(scriptPath),
-    env: { ...process.env, PYTHONUNBUFFERED: '1' }
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+      OMP_NUM_THREADS: String(cpuCount),
+      MKL_NUM_THREADS: String(cpuCount),
+      OPENBLAS_NUM_THREADS: String(cpuCount),
+    }
   });
 
   ttsProcess.stdout.on('data', (data) => {

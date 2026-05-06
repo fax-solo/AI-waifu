@@ -44,87 +44,128 @@ export async function chat({ apiKey, systemPrompt, history, userMessage }) {
   }
 
   const client = getClient(key);
-  const modelsToTry = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  const modelsToTry = [
+    'gemini-3.1-flash-lite-preview',
+    'gemini-3-flash-preview',
+    'gemini-flash-latest'
+  ];
   let lastError = null;
 
   for (const modelName of modelsToTry) {
-    try {
-      const model = client.getGenerativeModel({
-        model: modelName,
-        systemInstruction: systemPrompt,
-        generationConfig: {
-          temperature: 0.9,
-          topP: 0.95,
-          topK: 40,
-          maxOutputTokens: 1024,
-        },
-      });
+    let retries = 0;
+    const maxRetries = 2;
+    
+    while (retries <= maxRetries) {
+      try {
+        const model = client.getGenerativeModel({
+          model: modelName,
+          systemInstruction: systemPrompt,
+          generationConfig: {
+            temperature: 0.7,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 1024,
+          },
+        });
 
-      const chatSession = model.startChat({
-        history: history || [],
-      });
+        const chatSession = model.startChat({
+          history: history || [],
+        });
 
-      const result = await chatSession.sendMessage(userMessage);
-      const fullText = result.response.text();
-      
-      // Parse emotion tag: [emotion] message
-      const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised)\]\s*(.*)/i);
-      
-      if (emotionMatch) {
+        const result = await chatSession.sendMessage(userMessage);
+        const response = await result.response;
+        const fullText = response.text();
+        
+        // Parse emotion tag: [emotion] message
+        const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised)\]\s*(.*)/i);
+        
+        if (emotionMatch) {
+          return {
+            emotion: emotionMatch[1].toLowerCase(),
+            text: emotionMatch[2].trim()
+          };
+        }
+
         return {
-          emotion: emotionMatch[1].toLowerCase(),
-          text: emotionMatch[2].trim()
+          emotion: 'neutral',
+          text: fullText.trim()
         };
-      }
+      } catch (error) {
+        lastError = error;
+        const errorMessage = error.message || '';
+        
+        console.warn(`Gemini attempt with ${modelName} (retry ${retries}) failed:`, errorMessage);
 
-      return {
-        emotion: 'neutral',
-        text: fullText.trim()
-      };
-    } catch (error) {
-      lastError = error;
-      // ... existing error handling ...
-      console.warn(`Gemini attempt with ${modelName} failed:`, error.message);
+        // If it's an API key error, don't bother retrying
+        if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('API key not valid')) {
+          break;
+        }
+        
+        // If it's a quota/rate limit error (429), retry with exponential backoff
+        if (errorMessage.includes('quota') || errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+          if (retries < maxRetries) {
+            retries++;
+            const delay = Math.pow(2, retries) * 1000;
+            console.log(`[Gemini] Rate limited. Retrying ${modelName} in ${delay}ms... (Attempt ${retries}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+          break;
+        }
 
-      // If it's an API key error, don't bother retrying with other models
-      if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('API key not valid')) {
+        // If it's a fetch error or network error, retry immediately once
+        if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('ETIMEDOUT') || errorMessage.includes('ECONNRESET')) {
+          if (retries < maxRetries) {
+            retries++;
+            console.log(`[Gemini] Network error with ${modelName}. Retrying immediately... (Attempt ${retries}/${maxRetries})`);
+            continue;
+          }
+          break;
+        }
+
+        // If it's a 503 (High demand) or 500, try the next model
+        if (errorMessage.includes('503') || errorMessage.includes('500')) {
+          console.warn(`[Gemini] Server error (50x) with ${modelName}. Moving to next model fallback.`);
+          break; 
+        }
+
+        // If it's a 404 (Model not found), move to next model immediately
+        if (errorMessage.includes('404') || errorMessage.includes('not found')) {
+          console.warn(`[Gemini] Model ${modelName} not found or unsupported. Moving to next fallback.`);
+          break;
+        }
+
+        // For other errors (like safety), return the specialized message
+        if (errorMessage.includes('blocked') || errorMessage.includes('safety')) {
+          return {
+            emotion: 'sad',
+            text: "Hmm, I couldn't quite figure out how to respond to that... Can we talk about something else? (◕‿◕)"
+          };
+        }
+        
+        // For anything else, just log it and try next model
+        console.error(`[Gemini] Unrecognized error with ${modelName}:`, errorMessage);
         break;
-      }
-      
-      // If it's a quota/rate limit error, don't retry immediately
-      if (error.message?.includes('quota') || error.message?.includes('429')) {
-        break;
-      }
-
-      // If it's a 503 (High demand) or 500, we'll try the next model in the list
-      if (error.message?.includes('503') || error.message?.includes('500')) {
-        continue;
-      }
-
-      // For other errors (like safety), stop and return the specialized message
-      if (error.message?.includes('blocked') || error.message?.includes('safety')) {
-        return "Hmm, I couldn't quite figure out how to respond to that... Can we talk about something else? (◕‿◕)";
       }
     }
   }
 
-  // If we get here, all models failed
+  // If we get here, all models/retries failed
   const error = lastError;
-  if (error.message?.includes('API_KEY_INVALID') || error.message?.includes('API key not valid')) {
-    throw new Error('Invalid API key. Please check your Gemini API key and try again.');
+  const errorMessage = error?.message || 'Unknown error';
+  
+  if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('API key not valid')) {
+    throw new Error('Invalid API key. Please check your Gemini API key in Settings or .env file.');
   }
-  if (error.message?.includes('API key')) {
-    throw new Error('API key error. Please check your Gemini API key in Settings or server .env file.');
+  if (errorMessage.includes('quota') || errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+    throw new Error('Gemini API rate limit hit. Please wait a minute or add your own API key in Settings.');
   }
-  if (error.message?.includes('quota') || error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
-    throw new Error('Gemini API rate limit hit. Please wait a minute before trying again.');
-  }
-  if (error.message?.includes('503')) {
-    throw new Error('Gemini servers are currently overloaded due to high demand. Please try again in a few seconds.');
+  if (errorMessage.includes('503') || errorMessage.includes('500')) {
+    throw new Error('Gemini servers are currently overloaded. Please try again in a few seconds.');
   }
 
-  console.error('Gemini API error after fallbacks:', error.message);
-  throw new Error('Failed to get a response from Gemini. Please try again.');
+  console.error('[Gemini] All fallback attempts failed. Last error:', errorMessage);
+  throw new Error(`Gemini connection error: ${errorMessage.split('\n')[0]}. Please check your internet and API key.`);
 }
 
 export default { chat };

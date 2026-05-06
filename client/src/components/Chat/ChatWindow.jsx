@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, Volume2, VolumeX } from 'lucide-react';
 import MessageBubble from './MessageBubble.jsx';
 import MessageInput from './MessageInput.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
@@ -15,6 +15,7 @@ export default function ChatWindow({
   messages,
   isLoading,
   isSending,
+  isSearching,
   error,
   rateLimit,
   messagesEndRef,
@@ -22,6 +23,8 @@ export default function ChatWindow({
   onSend,
   onError,
   onToggleSidebar,
+  ttsEnabled,
+  onToggleTTS,
 }) {
   const [showError, setShowError] = useState(false);
 
@@ -71,6 +74,14 @@ export default function ChatWindow({
               ∞ Unlimited
             </div>
           )}
+          
+          <button 
+            className={`tts-toggle-btn ${ttsEnabled ? 'enabled' : 'disabled'}`}
+            onClick={onToggleTTS}
+            title={ttsEnabled ? 'Disable voice' : 'Enable voice'}
+          >
+            {ttsEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+          </button>
         </div>
       </div>
 
@@ -123,7 +134,7 @@ export default function ChatWindow({
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}
-          {isSending && <TypingIndicator />}
+          {isSending && <TypingIndicator isSearching={isSearching} />}
           <div ref={messagesEndRef} />
         </div>
       )}

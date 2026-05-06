@@ -1687,3 +1687,70 @@ input:checked + .slider:before {
 .mic-btn.listening { background: rgba(255, 74, 74, 0.15); color: #ff4a4a; }
 .pulse-icon { animation: pulse-red 1.5s infinite; }
 @keyframes pulse-red { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }
+
+/* TTS Toggle Button */
+.tts-toggle-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tts-toggle-btn:hover {
+  background: var(--color-bg-hover);
+  color: var(--color-text-primary);
+  border-color: var(--color-border-focus);
+  transform: translateY(-1px);
+}
+
+.tts-toggle-btn.enabled {
+  background: var(--color-accent-glow);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 15px var(--color-accent-glow);
+}
+
+.tts-toggle-btn.enabled:hover {
+  background: rgba(168, 130, 255, 0.2);
+}
+
+.tts-toggle-btn.disabled {
+  opacity: 0.6;
+}
+
+.tts-toggle-btn.disabled:hover {
+  opacity: 1;
+}
+
+/* Search Indicator Styles */
+.message-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.search-indicator {
+  font-size: 0.68rem;
+  color: var(--color-accent-light);
+  background: var(--color-accent-glow);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(168, 130, 255, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  animation: fade-in 0.3s ease;
+}
+
+.message.user .search-indicator {
+  display: none; /* Never show on user messages */
+}
+

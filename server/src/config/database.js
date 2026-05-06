@@ -79,6 +79,7 @@ async function initDb() {
       tts_voice TEXT DEFAULT 'af_bella',
       audio_input_device TEXT DEFAULT 'default',
       audio_output_device TEXT DEFAULT 'default',
+      tts_device TEXT DEFAULT 'cpu',
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
@@ -96,6 +97,7 @@ async function initDb() {
       user_id TEXT NOT NULL,
       date TEXT NOT NULL,
       message_count INTEGER DEFAULT 0,
+      search_count INTEGER DEFAULT 0,
       last_message_at DATETIME,
       PRIMARY KEY (user_id, date)
     );
@@ -109,19 +111,31 @@ async function initDb() {
   }
   tableInfo.free();
 
+  // Check rate_limits columns too
+  const rateLimitInfo = db.prepare('PRAGMA table_info(rate_limits)');
+  const rateLimitCols = [];
+  while (rateLimitInfo.step()) {
+    rateLimitCols.push(rateLimitInfo.getAsObject().name);
+  }
+  rateLimitInfo.free();
+
   const requiredCols = [
-    { name: 'tts_enabled', type: 'INTEGER DEFAULT 1' },
-    { name: 'tts_voice', type: 'TEXT DEFAULT "af_bella"' },
-    { name: 'audio_input_device', type: 'TEXT DEFAULT "default"' },
-    { name: 'audio_output_device', type: 'TEXT DEFAULT "default"' }
+    { table: 'companion_settings', name: 'tts_enabled', type: 'INTEGER DEFAULT 1' },
+    { table: 'companion_settings', name: 'tts_voice', type: 'TEXT DEFAULT "af_bella"' },
+    { table: 'companion_settings', name: 'audio_input_device', type: 'TEXT DEFAULT "default"' },
+    { table: 'companion_settings', name: 'audio_output_device', type: 'TEXT DEFAULT "default"' },
+    { table: 'companion_settings', name: 'tts_device', type: 'TEXT DEFAULT "cpu"' },
+    { table: 'companion_settings', name: 'tts_engine', type: 'TEXT DEFAULT "onnx"' },
+    { table: 'rate_limits', name: 'search_count', type: 'INTEGER DEFAULT 0' }
   ];
 
   let migrationsApplied = false;
   for (const col of requiredCols) {
-    if (!existingCols.includes(col.name)) {
-      console.log(`[Database] Migrating: Adding ${col.name} to companion_settings...`);
+    const checkCols = col.table === 'companion_settings' ? existingCols : rateLimitCols;
+    if (!checkCols.includes(col.name)) {
+      console.log(`[Database] Migrating: Adding ${col.name} to ${col.table}...`);
       try {
-        db.run(`ALTER TABLE companion_settings ADD COLUMN ${col.name} ${col.type}`);
+        db.run(`ALTER TABLE ${col.table} ADD COLUMN ${col.name} ${col.type}`);
         migrationsApplied = true;
       } catch (err) {
         console.error(`[Database] Migration failed for ${col.name}:`, err);

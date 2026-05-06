@@ -7,6 +7,7 @@
 import { Router } from 'express';
 import { chat as geminiChat } from '../services/gemini.js';
 import { buildSystemPrompt, extractMemoryHints } from '../services/personality.js';
+import { shouldSearch, searchWeb } from '../services/search.js';
 import {
   getConversationHistory,
   saveMessage,
@@ -76,7 +77,46 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
     // Build system prompt with personality and memories
     const systemPrompt = buildSystemPrompt(settings, memories, userName);
 
-    // Save user message
+    // --- Smart Search Logic ---
+    let searchResults = null;
+    let isSearching = false;
+    const searchNeeded = shouldSearch(message);
+
+    if (searchNeeded) {
+      // Check search rate limit (e.g., 10 per day)
+      const today = new Date().toISOString().split('T')[0];
+      const limit = db.prepare('SELECT search_count FROM rate_limits WHERE user_id = ? AND date = ?').get(userId, today);
+      const searchCount = limit?.search_count || 0;
+
+      if (searchCount < 10) {
+        isSearching = true;
+        searchResults = await searchWeb(message.trim());
+        
+        if (searchResults) {
+          // Increment search count
+          db.prepare(`
+            INSERT INTO rate_limits (user_id, date, search_count) 
+            VALUES (?, ?, 1) 
+            ON CONFLICT(user_id, date) DO UPDATE SET search_count = search_count + 1
+          `).run(userId, today);
+        }
+      } else {
+        console.warn(`[Search] User ${userId} reached daily search limit.`);
+      }
+    }
+
+    // Prepare message for Gemini (inject search results if found)
+    let finalUserMessage = message.trim();
+    if (searchResults) {
+      finalUserMessage = `Use the following real-time information to answer the user:
+[SEARCH RESULTS]
+${searchResults}
+[END SEARCH RESULTS]
+
+User Query: ${finalUserMessage}`;
+    }
+
+    // Save user message (original one)
     saveMessage(conversationId, 'user', message.trim());
 
     // Auto-title if this is the first message
@@ -98,7 +138,7 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
       apiKey,
       systemPrompt,
       history,
-      userMessage: message.trim(),
+      userMessage: finalUserMessage,
     });
 
     // Save AI response (just the text, not the tag)
@@ -108,6 +148,7 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
     res.json({
       message: text,
       emotion: emotion,
+      isSearching: isSearching && !!searchResults,
       conversationId,
       rateLimit: req.rateLimit || null,
     });

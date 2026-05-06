@@ -10,6 +10,7 @@ export function useChat() {
   const [messages, setMessages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState(null);
   const [rateLimit, setRateLimit] = useState(null);
 
@@ -104,6 +105,11 @@ export function useChat() {
     setMessages((prev) => [...prev, userMessage]);
     scrollToBottom();
 
+    // Reset searching state and check if search might be needed (for immediate indicator)
+    const searchKeywords = ['latest', 'news', 'today', '2025', '2026', 'recent', 'current', 'weather', 'stock', 'price', 'what happened'];
+    const mightNeedSearch = searchKeywords.some(keyword => text.toLowerCase().includes(keyword));
+    setIsSearching(mightNeedSearch);
+
     try {
       const response = await api.sendMessage(conversationId, text.trim());
 
@@ -112,6 +118,7 @@ export function useChat() {
         id: Date.now() + 1,
         role: 'assistant',
         content: response.message,
+        isSearching: response.isSearching, // Store if search was used
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, aiMessage]);
@@ -128,6 +135,7 @@ export function useChat() {
       // Refresh conversations to update title/preview
       loadConversations();
       scrollToBottom();
+      return response;
     } catch (err) {
       setError(err.data?.error || err.message);
 
@@ -137,6 +145,7 @@ export function useChat() {
       }
     } finally {
       setIsSending(false);
+      setIsSearching(false);
     }
   }, [activeConversationId, isSending, createConversation, loadConversations, scrollToBottom, loadRateLimit]);
 
@@ -161,6 +170,7 @@ export function useChat() {
     messages,
     isLoading,
     isSending,
+    isSearching,
     error,
     rateLimit,
     messagesEndRef,
