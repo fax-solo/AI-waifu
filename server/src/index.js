@@ -16,6 +16,8 @@ import chatRoutes from './routes/chat.js';
 import conversationRoutes from './routes/conversations.js';
 import settingsRoutes from './routes/settings.js';
 import ttsRoutes from './routes/tts.js';
+import avatarRoutes, { UPLOADS_BASE } from './routes/avatars.js';
+import setupRoutes from './routes/setup.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -56,6 +58,11 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/tts', ttsRoutes);
+app.use('/api/avatars', avatarRoutes);
+app.use('/api/setup', setupRoutes);
+
+// Static files for uploads
+app.use('/uploads', express.static(UPLOADS_BASE));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -68,11 +75,19 @@ app.get('/api/health', (req, res) => {
 
 // ─── Error Handler ──────────────────────────────────────────────────
 
+// 404 Handler for API
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Endpoint not found' });
+});
+
+// Default 404 Handler (for static files etc)
+app.use((req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
 app.use((err, req, res, _next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({
-    error: 'Something went wrong. Please try again.',
-  });
+  console.error(err.stack);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 // ─── Start Server ───────────────────────────────────────────────────

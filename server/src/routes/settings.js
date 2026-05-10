@@ -50,6 +50,7 @@ router.get('/', (req, res) => {
         audioOutputDevice: companion?.audio_output_device || 'default',
         ttsDevice: companion?.tts_device || 'cpu',
         ttsEngine: companion?.tts_engine || 'onnx',
+        llmModel: companion?.llm_model || 'gemini-1.5-flash',
       },
       hasCustomApiKey: hasCustomKey,
     });
@@ -96,6 +97,7 @@ router.put('/', (req, res) => {
               audio_output_device = COALESCE(?, audio_output_device),
               tts_device = COALESCE(?, tts_device),
               tts_engine = COALESCE(?, tts_engine),
+              llm_model = COALESCE(?, llm_model),
               updated_at = CURRENT_TIMESTAMP
           WHERE user_id = ?
         `).run(
@@ -109,12 +111,13 @@ router.put('/', (req, res) => {
           companion.audioOutputDevice || null,
           companion.ttsDevice || null,
           companion.ttsEngine || null,
+          companion.llmModel || null,
           userId
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, llm_model)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
           companion.name || 'Aria',
@@ -126,7 +129,8 @@ router.put('/', (req, res) => {
           companion.audioInputDevice || 'default',
           companion.audioOutputDevice || 'default',
           companion.ttsDevice || 'cpu',
-          companion.ttsEngine || 'onnx'
+          companion.ttsEngine || 'onnx',
+          companion.llmModel || 'gemini-1.5-flash'
         );
       }
     }

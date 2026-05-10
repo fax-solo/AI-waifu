@@ -1,168 +1,171 @@
-/**
- * useIdleAnimation Hook
- *
- * Procedural idle animations for VRM avatars:
- * - Natural blinking (random intervals)
- * - Gentle breathing (chest/spine subtle movement)
- * - Micro head sway (alive feeling)
- *
- * These run continuously to make the character feel alive.
- */
-
 import { useRef, useCallback } from 'react';
 
-// ─── Blink Configuration ──────────────────────────────────────
-const BLINK_DURATION = 0.12;         // How long a blink takes (seconds)
-const BLINK_INTERVAL_MIN = 2.0;      // Minimum time between blinks
-const BLINK_INTERVAL_MAX = 6.0;      // Maximum time between blinks
-const DOUBLE_BLINK_CHANCE = 0.2;     // 20% chance of a double-blink
+// ─── Animation Config ──────────────────────────────────────────
+const BLINK_DURATION = 0.12;
+const BREATH_SPEED = 0.35;
+const BREATH_AMPLITUDE = 0.001;
 
-// ─── Breathing Configuration ──────────────────────────────────
-const BREATH_SPEED = 0.4;             // Breathing cycle speed (slow, natural)
-const BREATH_AMPLITUDE = 0.008;       // How much the chest rotates (radians, very subtle)
+const WEIGHT_SHIFT_INTERVAL = 6.0; 
 
-// ─── Head Sway Configuration ──────────────────────────────────
-const SWAY_SPEED_X = 0.15;            // Horizontal sway speed (slow)
-const SWAY_SPEED_Y = 0.1;             // Vertical sway speed (slow)
-const SWAY_AMPLITUDE = 0.008;         // Sway range (radians, very subtle)
-
-/**
- * Hook providing an update function for idle VRM animations.
- *
- * @returns {{ updateIdle: (vrm, deltaTime) => void }}
- */
 export function useIdleAnimation() {
   const state = useRef({
-    // Blink state
-    blinkTimer: 0,
-    nextBlinkAt: randomRange(BLINK_INTERVAL_MIN, BLINK_INTERVAL_MAX),
-    blinkPhase: 'waiting', // 'waiting' | 'closing' | 'opening' | 'pause'
-    blinkProgress: 0,
-    doDoubleBlink: false,
-    doubleBlinkDone: false,
-
-    // Breathing
-    breathTime: 0,
-
-    // Sway
-    swayTime: 0,
-
-    // Total elapsed
     elapsed: 0,
+    blinkTimer: 0,
+    nextBlinkAt: 3.0,
+    blinkPhase: 'waiting',
+    blinkProgress: 0,
+
+    eyeTimer: 0,
+    nextEyeMove: 2.0,
+    eyeTargetX: 0,
+    eyeTargetY: 0,
+    currentEyeX: 0,
+    currentEyeY: 0,
+
+    weightShiftTime: 0,
+    targetWeightX: 0.08,
+    currentWeightX: 0,
+    initialHipsPos: null,
   });
 
-  const updateIdle = useCallback((vrm, deltaTime) => {
+  const updateIdle = useCallback((vrm, deltaTime, emotion = 'neutral', faceOnly = false) => {
     if (!vrm) return;
-
     const s = state.current;
     s.elapsed += deltaTime;
-    s.breathTime += deltaTime;
-    s.swayTime += deltaTime;
 
-    // ─── Blinking ─────────────────────────────────────────
+    // ─── 1. Blinking & Eyes ───
     updateBlink(vrm, deltaTime, s);
+    updateEyes(vrm, deltaTime, s);
 
-    // ─── Breathing ────────────────────────────────────────
-    updateBreathing(vrm, s);
+    // ─── 2. Cute Body Language (Idle 2.1) ───
+    const getBone = (name) => vrm.humanoid.getNormalizedBoneNode ? 
+                              vrm.humanoid.getNormalizedBoneNode(name) : 
+                              vrm.humanoid.getBoneNode(name);
 
-    // ─── Head Sway ────────────────────────────────────────
-    updateHeadSway(vrm, s);
+    const t = s.elapsed;
+    const hips = getBone('hips');
+    const spine = getBone('spine');
+    const head = getBone('head');
+    const neck = getBone('neck');
 
-    // Update VRM (required each frame)
-    vrm.update(deltaTime);
+    if (!s.initialHipsPos && hips) {
+      s.initialHipsPos = hips.position.clone();
+    }
+
+    // Weight Shifting
+    s.weightShiftTime += deltaTime;
+    if (s.weightShiftTime > WEIGHT_SHIFT_INTERVAL) {
+      s.weightShiftTime = 0;
+      s.targetWeightX = (Math.random() - 0.5) * 0.2; 
+    }
+    s.currentWeightX += (s.targetWeightX - s.currentWeightX) * deltaTime * 0.8;
+
+    const swayZ = Math.sin(t * 1.1) * 0.04 + s.currentWeightX; 
+    const swayX = Math.cos(t * 0.9) * 0.02;
+
+    if (hips && s.initialHipsPos) {
+      hips.rotation.z += swayZ;  // ADDITIVE
+      hips.rotation.x += swayX;  // ADDITIVE
+    }
+
+    const breath = Math.sin(t * Math.PI * 2 * BREATH_SPEED);
+    if (spine) {
+      spine.rotation.x += breath * BREATH_AMPLITUDE; // ADDITIVE
+      spine.rotation.z += -swayZ * 0.6; // ADDITIVE
+    }
+    
+    const lShoulder = getBone('leftShoulder');
+    const rShoulder = getBone('rightShoulder');
+    if (lShoulder && rShoulder) {
+      const shrug = Math.max(0, Math.sin(t * 0.8)) * 0.05; 
+      lShoulder.rotation.z += shrug;
+      rShoulder.rotation.z -= shrug;
+    }
+
+    if (head) {
+      let baseTilt = 0;
+      let baseNod = 0;
+      if (emotion === 'happy' || emotion === 'excited') baseTilt = 0.15;
+      if (emotion === 'sad') baseNod = 0.2;
+      if (emotion === 'angry') baseNod = -0.15;
+      
+      const tilt = baseTilt + Math.sin(t * 0.6) * 0.1;
+      const nod = baseNod + Math.sin(t * 1.3) * 0.03;
+      head.rotation.z += tilt; // ADDITIVE
+      head.rotation.x += nod; // ADDITIVE
+    }
+    if (neck) {
+      neck.rotation.y += Math.sin(t * 0.4) * 0.08; // ADDITIVE
+    }
+
+    // Arms: Add some gentle breathing sway to the stance
+    const lArm = getBone('leftUpperArm');
+    const rArm = getBone('rightUpperArm');
+    if (lArm && rArm) {
+      const armSway = breath * 0.005;
+      lArm.rotation.z += armSway;
+      rArm.rotation.z -= armSway;
+      lArm.rotation.x += Math.sin(t * 0.5) * 0.02;
+      rArm.rotation.x += Math.sin(t * 0.5) * 0.02;
+    }
+
+    const lLeg = getBone('leftUpperLeg');
+    const rLeg = getBone('rightUpperLeg');
+    if (lLeg && rLeg) {
+      lLeg.rotation.z += -swayZ * 0.8;
+      rLeg.rotation.z += -swayZ * 0.8;
+    }
+
   }, []);
 
   return { updateIdle };
 }
 
-// ─── Blink Logic ──────────────────────────────────────────────
-
 function updateBlink(vrm, deltaTime, s) {
-  const expressionManager = vrm.expressionManager;
-  if (!expressionManager) return;
-
+  const em = vrm.expressionManager || vrm.blendShapeProxy;
+  if (!em) return;
   s.blinkTimer += deltaTime;
-
-  switch (s.blinkPhase) {
-    case 'waiting':
-      if (s.blinkTimer >= s.nextBlinkAt) {
-        s.blinkPhase = 'closing';
-        s.blinkProgress = 0;
-        s.doDoubleBlink = Math.random() < DOUBLE_BLINK_CHANCE;
-        s.doubleBlinkDone = false;
-      }
-      break;
-
-    case 'closing':
-      s.blinkProgress += deltaTime / BLINK_DURATION;
-      if (s.blinkProgress >= 1.0) {
-        s.blinkProgress = 1.0;
-        s.blinkPhase = 'opening';
-      }
-      expressionManager.setValue('blink', s.blinkProgress);
-      break;
-
-    case 'opening':
-      s.blinkProgress -= deltaTime / BLINK_DURATION;
-      if (s.blinkProgress <= 0) {
-        s.blinkProgress = 0;
-        expressionManager.setValue('blink', 0);
-
-        if (s.doDoubleBlink && !s.doubleBlinkDone) {
-          // Quick pause then blink again
-          s.doubleBlinkDone = true;
-          s.blinkPhase = 'pause';
-          s.blinkTimer = 0;
-        } else {
-          // Reset for next blink cycle
-          s.blinkPhase = 'waiting';
-          s.blinkTimer = 0;
-          s.nextBlinkAt = randomRange(BLINK_INTERVAL_MIN, BLINK_INTERVAL_MAX);
-        }
-      } else {
-        expressionManager.setValue('blink', s.blinkProgress);
-      }
-      break;
-
-    case 'pause':
-      // Short pause between double-blinks
-      if (s.blinkTimer >= 0.08) {
-        s.blinkPhase = 'closing';
-        s.blinkProgress = 0;
-      }
-      break;
+  if (s.blinkPhase === 'waiting') {
+    if (s.blinkTimer >= s.nextBlinkAt) {
+      s.blinkPhase = 'closing';
+      s.blinkProgress = 0;
+    }
+  } else if (s.blinkPhase === 'closing') {
+    s.blinkProgress += deltaTime / BLINK_DURATION;
+    if (s.blinkProgress >= 1.0) {
+      s.blinkProgress = 1.0;
+      s.blinkPhase = 'opening';
+    }
+    em.setValue('blink', s.blinkProgress);
+  } else {
+    s.blinkProgress -= deltaTime / BLINK_DURATION;
+    if (s.blinkProgress <= 0) {
+      s.blinkProgress = 0;
+      s.blinkPhase = 'waiting';
+      s.blinkTimer = 0;
+      s.nextBlinkAt = 2 + Math.random() * 4;
+    }
+    em.setValue('blink', s.blinkProgress);
   }
 }
 
-// ─── Breathing Logic ──────────────────────────────────────────
-
-function updateBreathing(vrm, s) {
-  // Use spine rotation for breathing instead of hips position (avoids bouncing)
-  const spine = vrm.humanoid?.getNormalizedBoneNode('spine');
-  if (!spine) return;
-
-  const breathValue = Math.sin(s.breathTime * Math.PI * 2 * BREATH_SPEED) * BREATH_AMPLITUDE;
-  spine.rotation.x = breathValue;
+function updateEyes(vrm, deltaTime, s) {
+  const lookAt = vrm.lookAt;
+  if (!lookAt) return;
+  s.eyeTimer += deltaTime;
+  if (s.eyeTimer >= s.nextEyeMove) {
+    s.eyeTimer = 0;
+    if (Math.random() < 0.7) {
+      s.eyeTargetX = 0; s.eyeTargetY = 0; 
+      s.nextEyeMove = 1 + Math.random() * 3;
+    } else {
+      s.eyeTargetX = (Math.random() - 0.5) * 6;
+      s.eyeTargetY = (Math.random() - 0.5) * 4;
+      s.nextEyeMove = 0.2 + Math.random() * 0.8;
+    }
+  }
+  s.currentEyeX += (s.eyeTargetX - s.currentEyeX) * deltaTime * 10;
+  s.currentEyeY += (s.eyeTargetY - s.currentEyeY) * deltaTime * 10;
+  lookAt.yaw = s.currentEyeX;
+  lookAt.pitch = s.currentEyeY;
 }
-
-// ─── Head Sway Logic ──────────────────────────────────────────
-
-function updateHeadSway(vrm, s) {
-  const head = vrm.humanoid?.getNormalizedBoneNode('head');
-  if (!head) return;
-
-  // Gentle Perlin-like sway using offset sine waves
-  const swayX = Math.sin(s.swayTime * SWAY_SPEED_X) * SWAY_AMPLITUDE;
-  const swayY = Math.sin(s.swayTime * SWAY_SPEED_Y + 1.5) * SWAY_AMPLITUDE * 0.5;
-
-  head.rotation.x = swayX;
-  head.rotation.z = swayY;
-}
-
-// ─── Utilities ────────────────────────────────────────────────
-
-function randomRange(min, max) {
-  return min + Math.random() * (max - min);
-}
-
-export default useIdleAnimation;

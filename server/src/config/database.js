@@ -101,6 +101,16 @@ async function initDb() {
       last_message_at DATETIME,
       PRIMARY KEY (user_id, date)
     );
+
+    CREATE TABLE IF NOT EXISTS vrm_models (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      pfp_path TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
   `);
 
   // Migration: Add missing columns for existing databases
@@ -126,6 +136,7 @@ async function initDb() {
     { table: 'companion_settings', name: 'audio_output_device', type: 'TEXT DEFAULT "default"' },
     { table: 'companion_settings', name: 'tts_device', type: 'TEXT DEFAULT "cpu"' },
     { table: 'companion_settings', name: 'tts_engine', type: 'TEXT DEFAULT "onnx"' },
+    { table: 'companion_settings', name: 'llm_model', type: 'TEXT DEFAULT "gemini-1.5-flash"' },
     { table: 'rate_limits', name: 'search_count', type: 'INTEGER DEFAULT 0' }
   ];
 

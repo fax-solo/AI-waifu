@@ -31,9 +31,10 @@ function getClient(apiKey) {
  * @param {string} options.systemPrompt - System instructions for the AI
  * @param {Array} options.history - Conversation history in Gemini format
  * @param {string} options.userMessage - The new user message
+ * @param {string} options.model - The preferred model name
  * @returns {Promise<{text: string, emotion: string}>} The AI's response text and detected emotion
  */
-export async function chat({ apiKey, systemPrompt, history, userMessage }) {
+export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel }) {
   // Resolve the API key: prefer user-provided, fall back to server key
   const key = (apiKey && apiKey.trim()) || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim());
 
@@ -44,16 +45,27 @@ export async function chat({ apiKey, systemPrompt, history, userMessage }) {
   }
 
   const client = getClient(key);
-  const modelsToTry = [
-    'gemini-3.1-flash-lite-preview',
-    'gemini-3-flash-preview',
-    'gemini-flash-latest'
+  
+  // Build models to try, prioritizing the user's preferred model
+  const fallbackModels = [
+    'gemini-2.0-flash',
+    'gemini-2.0-flash-lite',
+    'gemini-flash-latest',
+    'gemini-2.5-flash',
+    'gemini-1.5-flash', // Keep as legacy fallback
+    'gemini-pro-latest'
   ];
+  
+  const modelsToTry = preferredModel 
+    ? [preferredModel, ...fallbackModels.filter(m => m !== preferredModel)]
+    : fallbackModels;
+
   let lastError = null;
+  let allErrors = [];
 
   for (const modelName of modelsToTry) {
     let retries = 0;
-    const maxRetries = 2;
+    const maxRetries = 1; // Reduced for fallbacks
     
     while (retries <= maxRetries) {
       try {
@@ -93,12 +105,15 @@ export async function chat({ apiKey, systemPrompt, history, userMessage }) {
       } catch (error) {
         lastError = error;
         const errorMessage = error.message || '';
+        allErrors.push(`${modelName}: ${errorMessage.split('\n')[0]}`);
         
-        console.warn(`Gemini attempt with ${modelName} (retry ${retries}) failed:`, errorMessage);
+        console.warn(`Gemini attempt with ${modelName} failed:`, errorMessage);
 
-        // If it's an API key error, don't bother retrying
-        if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('API key not valid')) {
-          break;
+        // If it's an API key error, STOP IMMEDIATELY
+        if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('API key not valid') || errorMessage.includes('400')) {
+          if (errorMessage.includes('API key not valid') || errorMessage.includes('API_KEY_INVALID')) {
+            throw new Error('INVALID_API_KEY');
+          }
         }
         
         // If it's a quota/rate limit error (429), retry with exponential backoff
@@ -106,66 +121,31 @@ export async function chat({ apiKey, systemPrompt, history, userMessage }) {
           if (retries < maxRetries) {
             retries++;
             const delay = Math.pow(2, retries) * 1000;
-            console.log(`[Gemini] Rate limited. Retrying ${modelName} in ${delay}ms... (Attempt ${retries}/${maxRetries})`);
+            console.log(`[Gemini] Rate limited. Retrying ${modelName} in ${delay}ms...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
           }
           break;
         }
 
-        // If it's a fetch error or network error, retry immediately once
-        if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('ETIMEDOUT') || errorMessage.includes('ECONNRESET')) {
-          if (retries < maxRetries) {
-            retries++;
-            console.log(`[Gemini] Network error with ${modelName}. Retrying immediately... (Attempt ${retries}/${maxRetries})`);
-            continue;
-          }
-          break;
-        }
-
-        // If it's a 503 (High demand) or 500, try the next model
-        if (errorMessage.includes('503') || errorMessage.includes('500')) {
-          console.warn(`[Gemini] Server error (50x) with ${modelName}. Moving to next model fallback.`);
-          break; 
-        }
-
         // If it's a 404 (Model not found), move to next model immediately
         if (errorMessage.includes('404') || errorMessage.includes('not found')) {
-          console.warn(`[Gemini] Model ${modelName} not found or unsupported. Moving to next fallback.`);
           break;
         }
 
-        // For other errors (like safety), return the specialized message
-        if (errorMessage.includes('blocked') || errorMessage.includes('safety')) {
-          return {
-            emotion: 'sad',
-            text: "Hmm, I couldn't quite figure out how to respond to that... Can we talk about something else? (◕‿◕)"
-          };
-        }
-        
-        // For anything else, just log it and try next model
-        console.error(`[Gemini] Unrecognized error with ${modelName}:`, errorMessage);
+        // For other errors, try next model
         break;
       }
     }
   }
 
   // If we get here, all models/retries failed
-  const error = lastError;
-  const errorMessage = error?.message || 'Unknown error';
-  
-  if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('API key not valid')) {
-    throw new Error('Invalid API key. Please check your Gemini API key in Settings or .env file.');
-  }
-  if (errorMessage.includes('quota') || errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
-    throw new Error('Gemini API rate limit hit. Please wait a minute or add your own API key in Settings.');
-  }
-  if (errorMessage.includes('503') || errorMessage.includes('500')) {
-    throw new Error('Gemini servers are currently overloaded. Please try again in a few seconds.');
+  if (lastError?.message === 'INVALID_API_KEY' || lastError?.message?.includes('API key not valid')) {
+    throw new Error('Your Gemini API key appears to be invalid. Please check your settings and ensure the key is correct.');
   }
 
-  console.error('[Gemini] All fallback attempts failed. Last error:', errorMessage);
-  throw new Error(`Gemini connection error: ${errorMessage.split('\n')[0]}. Please check your internet and API key.`);
+  const finalMessage = allErrors.length > 0 ? allErrors.join(' | ') : lastError?.message;
+  throw new Error(`Gemini connection error: ${finalMessage}. Please check your internet and API key.`);
 }
 
 export default { chat };

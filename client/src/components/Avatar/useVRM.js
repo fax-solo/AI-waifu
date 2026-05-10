@@ -17,6 +17,7 @@ import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 export function useVRM() {
   const [vrm, setVRM] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const loaderRef = useRef(null);
 
@@ -44,6 +45,7 @@ export function useVRM() {
 
     console.log('[VRM] Starting load from URL:', url.substring(0, 50) + '...');
     setLoading(true);
+    setProgress(0);
     setError(null);
 
     // Dispose previous model
@@ -57,12 +59,13 @@ export function useVRM() {
           url,
           (gltf) => {
             console.log('[VRM] GLTF load success');
+            setProgress(100);
             resolve(gltf);
           },
-          (progress) => {
-            if (progress.total > 0) {
-              const p = (progress.loaded / progress.total) * 100;
-              // console.log(`[VRM] Loading: ${p.toFixed(0)}%`);
+          (p) => {
+            if (p.total > 0) {
+              const percent = Math.round((p.loaded / p.total) * 100);
+              setProgress(percent);
             }
           },
           (err) => {
@@ -79,7 +82,9 @@ export function useVRM() {
 
       console.log('[VRM] VRM data found:', loadedVRM.meta?.name || 'Unnamed');
 
-      // Rotate model to face the camera (VRM models face +Z by default)
+      // Rotate model to face the camera (VRM 0.x faces +Z, needs 180deg flip)
+      // VRMUtils.rotateVRM0 handles this safely for 0.x models.
+      // VRM 1.0 models are already front-facing (-Z) by specification.
       VRMUtils.rotateVRM0(loadedVRM);
 
       setVRM(loadedVRM);
@@ -89,6 +94,7 @@ export function useVRM() {
       console.error('[VRM] Error in loadVRM:', err);
       setError(err.message || 'Failed to load VRM model.');
       setLoading(false);
+      setProgress(0);
       return null;
     }
   }, [vrm]);
@@ -125,6 +131,7 @@ export function useVRM() {
   return {
     vrm,
     loading,
+    progress,
     error,
     loadVRM,
     loadVRMFromFile,

@@ -33,7 +33,7 @@ async function request(endpoint, options = {}) {
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       'x-user-id': userId,
       'x-has-own-key': hasOwnKey.toString(),
       ...options.headers,
@@ -55,6 +55,40 @@ async function request(endpoint, options = {}) {
   }
 
   return response.json();
+}
+
+// ─── Avatar API ──────────────────────────────────────────────────
+
+export async function getAvatars() {
+  return request('/avatars');
+}
+
+export async function uploadAvatar(formData) {
+  return request('/avatars/upload', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+export async function deleteAvatar(id) {
+  return request(`/avatars/${id}`, { method: 'DELETE' });
+}
+
+export function getUploadUrl(path) {
+  if (!path) return null;
+  // If it's already a full URL or blob URL, return as is
+  if (path.startsWith('http') || path.startsWith('blob:') || path.startsWith('data:')) return path;
+  
+  // Point to the server's static uploads folder
+  // In development, the proxy will handle /uploads
+  const base = API_BASE.replace('/api', '');
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  
+  // If base is empty or just a slash (web proxy), return the absolute path for the browser
+  if (!base || base === '/' || base === '') return cleanPath;
+  
+  // In Electron/Production, join base and path
+  return `${base}${cleanPath}`;
 }
 
 // ─── Chat API ──────────────────────────────────────────────────

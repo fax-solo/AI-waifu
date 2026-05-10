@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar/Sidebar.jsx';
 import ChatWindow from './components/Chat/ChatWindow.jsx';
 import Settings from './components/Settings/Settings.jsx';
 import AvatarViewport from './components/Avatar/AvatarViewport.jsx';
+import SetupUI from './components/Setup/SetupUI.jsx';
 import { useTTS } from './hooks/useTTS.js';
 import * as api from './utils/api.js';
 
@@ -11,6 +12,10 @@ const MIN_PANEL_WIDTH = 250;
 const DEFAULT_PANEL_WIDTH = 400;
 
 export default function App() {
+  const [showSetup, setShowSetup] = useState(false);
+  const [checkingSetup, setCheckingSetup] = useState(true);
+  const [systemInfo, setSystemInfo] = useState(null);
+
   const {
     conversations,
     activeConversationId,
@@ -41,7 +46,7 @@ export default function App() {
   });
   const [currentEmotion, setCurrentEmotion] = useState('neutral');
   const [avatarCollapsed, setAvatarCollapsed] = useState(false);
-  const { speak } = useTTS();
+  const { speak, isPlaying, analyser } = useTTS();
   
   // Resizing state
   const [panelWidth, setPanelWidth] = useState(() => {
@@ -52,27 +57,10 @@ export default function App() {
   
   const avatarRef = useRef(null);
 
-  // Load settings on mount
-  useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const res = await fetch('http://localhost:3001/api/settings', {
-          headers: { 'x-user-id': 'current-user' }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.displayName) setDisplayName(data.displayName);
-          if (data.companion) setCompanionSettings(data.companion);
-        }
-      } catch (err) {
-        console.error('Failed to load settings:', err);
-      }
-    };
-    loadSettings();
-  }, []);
+  // Sidebar controls
+  const handleToggleSidebar = () => setSidebarOpen(prev => !prev);
   const resizerRef = useRef(null);
 
-  // Load companion settings
   useEffect(() => {
     async function loadSettings() {
       try {
@@ -82,8 +70,48 @@ export default function App() {
         // Ignore
       }
     }
+
+    async function checkSetup() {
+      try {
+        const response = await fetch('http://localhost:3005/api/setup/status');
+        const data = await response.json();
+        setSystemInfo(data);
+        if (data.setupRequired) {
+          setShowSetup(true);
+        }
+      } catch (err) {
+        console.error('Failed to check setup status:', err);
+      } finally {
+        setCheckingSetup(false);
+      }
+    }
+
+    checkSetup();
     loadSettings();
-  }, [showSettings]);
+  }, [showSettings, loadRateLimit]); // Still run on showSettings change, but it should also run on mount
+
+  // Load last used avatar
+  useEffect(() => {
+    async function loadActiveAvatar() {
+      const savedId = localStorage.getItem('waifu-vrm-id');
+      if (!savedId) return;
+
+      try {
+        const avatars = await api.getAvatars();
+        const active = avatars.find(a => a.id === savedId);
+        if (active && avatarRef.current) {
+          const url = api.getUploadUrl(active.file_path);
+          avatarRef.current.loadFile(url);
+        }
+      } catch (err) {
+        console.error('Failed to auto-load avatar:', err);
+      }
+    }
+    
+    // Small delay to ensure AvatarViewport is ready
+    const timer = setTimeout(loadActiveAvatar, 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Resizing logic
   const startResizing = useCallback((e) => {
@@ -173,6 +201,18 @@ export default function App() {
     }
   };
 
+  if (checkingSetup) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'center', height: '100vh', background: '#0f1115', color: '#e6edf3' }}>
+        <div style={{ margin: 'auto' }}>Checking system status...</div>
+      </div>
+    );
+  }
+
+  if (showSetup) {
+    return <SetupUI onComplete={() => setShowSetup(false)} systemInfo={systemInfo} />;
+  }
+
   return (
     <div className={`app-layout ${isResizing ? 'resizing' : ''}`}>
       <Sidebar
@@ -195,6 +235,9 @@ export default function App() {
           <AvatarViewport
             ref={avatarRef}
             emotion={currentEmotion}
+            isThinking={isSending}
+            isTalking={isPlaying}
+            analyser={analyser}
           />
         </div>
 

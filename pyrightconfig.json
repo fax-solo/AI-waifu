@@ -1,0 +1,10 @@
+{
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "python/venv",
+    "dist-desktop"
+  ],
+  "venvPath": "python",
+  "venv": "venv"
+}

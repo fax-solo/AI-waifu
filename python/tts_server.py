@@ -7,8 +7,6 @@ from fastapi.responses import Response
 from pydantic import BaseModel
 import io
 import soundfile as sf
-import torch
-from kokoro import KPipeline
 import hashlib
 import time
 import re
@@ -24,7 +22,6 @@ def safe_print(msg):
         except:
             print("[Log encoding error]")
 
-# Fix Windows console encoding issues for emojis
 try:
     if sys.platform == "win32":
         import io as sys_io
@@ -34,47 +31,89 @@ except Exception:
     pass
 
 # Global Engine
-pipeline = None
+kokoro = None
 current_device = "cpu"
 CACHE_DIR = "tts_cache"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 
 def init_engine():
-    global pipeline, current_device
+    global kokoro, current_device
     
-    # Check for CUDA
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    
-    if pipeline and current_device == device:
+    if kokoro is not None:
         return
         
-    safe_print(f"[TTS] Initializing Kokoro PyTorch Pipeline on {device}...")
+    model_path = os.path.join(SCRIPT_DIR, "kokoro-v1.0.int8.onnx")
+    voices_path = os.path.join(SCRIPT_DIR, "voices-v1.0.bin")
+    
+    if not os.path.exists(model_path) or not os.path.exists(voices_path):
+        safe_print("[TTS] ⚠️ Model files missing! Please complete the Setup UI.")
+        return
+
+    safe_print("[TTS] Initializing Kokoro ONNX Runtime...")
     start_time = time.time()
         
     try:
-        # KPipeline handles model downloading/loading automatically
-        # lang_code='a' for American English
-        pipeline = KPipeline(lang_code='a', device=device)
-        current_device = device
-        safe_print(f"[TTS] Pipeline loaded in {time.time() - start_time:.2f}s")
-    except Exception as e:
-        safe_print(f"[TTS] Failed to load pipeline: {e}")
-        if device == "cuda":
-            safe_print("[TTS] Falling back to CPU mode...")
-            current_device = "cpu"
-            pipeline = KPipeline(lang_code='a', device='cpu')
+        from kokoro_onnx import Kokoro
+        import onnxruntime as ort
+        
+        providers = ort.get_available_providers()
+        safe_print(f"[TTS] Available ONNX providers: {providers}")
+        
+        # Prefer CUDA or DirectML
+        selected_providers = []
+        if 'CUDAExecutionProvider' in providers:
+            try:
+                # Check if we can actually load it
+                ort.InferenceSession(model_path, providers=['CUDAExecutionProvider'])
+                selected_providers.append('CUDAExecutionProvider')
+                safe_print("[TTS] ✅ CUDAExecutionProvider successfully initialized.")
+            except Exception as e:
+                safe_print(f"[TTS] ⚠️ CUDAExecutionProvider found but failed to initialize: {e}")
+                safe_print("[TTS] 💡 Ensure you have CUDA (12.x) and cuDNN (9.x) installed on your system.")
+        
+        if 'DmlExecutionProvider' in providers:
+            selected_providers.append('DmlExecutionProvider')
+        
+        selected_providers.append('CPUExecutionProvider')
+        
+        kokoro = Kokoro(model_path, voices_path)
+        
+        # Get active provider and GPU name
+        import subprocess
+        gpu_name = ""
+        try:
+            if 'CUDAExecutionProvider' in providers:
+                gpu_name = subprocess.check_output(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader,trim"]).decode('utf-8').strip()
+        except:
+            pass
+
+        # We re-init without the test providers as the library manages its own session
+        kokoro = Kokoro(model_path, voices_path)
+        
+        # Test if it's actually working by generating some dummy info
+        # kokoro-onnx doesn't expose the session directly, but since our 
+        # ort.InferenceSession test passed, we are good.
+        
+        if 'CUDAExecutionProvider' in selected_providers:
+            current_device = f"gpu ({gpu_name})" if gpu_name else "gpu (CUDA)"
+        elif 'DmlExecutionProvider' in selected_providers:
+            current_device = "gpu (DirectML)"
         else:
-            raise e
+            current_device = "cpu"
+            
+        safe_print(f"[TTS] Pipeline loaded in {time.time() - start_time:.2f}s on {current_device}")
+    except ImportError as e:
+        safe_print(f"[TTS] ❌ Missing dependencies. Please run Setup UI. {e}")
+    except Exception as e:
+        safe_print(f"[TTS] ❌ Failed to load pipeline: {e}")
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Load engine
     init_engine()
     yield
-    # Shutdown: Clean up
-    pass
 
 app = FastAPI(lifespan=lifespan)
 
@@ -90,36 +129,26 @@ class TTSRequest(BaseModel):
     text: str
     voice: str = "af_bella"
     speed: float = 1.0
-    device: str = "gpu" # Ignored now, we use the best available
+    device: str = "gpu"
 
 def clean_text_for_tts(text):
-    # 1. Remove asterisks content like *giggles*, *smiles*
     text = re.sub(r'\*.*?\*', '', text)
-    
-    # 2. Remove emojis and kaomojis (non-ascii)
     text = re.sub(r'[^\x00-\x7F]+', '', text)
-    
-    # 3. Remove common kaomoji brackets and symbols
     text = re.sub(r'\([^\w\s]*?\)', '', text)
     text = re.sub(r'\[[^\w\s]*?\]', '', text)
-    
-    # 4. Strip extra whitespace
     text = re.sub(r'\s+', ' ', text).strip()
-    
     return text
 
 @app.post("/tts")
 async def text_to_speech(request: TTSRequest):
-    global pipeline
+    global kokoro
     
-    # Clean text for TTS
     clean_text = clean_text_for_tts(request.text)
     
     if not any(c.isalnum() for c in clean_text):
         safe_print(f"[TTS] Skipping message with no speakable content")
         raise HTTPException(status_code=400, detail="No speakable content")
 
-    # Cache
     cache_key = hashlib.md5(f"{clean_text}|{request.voice}|{request.speed}|{current_device}".encode()).hexdigest()
     cache_path = os.path.join(CACHE_DIR, f"{cache_key}.wav")
 
@@ -127,36 +156,31 @@ async def text_to_speech(request: TTSRequest):
         with open(cache_path, "rb") as f:
             return Response(content=f.read(), media_type="audio/wav")
 
-    if not pipeline:
+    if not kokoro:
         init_engine()
+        if not kokoro:
+            raise HTTPException(status_code=503, detail="TTS Engine not initialized (missing models?)")
 
     try:
         start_time = time.time()
         
-        # KPipeline.generate returns a generator of (graphemes, phonemes, audio)
-        # We'll join all segments into one audio file
-        generator = pipeline(
+        # kokoro-onnx .create() returns (samples, sample_rate)
+        lang = "en-us"
+        if request.voice.startswith("bf_") or request.voice.startswith("bm_"):
+            lang = "en-gb"
+            
+        samples, sample_rate = kokoro.create(
             clean_text, 
             voice=request.voice, 
             speed=request.speed, 
-            split_pattern=r'\n+' # Keep sentences together for better flow
+            lang=lang
         )
-        
-        full_audio = []
-        for gs, ps, audio in generator:
-            full_audio.append(audio)
-        
-        import numpy as np
-        if not full_audio:
-            raise Exception("No audio generated")
-            
-        combined_audio = np.concatenate(full_audio)
         
         gen_time = time.time() - start_time
         safe_print(f"[TTS] Generated audio in {gen_time:.2f}s on {current_device}")
         
         buffer = io.BytesIO()
-        sf.write(buffer, combined_audio, 24000, format='WAV') # Kokoro uses 24kHz
+        sf.write(buffer, samples, sample_rate, format='WAV')
         audio_data = buffer.getvalue()
         
         with open(cache_path, "wb") as f:
@@ -171,7 +195,7 @@ async def text_to_speech(request: TTSRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "device": current_device}
+    return {"status": "ok", "device": current_device, "engine": "onnx"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=5000)

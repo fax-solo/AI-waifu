@@ -139,6 +139,7 @@ User Query: ${finalUserMessage}`;
       systemPrompt,
       history,
       userMessage: finalUserMessage,
+      model: settings.llm_model || 'gemini-1.5-flash',
     });
 
     // Save AI response (just the text, not the tag)

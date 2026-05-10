@@ -21,9 +21,16 @@ function startTTSSidecar() {
   const isDev = !app.isPackaged;
   
   // Try to find python in venv first, fallback to system python
-  let pythonPath = isDev 
-    ? path.join(__dirname, '../python/venv/Scripts/python.exe')
-    : path.join(process.resourcesPath, 'python/python.exe');
+  let pythonPath;
+  if (isDev) {
+    pythonPath = process.platform === 'win32'
+      ? path.join(__dirname, '../python/venv/Scripts/python.exe')
+      : path.join(__dirname, '../python/venv/bin/python');
+  } else {
+    pythonPath = process.platform === 'win32'
+      ? path.join(process.resourcesPath, 'python/venv/Scripts/python.exe')
+      : path.join(process.resourcesPath, 'python/venv/bin/python');
+  }
 
   if (!fs.existsSync(pythonPath)) {
     console.log('[TTS] Venv not found, checking system paths...');
@@ -87,6 +94,7 @@ function createWindow() {
     width: 1400, // Slightly wider for the new resizable layout
     height: 900,
     title: "Waifu AI Companion",
+    icon: path.join(__dirname, '../client/public/icon.png'),
     backgroundColor: '#0a0a0f',
     webPreferences: {
       nodeIntegration: false,

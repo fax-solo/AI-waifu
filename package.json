@@ -29,14 +29,14 @@
   "devDependencies": {
     "concurrently": "^9.1.2",
     "cross-env": "^10.1.0",
-    "electron": "^34.3.0",
+    "electron": "^34.5.8",
     "electron-builder": "^26.8.1",
     "wait-on": "^8.0.2"
   },
   "build": {
     "appId": "com.waifu.ai",
     "productName": "WaifuAI",
-    "electronVersion": "34.3.0",
+    "electronVersion": "34.5.8",
     "directories": {
       "output": "dist-desktop"
     },
@@ -52,7 +52,10 @@
     "asar": true,
     "win": {
       "target": "portable",
-      "icon": "client/public/vite.svg"
+      "icon": "client/public/icon.ico"
+    },
+    "linux": {
+      "icon": "client/public/icon.png"
     },
     "electronDist": "E:/Code/Waifu/node_modules/electron/dist",
     "extraMetadata": {
@@ -62,7 +65,5 @@
       "packElevateHelper": false
     }
   },
-  "overrides": {
-    "esbuild": "0.21.5"
-  }
+  "overrides": {}
 }

@@ -27,6 +27,24 @@ export function useTTS() {
   const currentAudioRef = useRef(null);
   const abortControllerRef = useRef(null);
   const playbackActiveRef = useRef(false);
+  
+  // ─── Audio Analysis Setup ─────────────────────────────────────
+  const audioCtxRef = useRef(null);
+  const analyserRef = useRef(null);
+  const sourceNodesRef = useRef(new Map()); // Map of Audio elements to their source nodes
+
+  const initAudioCtx = useCallback(() => {
+    if (!audioCtxRef.current) {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioCtxRef.current = new AudioContext();
+      analyserRef.current = audioCtxRef.current.createAnalyser();
+      analyserRef.current.fftSize = 256;
+      analyserRef.current.connect(audioCtxRef.current.destination);
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+  }, []);
 
   const stop = useCallback(() => {
     // Signal all ongoing fetches to abort
@@ -55,6 +73,9 @@ export function useTTS() {
 
     if (!enabled || !text || text.trim().length === 0) return;
 
+    // Initialize audio context on user interaction
+    initAudioCtx();
+
     // Stop any previous speech
     stop();
 
@@ -66,7 +87,6 @@ export function useTTS() {
     if (sentences.length === 0) return;
 
     // Launch ALL TTS fetch requests in parallel immediately
-    // Each returns a Promise<{url, order} | null>
     const fetchPromises = sentences.map((sentence, idx) =>
       fetch(TTS_URL, {
         method: 'POST',
@@ -75,14 +95,23 @@ export function useTTS() {
         signal: controller.signal,
       })
         .then(async (res) => {
-          if (!res.ok) return null; // Skip silent/failed chunks
+          if (!res.ok) return null;
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
           const audio = new Audio(url);
+          audio.crossOrigin = "anonymous"; // Required for Web Audio API
           audio.preload = 'auto';
+          
           if (outputDeviceId !== 'default' && audio.setSinkId) {
             audio.setSinkId(outputDeviceId).catch(() => {});
           }
+
+          // Setup Audio Node Connection
+          if (audioCtxRef.current && analyserRef.current) {
+            const source = audioCtxRef.current.createMediaElementSource(audio);
+            source.connect(analyserRef.current);
+          }
+
           return { url, audio, order: idx };
         })
         .catch((err) => {
@@ -96,7 +125,6 @@ export function useTTS() {
     setIsPlaying(true);
 
     // Play each sentence in ORDER as it becomes ready
-    // We await each promise in sequence, but all fetches are already running in parallel
     for (let i = 0; i < fetchPromises.length; i++) {
       if (!playbackActiveRef.current) break;
 
@@ -126,7 +154,12 @@ export function useTTS() {
       playbackActiveRef.current = false;
       setIsPlaying(false);
     }
-  }, [stop]);
+  }, [stop, initAudioCtx]);
 
-  return { speak, stop, isPlaying };
+  return { 
+    speak, 
+    stop, 
+    isPlaying, 
+    analyser: analyserRef.current 
+  };
 }

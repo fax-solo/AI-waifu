@@ -3,7 +3,9 @@ import path from 'path';
 import { finished } from 'stream/promises';
 import { Readable } from 'stream';
 
-const models = JSON.parse(fs.readFileSync('models.json', 'utf8'));
+const rawData = fs.readFileSync('models.json', 'utf8');
+const cleanData = rawData.replace(/^\uFEFF/, '');
+const models = JSON.parse(cleanData);
 
 async function downloadFile(url, dest) {
   if (fs.existsSync(dest)) {
