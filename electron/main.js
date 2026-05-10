@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import isDev from 'electron-is-dev';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import fs from 'fs';
 
 // Only import the server if we are NOT in dev mode
@@ -62,7 +62,6 @@ function startTTSSidecar() {
 
   // Kill any stale TTS process on port 5000 before starting
   try {
-    const { execSync } = require('child_process');
     if (process.platform === 'win32') {
       // Windows: find and kill process on port 5000
       try {

@@ -44,9 +44,12 @@
       "client/dist/**/*",
       "server/**/*",
       "electron/**/*",
-      "python/**/*",
-      "*.onnx",
-      "*.bin",
+      "python/*.py",
+      "python/*.onnx",
+      "python/*.bin",
+      "!python/venv/**/*",
+      "!python/venv2/**/*",
+      "!python/tts_cache/**/*",
       "package.json"
     ],
     "asar": true,
@@ -57,7 +60,6 @@
     "linux": {
       "icon": "client/public/icon.png"
     },
-    "electronDist": "E:/Code/Waifu/node_modules/electron/dist",
     "extraMetadata": {
       "main": "electron/main.js"
     },

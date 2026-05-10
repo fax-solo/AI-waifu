@@ -25,8 +25,9 @@ export function getUserId() {
 
 /**
  * Make an API request with user identification headers.
+ * Exported as fetchApi for generic endpoint access.
  */
-async function request(endpoint, options = {}) {
+export async function fetchApi(endpoint, options = {}) {
   const userId = getUserId();
   const hasOwnKey = localStorage.getItem('waifu-has-own-key') === 'true';
 
@@ -55,6 +56,13 @@ async function request(endpoint, options = {}) {
   }
 
   return response.json();
+}
+
+/**
+ * Internal wrapper
+ */
+async function request(endpoint, options = {}) {
+  return fetchApi(endpoint, options);
 }
 
 // ─── Avatar API ──────────────────────────────────────────────────
