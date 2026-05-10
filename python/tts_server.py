@@ -1,5 +1,35 @@
 import os
 import sys
+
+# Inject NVIDIA CUDA libraries into LD_LIBRARY_PATH before importing onnxruntime
+def ensure_nvidia_libs():
+    if sys.platform != "linux":
+        return
+    try:
+        import site
+        site_packages = site.getsitepackages()
+        nvidia_paths = []
+        for sp in site_packages:
+            for pkg in ['cublas', 'cudnn', 'cufft', 'curand', 'cusparse', 'nvrtc']:
+                lib_path = os.path.join(sp, 'nvidia', pkg, 'lib')
+                if os.path.exists(lib_path):
+                    nvidia_paths.append(lib_path)
+        
+        if nvidia_paths:
+            current_ld = os.environ.get('LD_LIBRARY_PATH', '')
+            new_ld = ':'.join(nvidia_paths)
+            if current_ld:
+                new_ld += ':' + current_ld
+                
+            if os.environ.get('LD_LIBRARY_PATH') != new_ld:
+                os.environ['LD_LIBRARY_PATH'] = new_ld
+                # Restart the process so the dynamic linker picks up the new paths
+                os.execv(sys.executable, [sys.executable] + sys.argv)
+    except Exception as e:
+        pass
+
+ensure_nvidia_libs()
+
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -76,6 +106,15 @@ def init_engine():
         
         if 'DmlExecutionProvider' in providers:
             selected_providers.append('DmlExecutionProvider')
+            safe_print("[TTS] ✅ DmlExecutionProvider successfully initialized.")
+            
+        if 'ROCMExecutionProvider' in providers:
+            try:
+                ort.InferenceSession(model_path, providers=['ROCMExecutionProvider'])
+                selected_providers.append('ROCMExecutionProvider')
+                safe_print("[TTS] ✅ ROCMExecutionProvider successfully initialized.")
+            except Exception as e:
+                safe_print(f"[TTS] ⚠️ ROCMExecutionProvider found but failed to initialize: {e}")
         
         selected_providers.append('CPUExecutionProvider')
         
@@ -99,6 +138,8 @@ def init_engine():
         
         if 'CUDAExecutionProvider' in selected_providers:
             current_device = f"gpu ({gpu_name})" if gpu_name else "gpu (CUDA)"
+        elif 'ROCMExecutionProvider' in selected_providers:
+            current_device = "gpu (ROCm)"
         elif 'DmlExecutionProvider' in selected_providers:
             current_device = "gpu (DirectML)"
         else:

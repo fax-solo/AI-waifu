@@ -60,6 +60,28 @@ function startTTSSidecar() {
   console.log('[TTS] Starting sidecar server...');
   console.log(`[TTS] Command: ${pythonPath} ${scriptPath}`);
 
+  // Kill any stale TTS process on port 5000 before starting
+  try {
+    const { execSync } = require('child_process');
+    if (process.platform === 'win32') {
+      // Windows: find and kill process on port 5000
+      try {
+        const out = execSync('netstat -ano | findstr :5000 | findstr LISTENING', { encoding: 'utf8' });
+        const pid = out.trim().split(/\s+/).pop();
+        if (pid && pid !== '0') {
+          execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' });
+          console.log(`[TTS] Killed stale process ${pid} on port 5000`);
+        }
+      } catch (e) { /* no process on port */ }
+    } else {
+      // Linux/macOS: use fuser or lsof
+      try {
+        execSync('fuser -k 5000/tcp 2>/dev/null || true', { stdio: 'ignore' });
+        console.log('[TTS] Cleared port 5000');
+      } catch (e) { /* no process on port */ }
+    }
+  } catch (e) { /* ignore cleanup errors */ }
+
   // NOTE: Do not auto-run pip install here — it reinstalls base onnxruntime
   // which conflicts with onnxruntime-directml. Run pip manually if needed.
 

@@ -15,10 +15,17 @@ const VOICES = [
 ];
 
 const GEMINI_MODELS = [
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', desc: 'Fast & efficient (Recommended)', free: true },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro', desc: 'Complex reasoning & intelligence', free: true },
-  { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash (Experimental)', desc: 'Next-gen capabilities', free: true },
-  { id: 'gemini-1.0-pro', name: 'Gemini 1.0 Pro', desc: 'Legacy stable model', free: true },
+  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', desc: 'Next-gen efficiency (Newest)', free: true },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (Preview)', desc: 'Advanced generation', free: true },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Highly capable & stable', free: true },
+  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: 'Ultra lightweight', free: true },
+];
+
+const GROQ_MODELS = [
+  { id: 'llama-3.1-70b-versatile', name: 'Llama 3.1 70B', desc: 'High intelligence (Powerful)', free: true },
+  { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', desc: 'Ultra fast responses', free: true },
+  { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', desc: 'Large context expert', free: true },
+  { id: 'gemma2-9b-it', name: 'Gemma 2 9B', desc: 'Google lightweight model', free: true },
 ];
 
 export default function Settings({ onClose, onVRMFileSelected }) {
@@ -35,10 +42,13 @@ export default function Settings({ onClose, onVRMFileSelected }) {
     audioOutputDevice: 'default',
     ttsDevice: 'cpu',
     ttsEngine: 'onnx',
-    llmModel: 'gemini-1.5-flash'
+    llmModel: 'gemini-3.1-flash-lite',
+    llmProvider: 'gemini'
   });
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [groqApiKeyInput, setGroqApiKeyInput] = useState('');
   const [hasCustomKey, setHasCustomKey] = useState(false);
+  const [hasGroqKey, setHasGroqKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState('');
   const [memories, setMemories] = useState([]);
@@ -105,21 +115,31 @@ export default function Settings({ onClose, onVRMFileSelected }) {
           audioOutputDevice: data.companion.audioOutputDevice ?? 'default',
           ttsDevice: data.companion.ttsDevice ?? 'cpu',
           ttsEngine: data.companion.ttsEngine ?? 'onnx',
-          llmModel: data.companion.llmModel ?? 'gemini-1.5-flash'
+          llmModel: data.companion.llmModel ?? 'gemini-3.1-flash-lite',
+          llmProvider: data.companion.llmProvider ?? 'gemini'
         });
         setHasCustomKey(data.hasCustomApiKey);
+        setHasGroqKey(data.hasGroqApiKey);
       } catch (err) {
         console.error('Failed to load settings:', err);
       }
     }
 
-    async function checkTTS() {
-      try {
-        const res = await fetch('http://127.0.0.1:5000/health');
-        const data = await res.json();
-        setTtsStatus(data);
-      } catch (err) {
-        setTtsStatus({ status: 'offline', device: 'none' });
+    async function checkTTS(retries = 5) {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const res = await fetch(`http://127.0.0.1:5000/health?t=${Date.now()}`, { cache: 'no-store' });
+          const data = await res.json();
+          setTtsStatus(data);
+          return; // Success, stop retrying
+        } catch (err) {
+          if (i < retries - 1) {
+            // TTS server still booting, wait before retrying
+            await new Promise(r => setTimeout(r, 3000));
+          } else {
+            setTtsStatus({ status: 'offline', device: 'none' });
+          }
+        }
       }
     }
 
@@ -253,22 +273,52 @@ export default function Settings({ onClose, onVRMFileSelected }) {
       await api.setApiKey(apiKeyInput.trim());
       setHasCustomKey(true);
       setApiKeyInput('');
-      setSaveMessage('API key saved securely! 🔐');
+      setSaveMessage('Gemini API key saved securely! 🔐');
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
-      setSaveMessage(err.data?.error || 'Failed to save API key.');
+      setSaveMessage(err.data?.error || 'Failed to save Gemini API key.');
+      setTimeout(() => setSaveMessage(''), 4000);
+    }
+  };
+
+  const handleSetGroqKey = async () => {
+    if (!groqApiKeyInput.trim()) return;
+    try {
+      await api.fetchApi('/api/settings/groq-key', {
+        method: 'POST',
+        body: JSON.stringify({ apiKey: groqApiKeyInput.trim() })
+      });
+      setHasGroqKey(true);
+      setGroqApiKeyInput('');
+      setSaveMessage('Groq API key saved securely! 🔐');
+      setTimeout(() => setSaveMessage(''), 3000);
+    } catch (err) {
+      setSaveMessage(err.data?.error || 'Failed to save Groq API key.');
       setTimeout(() => setSaveMessage(''), 4000);
     }
   };
 
   const handleRemoveApiKey = async () => {
+    if (!window.confirm('Are you sure you want to remove your custom Gemini key?')) return;
     try {
       await api.removeApiKey();
       setHasCustomKey(false);
-      setSaveMessage('API key removed.');
+      setSaveMessage('Gemini API key removed.');
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
-      setSaveMessage('Failed to remove API key.');
+      setSaveMessage('Failed to remove Gemini API key.');
+    }
+  };
+
+  const handleRemoveGroqKey = async () => {
+    if (!window.confirm('Are you sure you want to remove your custom Groq key?')) return;
+    try {
+      await api.fetchApi('/api/settings/groq-key', { method: 'DELETE' });
+      setHasGroqKey(false);
+      setSaveMessage('Groq API key removed.');
+      setTimeout(() => setSaveMessage(''), 3000);
+    } catch (err) {
+      setSaveMessage('Failed to remove Groq API key.');
     }
   };
 
@@ -681,8 +731,8 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                         <option value="gpu">GPU (Hardware Accelerated)</option>
                       </select>
                       <div className="hint">
-                        {ttsStatus.device === 'cuda' 
-                          ? "✅ GPU Hardware Acceleration ACTIVE (CUDA)."
+                        {ttsStatus.device.includes('gpu') || ttsStatus.device === 'cuda'
+                          ? `✅ GPU Hardware Acceleration ACTIVE (${ttsStatus.device}).`
                           : ttsStatus.status === 'offline'
                           ? "❌ TTS Server Offline."
                           : "⚠️ GPU NOT FOUND. PyTorch is running on CPU."}
@@ -774,7 +824,25 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                 AI Model Selection
               </div>
               <div className="form-group" style={{ marginBottom: 24 }}>
-                <label htmlFor="llm-model">Preferred Gemini Model</label>
+                <label>AI Provider</label>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                  <button 
+                    className={`btn ${companion.llmProvider === 'gemini' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, fontSize: '0.8rem' }}
+                    onClick={() => setCompanion(p => ({ ...p, llmProvider: 'gemini', llmModel: 'gemini-3.1-flash-lite' }))}
+                  >
+                    Google Gemini
+                  </button>
+                  <button 
+                    className={`btn ${companion.llmProvider === 'groq' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ flex: 1, fontSize: '0.8rem' }}
+                    onClick={() => setCompanion(p => ({ ...p, llmProvider: 'groq', llmModel: 'llama-3.1-70b-versatile' }))}
+                  >
+                    Groq (Super Fast)
+                  </button>
+                </div>
+
+                <label htmlFor="llm-model">Preferred {companion.llmProvider === 'groq' ? 'Groq' : 'Gemini'} Model</label>
                 <select
                   id="llm-model"
                   value={companion.llmModel}
@@ -789,14 +857,14 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                     fontSize: '0.85rem'
                   }}
                 >
-                  {GEMINI_MODELS.map(model => (
+                  {(companion.llmProvider === 'groq' ? GROQ_MODELS : GEMINI_MODELS).map(model => (
                     <option key={model.id} value={model.id}>
                       {model.name} {model.free ? '(Free)' : ''}
                     </option>
                   ))}
                 </select>
                 <div className="hint" style={{ marginTop: 8 }}>
-                  {GEMINI_MODELS.find(m => m.id === companion.llmModel)?.desc}
+                  {(companion.llmProvider === 'groq' ? GROQ_MODELS : GEMINI_MODELS).find(m => m.id === companion.llmModel)?.desc}
                 </div>
                 <button 
                   className="btn btn-primary btn-save" 
@@ -804,7 +872,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                   onClick={handleSave} 
                   disabled={saving}
                 >
-                  {saving ? 'Saving...' : 'Update Model'}
+                  {saving ? 'Saving...' : 'Update Model Selection'}
                 </button>
               </div>
 
@@ -812,48 +880,78 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                 <Key size={18} className="icon" />
                 Bring Your Own API Key
               </div>
-              <div className="api-key-section">
-                <div className={`api-key-status ${hasCustomKey ? 'active' : 'inactive'}`}>
+              <div className="api-key-section" style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: '24px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <img src="https://www.gstatic.com/lamda/images/favicon_v2_16x16.png" alt="Gemini" style={{ width: 16, height: 16 }} />
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Google Gemini Key</span>
+                </div>
+                
+                <div className={`api-key-status ${hasCustomKey ? 'active' : 'inactive'}`} style={{ marginBottom: 12 }}>
                   <Shield size={16} />
                   {hasCustomKey
-                    ? 'Custom API key is active — no message limits!'
-                    : 'Using default server key (limited messages per day)'
+                    ? 'Custom Gemini key active'
+                    : 'Using default server Gemini key'
                   }
                 </div>
 
                 {!hasCustomKey ? (
-                  <>
-                    <div className="form-group" style={{ marginBottom: 12 }}>
-                      <input
-                        id="api-key-input"
-                        type="password"
-                        value={apiKeyInput}
-                        onChange={(e) => setApiKeyInput(e.target.value)}
-                        placeholder="Paste your Gemini API key..."
-                      />
-                      <div className="hint">
-                        Get a free key at{' '}
-                        <a
-                          href="https://aistudio.google.com/app/apikey"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          style={{ color: 'var(--color-accent-light)' }}
-                        >
-                          Google AI Studio
-                        </a>
-                      </div>
-                    </div>
-                    <button className="btn btn-primary" onClick={handleSetApiKey}>
-                      Save API Key
-                    </button>
-                  </>
-                ) : (
-                  <div className="api-key-actions">
-                    <button className="btn btn-danger" onClick={handleRemoveApiKey}>
-                      Remove API Key
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="password"
+                      value={apiKeyInput}
+                      onChange={(e) => setApiKeyInput(e.target.value)}
+                      placeholder="Paste Gemini API key..."
+                      style={{ flex: 1 }}
+                    />
+                    <button className="btn btn-primary" onClick={handleSetApiKey} disabled={saving || !apiKeyInput.trim()}>
+                      Save
                     </button>
                   </div>
+                ) : (
+                  <button className="btn btn-danger" onClick={handleRemoveApiKey} style={{ width: '100%' }}>
+                    Remove Gemini Key
+                  </button>
                 )}
+                <div className="hint" style={{ marginTop: 8 }}>
+                  Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>
+                </div>
+              </div>
+
+              <div className="api-key-section">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                  <div style={{ width: 16, height: 16, background: '#f55036', borderRadius: '4px' }} />
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Groq API Key (Fastest)</span>
+                </div>
+
+                <div className={`api-key-status ${hasGroqKey ? 'active' : 'inactive'}`} style={{ marginBottom: 12 }}>
+                  <Shield size={16} />
+                  {hasGroqKey
+                    ? 'Custom Groq key active'
+                    : 'Using default server Groq key'
+                  }
+                </div>
+
+                {!hasGroqKey ? (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      type="password"
+                      value={groqApiKeyInput}
+                      onChange={(e) => setGroqApiKeyInput(e.target.value)}
+                      placeholder="Paste Groq API key (gsk_...)"
+                      style={{ flex: 1 }}
+                    />
+                    <button className="btn btn-primary" onClick={handleSetGroqKey} disabled={saving || !groqApiKeyInput.trim()}>
+                      Save
+                    </button>
+                  </div>
+                ) : (
+                  <button className="btn btn-danger" onClick={handleRemoveGroqKey} style={{ width: '100%' }}>
+                    Remove Groq Key
+                  </button>
+                )}
+                <div className="hint" style={{ marginTop: 8 }}>
+                  Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">Groq Console</a>
+                </div>
               </div>
             </div>
           )}

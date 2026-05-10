@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import { chat as geminiChat } from '../services/gemini.js';
+import { chat as groqChat } from '../services/groq.js';
 import { buildSystemPrompt, extractMemoryHints } from '../services/personality.js';
 import { shouldSearch, searchWeb } from '../services/search.js';
 import {
@@ -60,14 +61,28 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
     const user = db.prepare('SELECT display_name FROM users WHERE id = ?').get(userId);
     const userName = user?.display_name || 'User';
 
-    // Determine which API key to use
+    const provider = settings.llm_provider || 'gemini';
+
+    // Determine which API key to use based on provider
     let apiKey = null;
-    if (settings.custom_api_key_encrypted) {
+    if (provider === 'gemini' && settings.custom_api_key_encrypted) {
       try {
         apiKey = decrypt(settings.custom_api_key_encrypted);
       } catch (e) {
-        console.error('Failed to decrypt user API key:', e.message);
+        console.error('Failed to decrypt user Gemini API key:', e.message);
       }
+    } else if (provider === 'groq' && settings.groq_api_key_encrypted) {
+      try {
+        apiKey = decrypt(settings.groq_api_key_encrypted);
+      } catch (e) {
+        console.error('Failed to decrypt user Groq API key:', e.message);
+      }
+    }
+    
+    if (apiKey) {
+      console.log(`[Chat] Using custom user ${provider} API key (starts with ${apiKey.substring(0, 4)}...)`);
+    } else {
+      console.log(`[Chat] Using system default ${provider} API key`);
     }
 
     // Get memories and conversation history
@@ -133,14 +148,16 @@ User Query: ${finalUserMessage}`;
       saveMemories(userId, newMemories);
     }
 
-    // Call Gemini
-    const { text, emotion } = await geminiChat({
+    // Call AI
+    const chatOptions = {
       apiKey,
       systemPrompt,
       history,
       userMessage: finalUserMessage,
-      model: settings.llm_model || 'gemini-1.5-flash',
-    });
+      model: settings.llm_model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gemini-3.1-flash-lite'),
+    };
+
+    const { text, emotion } = await (provider === 'groq' ? groqChat(chatOptions) : geminiChat(chatOptions));
 
     // Save AI response (just the text, not the tag)
     saveMessage(conversationId, 'assistant', text);

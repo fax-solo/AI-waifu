@@ -41,6 +41,22 @@ const PACKAGES = [
     exclusiveGroup: 'engine'
   },
   {
+    id: 'python-env-amd',
+    name: 'Local AI Engine (AMD / Vulkan)',
+    description: 'Installs the Python environment with ROCm/DirectML support for hardware acceleration on AMD GPUs.',
+    size: '220 MB',
+    sizeBytes: 220 * 1024 * 1024,
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+        <polyline points="2 17 12 22 22 17"></polyline>
+        <polyline points="2 12 12 17 22 12"></polyline>
+      </svg>
+    ),
+    required: false,
+    exclusiveGroup: 'engine'
+  },
+  {
     id: 'tts-model',
     name: 'Kokoro ONNX Engine',
     description: 'The core neural network model for the local Text-to-Speech system.',
@@ -66,20 +82,6 @@ const PACKAGES = [
       </svg>
     ),
     required: true,
-  },
-  {
-    id: 'avatar-starter',
-    name: 'Starter VRM Avatar',
-    description: 'A standard AliciaSolid VRM model to get you started with your companion.',
-    size: '15 MB',
-    sizeBytes: 15 * 1024 * 1024,
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-        <circle cx="12" cy="7" r="4"></circle>
-      </svg>
-    ),
-    required: false,
   }
 ];
 
@@ -93,7 +95,13 @@ function formatBytes(bytes) {
 
 export default function PackageSelection({ onNext, onPackagesSelected, systemInfo }) {
   const gpuName = systemInfo?.gpuInfo?.hasNvidia ? systemInfo.gpuInfo.name : null;
-  const initialSelection = gpuName ? ['python-env-gpu', 'tts-model', 'tts-voices'] : ['python-env-cpu', 'tts-model', 'tts-voices'];
+  const isAmd = systemInfo?.gpuInfo?.name?.toLowerCase().includes('amd') || systemInfo?.gpuInfo?.name?.toLowerCase().includes('radeon');
+  
+  const initialSelection = gpuName 
+    ? ['python-env-gpu', 'tts-model', 'tts-voices'] 
+    : isAmd
+      ? ['python-env-amd', 'tts-model', 'tts-voices']
+      : ['python-env-cpu', 'tts-model', 'tts-voices'];
   
   const [selectedIds, setSelectedIds] = React.useState(new Set(initialSelection));
 
@@ -101,6 +109,9 @@ export default function PackageSelection({ onNext, onPackagesSelected, systemInf
   const updatedPackages = PACKAGES.map(pkg => {
     if (pkg.id === 'python-env-gpu' && gpuName) {
       return { ...pkg, name: `Local AI Engine (${gpuName})` };
+    }
+    if (pkg.id === 'python-env-amd' && isAmd) {
+      return { ...pkg, name: `Local AI Engine (${systemInfo.gpuInfo.name})` };
     }
     return pkg;
   });
@@ -142,22 +153,14 @@ export default function PackageSelection({ onNext, onPackagesSelected, systemInf
     onNext();
   };
 
-  const handleInstallAll = () => {
-    const allIds = updatedPackages.map(p => p.id);
-    // Filter out CPU if GPU is available to avoid duplicates if they were in the same group
-    let finalIds = allIds;
-    if (gpuName) {
-      finalIds = allIds.filter(id => id !== 'python-env-cpu');
-    }
+  const handleSelectAllRequired = () => {
+    const requiredIds = updatedPackages.filter(p => p.required).map(p => p.id);
+    // Determine the best engine to select based on system info
+    let bestEngine = 'python-env-cpu';
+    if (gpuName) bestEngine = 'python-env-gpu';
+    else if (isAmd) bestEngine = 'python-env-amd';
     
-    setSelectedIds(new Set(finalIds));
-    
-    // Small timeout to show the selection before moving
-    setTimeout(() => {
-      const selectedPackages = updatedPackages.filter(p => finalIds.includes(p.id));
-      onPackagesSelected(selectedPackages);
-      onNext();
-    }, 300);
+    setSelectedIds(new Set([...requiredIds, bestEngine]));
   };
 
   return (
@@ -201,10 +204,10 @@ export default function PackageSelection({ onNext, onPackagesSelected, systemInf
         <div style={{ display: 'flex', gap: '12px' }}>
           <button 
             className="btn-secondary" 
-            onClick={handleInstallAll}
+            onClick={handleSelectAllRequired}
             style={{ padding: '0.75rem 1.5rem' }}
           >
-            Download & Install All
+            Select All Required
           </button>
           <button 
             className="btn-primary" 

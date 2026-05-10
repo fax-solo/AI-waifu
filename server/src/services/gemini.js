@@ -48,12 +48,9 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
   
   // Build models to try, prioritizing the user's preferred model
   const fallbackModels = [
-    'gemini-2.0-flash',
-    'gemini-2.0-flash-lite',
-    'gemini-flash-latest',
+    'gemini-3.1-flash-lite',
     'gemini-2.5-flash',
-    'gemini-1.5-flash', // Keep as legacy fallback
-    'gemini-pro-latest'
+    'gemini-2.5-flash-lite'
   ];
   
   const modelsToTry = preferredModel 
@@ -142,6 +139,10 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
   // If we get here, all models/retries failed
   if (lastError?.message === 'INVALID_API_KEY' || lastError?.message?.includes('API key not valid')) {
     throw new Error('Your Gemini API key appears to be invalid. Please check your settings and ensure the key is correct.');
+  }
+
+  if (lastError?.message?.includes('quota') || lastError?.message?.includes('429') || lastError?.message?.includes('RESOURCE_EXHAUSTED')) {
+    throw new Error('You have hit the Gemini Free Tier rate limit. Please wait about a minute before sending another message, or try switching to a different model in Settings.');
   }
 
   const finalMessage = allErrors.length > 0 ? allErrors.join(' | ') : lastError?.message;

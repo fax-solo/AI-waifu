@@ -8,11 +8,5 @@
       "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
       "path": "python/voices-v1.0.bin"
     }
-  },
-  "avatar": {
-    "starter": {
-      "url": "https://github.com/vrm-c/UniVRM/raw/master/Tests/Models/AliciaSolid/VRM/AliciaSolid.vrm",
-      "path": "server/data/uploads/avatars/AliciaSolid.vrm"
-    }
   }
 }

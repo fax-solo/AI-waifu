@@ -144,14 +144,30 @@ async function bootstrapPython(gpu, pkgId, sendEvent, rootDir) {
     sendEvent('progress', { id: pkgId, status: 'active', progress: Math.floor(fakeProgress) });
   };
   
-  const gpuInfo = await getGpuInfo();
-  const gpuName = gpuInfo.hasNvidia ? gpuInfo.name : 'NVIDIA GPU';
+  let engineName = 'CPU';
+  if (gpuNvidia) engineName = `NVIDIA GPU: ${gpuName || 'Unknown'}`;
+  else if (gpuAmd) engineName = `AMD GPU: ${gpuName || 'Unknown'}`;
   
-  sendEvent('log', { text: `Installing ONNX Runtime (${gpu ? `GPU: ${gpuName}` : 'CPU'})...`, type: 'info' });
-  if (gpu) {
-    // Uninstall standard onnxruntime first to avoid conflicts
+  sendEvent('log', { text: `Installing ONNX Runtime (${engineName})...`, type: 'info' });
+  
+  if (gpuNvidia) {
     await runCommand(pipCmd, ['uninstall', '-y', 'onnxruntime'], pythonDir, sendEvent);
-    await runCommand(pipCmd, ['install', 'onnxruntime-gpu'], pythonDir, sendEvent, advanceProgress);
+    const gpuDeps = [
+      'nvidia-cublas-cu12', 
+      'nvidia-cudnn-cu12', 
+      'nvidia-cufft-cu12',
+      'nvidia-curand-cu12',
+      'nvidia-cusparse-cu12',
+      'onnxruntime-gpu'
+    ];
+    await runCommand(pipCmd, ['install', ...gpuDeps], pythonDir, sendEvent, advanceProgress);
+  } else if (gpuAmd) {
+    await runCommand(pipCmd, ['uninstall', '-y', 'onnxruntime'], pythonDir, sendEvent);
+    if (process.platform === 'win32') {
+      await runCommand(pipCmd, ['install', 'onnxruntime-directml'], pythonDir, sendEvent, advanceProgress);
+    } else {
+      await runCommand(pipCmd, ['install', 'onnxruntime-rocm', '--extra-index-url', 'https://download.onnxruntime.ai/onnxruntime_stable_rocm.html'], pythonDir, sendEvent, advanceProgress);
+    }
   } else {
     await runCommand(pipCmd, ['install', 'onnxruntime'], pythonDir, sendEvent, advanceProgress);
   }
@@ -159,6 +175,11 @@ async function bootstrapPython(gpu, pkgId, sendEvent, rootDir) {
   sendEvent('log', { text: `Installing TTS dependencies (kokoro-onnx, fastapi, uvicorn, soundfile)...`, type: 'info' });
   const deps = ['fastapi', 'uvicorn', 'soundfile', 'kokoro-onnx'];
   await runCommand(pipCmd, ['install', ...deps], pythonDir, sendEvent, advanceProgress);
+  
+  if (gpuNvidia || gpuAmd) {
+    sendEvent('log', { text: `Cleaning up conflicting CPU packages...`, type: 'info' });
+    await runCommand(pipCmd, ['uninstall', '-y', 'onnxruntime'], pythonDir, sendEvent);
+  }
   
   sendEvent('progress', { id: pkgId, status: 'done', progress: 100 });
   sendEvent('log', { text: `Python Environment successfully bootstrapped!`, type: 'success' });
@@ -178,6 +199,7 @@ router.get('/stream', async (req, res) => {
   try {
     const rootDir = path.join(process.cwd(), '..');
     const modelsPath = path.join(rootDir, 'models.json');
+    const VENV_PATH = path.join(rootDir, 'python');
     
     let packagesToDownload = [];
     if (fs.existsSync(modelsPath)) {
@@ -199,13 +221,20 @@ router.get('/stream', async (req, res) => {
     }
 
     const requested = req.query.packages ? req.query.packages.split(',') : [];
+    const gpuInfo = await getGpuInfo();
+    const gpuName = gpuInfo.hasNvidia ? gpuInfo.name : null;
     
+    const gpuNvidia = requested.includes('python-env-gpu');
+    const gpuAmd = requested.includes('python-env-amd');
+
     // Inject python env packages if requested
     const allPkgs = [ ...packagesToDownload ];
     if (requested.includes('python-env-cpu')) {
-      allPkgs.unshift({ id: 'python-env-cpu', type: 'python-env', gpu: false });
+      allPkgs.unshift({ id: 'python-env-cpu', type: 'python-env' });
     } else if (requested.includes('python-env-gpu')) {
-      allPkgs.unshift({ id: 'python-env-gpu', type: 'python-env', gpu: true });
+      allPkgs.unshift({ id: 'python-env-gpu', type: 'python-env' });
+    } else if (requested.includes('python-env-amd')) {
+      allPkgs.unshift({ id: 'python-env-amd', type: 'python-env' });
     }
 
     const targetPackages = requested.length > 0 
@@ -216,7 +245,7 @@ router.get('/stream', async (req, res) => {
 
     for (const pkg of targetPackages) {
       if (pkg.type === 'python-env') {
-        await bootstrapPython(pkg.gpu, pkg.id, sendEvent, rootDir);
+        await bootstrapPython(pkg.id, path.join(VENV_PATH, 'venv'), sendEvent, gpuNvidia, gpuAmd, gpuName);
         continue;
       }
 
