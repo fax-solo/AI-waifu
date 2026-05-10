@@ -36,6 +36,7 @@
   flex-direction: column;
   overflow: hidden;
   z-index: 9999;
+  animation: fadeIn 0.5s ease both;
 }
 
 .setup-header {
@@ -67,7 +68,15 @@
   flex: 1;
   display: flex;
   width: 200vw;
+  transform: translateX(0);
+}
+
+.setup-slider.is-ready {
   transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.setup-slider.is-mounting {
+  transition: none;
 }
 
 .setup-slider.screen-1 {
@@ -415,6 +424,60 @@
 
 .status-icon.waiting {
   color: var(--setup-text-muted);
+}
+
+/* Confirmation Screen */
+.confirmation-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  animation: fadeIn 0.4s ease;
+}
+
+.confirmation-card {
+  background: var(--setup-bg-surface);
+  border: 1px solid var(--setup-border);
+  border-radius: 16px;
+  padding: 2.5rem;
+  width: 100%;
+  max-width: 500px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+}
+
+.confirmation-card h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.75rem;
+}
+
+.confirmation-card p {
+  color: var(--setup-text-secondary);
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.summary-list {
+  background: var(--setup-bg-base);
+  border-radius: 8px;
+  border: 1px solid var(--setup-border);
+  overflow: hidden;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 1rem;
+  border-bottom: 1px solid var(--setup-border);
+}
+
+.summary-item:last-child {
+  border-bottom: none;
+}
+
+.summary-size {
+  color: var(--setup-accent);
+  font-family: var(--setup-font-mono);
+  font-size: 0.875rem;
 }
 
 /* Log Drawer */

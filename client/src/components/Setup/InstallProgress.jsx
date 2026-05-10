@@ -6,6 +6,7 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [progresses, setProgresses] = useState({});
   const [isFinished, setIsFinished] = useState(false);
+  const [hasStarted, setHasStarted] = useState(false);
   
   const logEndRef = useRef(null);
   const eventSourceRef = useRef(null);
@@ -18,7 +19,7 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
   }, [logs, logOpen]);
 
   useEffect(() => {
-    if (!isActive || isFinished || packages.length === 0) return;
+    if (!isActive || isFinished || !hasStarted || packages.length === 0) return;
 
     // Small delay to allow the screen transition animation to finish (0.6s)
     const timer = setTimeout(() => {
@@ -93,50 +94,76 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
 
       {!isFinished ? (
         <div className="install-container">
-          <div className="overall-progress">
-            <div className="progress-header">
-              <h2>Downloading Models</h2>
-              <span className="progress-percentage">{overallProgress}%</span>
-            </div>
-            <div className="progress-bar-container">
-              <div className="progress-bar-fill" style={{ width: `${overallProgress}%` }}></div>
-            </div>
-          </div>
-
-          <div className="install-list">
-            {packages.map((pkg, idx) => {
-              const status = idx < currentIndex ? 'done' : idx === currentIndex ? 'active' : 'waiting';
-              const progress = progresses[pkg.id] || 0;
-              
-              return (
-                <div key={pkg.id} className={`install-item ${status}`}>
-                  <div className="item-info">
-                    <div className="item-icon">
-                      {status === 'active' ? (
-                        <div className="spinner"></div>
-                      ) : status === 'done' ? (
-                        <svg className="status-icon done" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12"></polyline>
-                        </svg>
-                      ) : (
-                        <svg className="status-icon waiting" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <circle cx="12" cy="12" r="10"></circle>
-                          <polyline points="12 6 12 12 16 14"></polyline>
-                        </svg>
-                      )}
+          {!hasStarted ? (
+            <div className="confirmation-overlay">
+              <div className="confirmation-card">
+                <h2>Confirm Installation</h2>
+                <p>The app will now download and configure the following components:</p>
+                <div className="summary-list">
+                  {packages.map(pkg => (
+                    <div key={pkg.id} className="summary-item">
+                      <span>{pkg.name}</span>
+                      <span className="summary-size">{pkg.size}</span>
                     </div>
-                    <div className="item-details">
-                      <div className="item-name">{pkg.name}</div>
-                    </div>
-                  </div>
-                  <div className={`item-status ${status}`}>
-                    {status === 'active' ? `Installing... ${Math.floor(progress)}%` : 
-                     status === 'done' ? 'Installed' : 'Waiting...'}
-                  </div>
+                  ))}
                 </div>
-              );
-            })}
-          </div>
+                <button className="btn-primary" onClick={() => setHasStarted(true)} style={{ width: '100%', marginTop: '1.5rem', height: '3.5rem', fontSize: '1.125rem' }}>
+                  Start Installation
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="7 13 12 18 17 13"></polyline>
+                    <polyline points="7 6 12 11 17 6"></polyline>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="overall-progress">
+                <div className="progress-header">
+                  <h2>Installing Components</h2>
+                  <span className="progress-percentage">{overallProgress}%</span>
+                </div>
+                <div className="progress-bar-container">
+                  <div className="progress-bar-fill" style={{ width: `${overallProgress}%` }}></div>
+                </div>
+              </div>
+
+              <div className="install-list">
+                {packages.map((pkg, idx) => {
+                  const status = idx < currentIndex ? 'done' : idx === currentIndex ? 'active' : 'waiting';
+                  const progress = progresses[pkg.id] || 0;
+                  
+                  return (
+                    <div key={pkg.id} className={`install-item ${status}`}>
+                      <div className="item-info">
+                        <div className="item-icon">
+                          {status === 'active' ? (
+                            <div className="spinner"></div>
+                          ) : status === 'done' ? (
+                            <svg className="status-icon done" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                          ) : (
+                            <svg className="status-icon waiting" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10"></circle>
+                              <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                          )}
+                        </div>
+                        <div className="item-details">
+                          <div className="item-name">{pkg.name}</div>
+                        </div>
+                      </div>
+                      <div className={`item-status ${status}`}>
+                        {status === 'active' ? `Installing... ${Math.floor(progress)}%` : 
+                         status === 'done' ? 'Installed' : 'Waiting...'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
       ) : (
         <div className="completion-state">
