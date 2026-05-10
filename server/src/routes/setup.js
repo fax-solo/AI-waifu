@@ -37,7 +37,12 @@ async function getGpuInfo() {
 
 router.get('/status', async (req, res) => {
   try {
-    const rootDir = path.join(process.cwd(), '..');
+    // Robust root directory detection
+    const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
+    const rootDir = (process.platform === 'win32' && process.resourcesPath && isProd)
+      ? process.resourcesPath 
+      : (process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd());
+      
     const pythonDir = path.join(rootDir, 'python');
     const venvPath = path.join(pythonDir, 'venv');
     const modelsPath = path.join(rootDir, 'models.json');
@@ -103,12 +108,16 @@ function runCommand(command, args, cwd, sendEvent, progressUpdate) {
   });
 }
 
-async function bootstrapPython(gpu, pkgId, sendEvent, rootDir) {
+async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gpuName) {
+  const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
+  const rootDir = (process.platform === 'win32' && process.resourcesPath && isProd)
+    ? process.resourcesPath 
+    : (process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd());
+    
   const pythonDir = path.join(rootDir, 'python');
   if (!fs.existsSync(pythonDir)) fs.mkdirSync(pythonDir, { recursive: true });
   
   const isWindows = os.platform() === 'win32';
-  const venvPath = path.join(pythonDir, 'venv');
   const binDir = isWindows ? path.join(venvPath, 'Scripts') : path.join(venvPath, 'bin');
   
   sendEvent('progress', { id: pkgId, status: 'active', progress: 5 });
@@ -120,12 +129,86 @@ async function bootstrapPython(gpu, pkgId, sendEvent, rootDir) {
   
   if (!fs.existsSync(venvPath)) {
     sendEvent('log', { text: `Creating virtual environment in ${venvPath}...`, type: 'info' });
-    const pyCmd = isWindows ? 'python' : 'python3';
+    let pyCmd = isWindows ? 'python' : 'python3';
+    
+    // Check if python is available
+    let hasPython = false;
+    try {
+      await runCommand(pyCmd, ['--version'], pythonDir, sendEvent);
+      hasPython = true;
+    } catch (e) {
+      sendEvent('log', { text: `System Python not found. Attempting to bootstrap portable Python...`, type: 'warning' });
+    }
+
+    if (!hasPython && isWindows) {
+      const portablePyDir = path.join(pythonDir, 'runtime');
+      const zipPath = path.join(pythonDir, 'python-portable.zip');
+      const pyUrl = 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip';
+      
+      if (!fs.existsSync(portablePyDir)) {
+        fs.mkdirSync(portablePyDir, { recursive: true });
+        sendEvent('log', { text: `Downloading portable Python runtime (3.11.9)...`, type: 'info' });
+        
+        try {
+          const response = await fetch(pyUrl);
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const buffer = await response.arrayBuffer();
+          fs.writeFileSync(zipPath, Buffer.from(buffer));
+          
+          sendEvent('log', { text: `Extracting Python runtime...`, type: 'info' });
+          await runCommand('powershell', ['-Command', `Expand-Archive -Path "${zipPath}" -DestinationPath "${portablePyDir}" -Force`], pythonDir, sendEvent);
+          fs.unlinkSync(zipPath);
+        } catch (err) {
+          sendEvent('log', { text: `Failed to download portable Python: ${err.message}`, type: 'error' });
+          throw err;
+        }
+
+        // Fix the ._pth file to allow pip and site-packages
+        const pthFile = path.join(portablePyDir, 'python311._pth');
+        if (fs.existsSync(pthFile)) {
+          fs.writeFileSync(pthFile, 'python311.zip\n.\n#import site\nimport site');
+        }
+      }
+      
+      pyCmd = path.join(portablePyDir, 'python.exe');
+      
+      // Install pip if missing
+      if (!fs.existsSync(path.join(portablePyDir, 'Scripts', 'pip.exe'))) {
+        sendEvent('log', { text: `Installing pip for portable runtime...`, type: 'info' });
+        
+        // Use local get-pip.py if available in root or python dir
+        const localGetPip = [
+          path.join(rootDir, 'get-pip.py'),
+          path.join(pythonDir, 'get-pip.py')
+        ].find(p => fs.existsSync(p));
+
+        if (localGetPip) {
+          sendEvent('log', { text: `Using local get-pip.py...`, type: 'info' });
+          await runCommand(pyCmd, [localGetPip], portablePyDir, sendEvent);
+        } else {
+          const getPipUrl = 'https://bootstrap.pypa.io/get-pip.py';
+          const getPipResp = await fetch(getPipUrl);
+          const getPipBuf = await getPipResp.arrayBuffer();
+          const getPipPath = path.join(portablePyDir, 'get-pip.py');
+          fs.writeFileSync(getPipPath, Buffer.from(getPipBuf));
+          await runCommand(pyCmd, [getPipPath], portablePyDir, sendEvent);
+          fs.unlinkSync(getPipPath);
+        }
+      }
+    }
+
     try {
       await runCommand(pyCmd, ['-m', 'venv', 'venv'], pythonDir, sendEvent);
     } catch (e) {
-      sendEvent('log', { text: `Failed to create venv: ${e.message}`, type: 'error' });
-      throw e;
+      if (isWindows && !hasPython) {
+        sendEvent('log', { text: `Creating venv with portable Python...`, type: 'info' });
+        // For embeddable python, we might just use the runtime dir as venv or copy it
+        // Simpler: Just use the runtime dir as the "venv"
+        pyCmd = path.join(pythonDir, 'runtime', 'python.exe');
+      } else {
+        sendEvent('log', { text: `Failed to create venv: ${e.message}. Please install Python manually.`, type: 'error' });
+        throw e;
+      }
     }
   } else {
     sendEvent('log', { text: `Virtual environment already exists.`, type: 'success' });
@@ -185,6 +268,32 @@ async function bootstrapPython(gpu, pkgId, sendEvent, rootDir) {
   sendEvent('log', { text: `Python Environment successfully bootstrapped!`, type: 'success' });
 }
 
+async function checkVCRedist(sendEvent) {
+  if (os.platform() !== 'win32') return;
+  
+  // Check if VC++ Redist is likely installed by looking for a common DLL
+  const system32 = path.join(process.env.WINDIR || 'C:\\Windows', 'System32');
+  const hasVC = fs.existsSync(path.join(system32, 'vcruntime140.dll')) || 
+                fs.existsSync(path.join(system32, 'msvcp140.dll'));
+
+  if (!hasVC) {
+    sendEvent('log', { text: `⚠️ Potential Issue: Microsoft Visual C++ Redistributable not detected.`, type: 'warning' });
+    sendEvent('log', { text: `AI models and Python require this to run. Downloading installer...`, type: 'info' });
+    
+    const vcUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
+    const dest = path.join(process.cwd(), '..', 'python', 'vc_redist.x64.exe');
+    
+    if (!fs.existsSync(path.dirname(dest))) fs.mkdirSync(path.dirname(dest), { recursive: true });
+    
+    const response = await fetch(vcUrl);
+    const buffer = await response.arrayBuffer();
+    fs.writeFileSync(dest, Buffer.from(buffer));
+    
+    sendEvent('log', { text: `✅ Downloaded. Please run 'python/vc_redist.x64.exe' to fix AI errors.`, type: 'success' });
+    sendEvent('log', { text: `(The app will continue, but may crash if you don't install it!)`, type: 'warning' });
+  }
+}
+
 router.get('/stream', async (req, res) => {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -197,7 +306,11 @@ router.get('/stream', async (req, res) => {
   };
 
   try {
-    const rootDir = path.join(process.cwd(), '..');
+    const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
+    const rootDir = (process.platform === 'win32' && process.resourcesPath && isProd)
+      ? process.resourcesPath 
+      : (process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd());
+      
     const modelsPath = path.join(rootDir, 'models.json');
     const VENV_PATH = path.join(rootDir, 'python');
     
@@ -242,6 +355,9 @@ router.get('/stream', async (req, res) => {
       : allPkgs;
 
     sendEvent('log', { text: `Starting setup sequence for ${targetPackages.length} packages...`, type: 'info' });
+
+    // Check for Windows dependencies
+    await checkVCRedist(sendEvent);
 
     for (const pkg of targetPackages) {
       if (pkg.type === 'python-env') {

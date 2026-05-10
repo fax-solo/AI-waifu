@@ -73,8 +73,8 @@ export default function App() {
 
     async function checkSetup() {
       try {
-        const response = await fetch('http://localhost:3005/api/setup/status');
-        const data = await response.json();
+        // Use the centralized API client which correctly handles port 3001
+        const data = await api.fetchApi('/setup/status');
         setSystemInfo(data);
         if (data.setupRequired) {
           setShowSetup(true);

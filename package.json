@@ -45,27 +45,43 @@
       "server/**/*",
       "electron/**/*",
       "python/*.py",
-      "python/*.onnx",
-      "python/*.bin",
+      "!python/*.onnx",
+      "!python/*.bin",
       "!python/venv/**/*",
       "!python/venv2/**/*",
       "!python/tts_cache/**/*",
-      "package.json"
+      "package.json",
+      "models.json",
+      "get-pip.py"
     ],
     "asar": true,
     "win": {
-      "target": "portable",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "client/public/icon.ico",
-      "artifactName": "WaifuAI-Setup.exe"
+      "verifyUpdateCodeSignature": false,
+      "compression": "maximum"
     },
-    "linux": {
-      "icon": "client/public/icon.png"
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "WaifuAI Companion",
+      "artifactName": "WaifuAI-Setup-${version}.exe",
+      "uninstallDisplayName": "WaifuAI Companion",
+      "deleteAppDataOnUninstall": false
     },
     "extraMetadata": {
       "main": "electron/main.js"
-    },
-    "nsis": {
-      "packElevateHelper": false
     }
   },
   "overrides": {}

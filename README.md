@@ -18,6 +18,9 @@ Getting started is easier than ever. You don't need to install Node.js, Python, 
     *   Configure its secure local database.
 4.  **Start Chatting!** Once finished, your companion will be ready to interact.
 
+> [!TIP]
+> **Windows "SmartScreen" Warning:** Because the app is not signed with a paid certificate, Windows might say "Windows protected your PC". Click **"More Info"** and then **"Run Anyway"**. The app is 100% safe and open-source!
+
 ---
 
 ## 🎭 Interactive 3D Avatar (VRM)

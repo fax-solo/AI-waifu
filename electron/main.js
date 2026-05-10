@@ -18,44 +18,40 @@ const __dirname = path.dirname(__filename);
 let ttsProcess = null;
 
 function startTTSSidecar() {
-  const isDev = !app.isPackaged;
+  const isPackaged = app.isPackaged;
   
-  // Try to find python in venv first, fallback to system python
+  // Resolve python path
   let pythonPath;
-  if (isDev) {
+  if (!isPackaged) {
     pythonPath = process.platform === 'win32'
       ? path.join(__dirname, '../python/venv/Scripts/python.exe')
       : path.join(__dirname, '../python/venv/bin/python');
   } else {
+    // In production, check for venv in the resources folder
     pythonPath = process.platform === 'win32'
       ? path.join(process.resourcesPath, 'python/venv/Scripts/python.exe')
       : path.join(process.resourcesPath, 'python/venv/bin/python');
   }
 
-  if (!fs.existsSync(pythonPath)) {
-    console.log('[TTS] Venv not found, checking system paths...');
-    // Common Windows python paths to avoid the Windows Store stub
-    const commonPaths = [
-      'C:\\Python311\\python.exe',
-      'C:\\Python310\\python.exe',
-      'C:\\Python39\\python.exe',
-      path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python311\\python.exe'),
-      path.join(process.env.LOCALAPPDATA || '', 'Programs\\Python\\Python310\\python.exe'),
-      'python' // Fallback to PATH
-    ];
-    
-    pythonPath = 'python'; // Default fallback
-    for (const p of commonPaths) {
-      if (fs.existsSync(p)) {
-        pythonPath = p;
-        break;
-      }
-    }
-  }
-  
-  const scriptPath = isDev
+  const scriptPath = !isPackaged
     ? path.join(__dirname, '../python/tts_server.py')
     : path.join(process.resourcesPath, 'python/tts_server.py');
+
+  if (!fs.existsSync(pythonPath)) {
+    console.warn('[TTS] Sidecar Python not found at:', pythonPath);
+    // If venv is missing, check for a portable runtime bootstrap
+    const runtimePath = !isPackaged
+      ? path.join(__dirname, '../python/runtime/python.exe')
+      : path.join(process.resourcesPath, 'python/runtime/python.exe');
+    
+    if (fs.existsSync(runtimePath)) {
+      pythonPath = runtimePath;
+      console.log('[TTS] Found portable runtime, using it for sidecar.');
+    } else {
+      console.error('[TTS] No Python environment found. Sidecar will not start until setup is complete.');
+      return; // Exit and let the UI handle setup
+    }
+  }
 
   console.log('[TTS] Starting sidecar server...');
   console.log(`[TTS] Command: ${pythonPath} ${scriptPath}`);

@@ -23,7 +23,8 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
     // Small delay to allow the screen transition animation to finish (0.6s)
     const timer = setTimeout(() => {
       const ids = packages.map(p => p.id).join(',');
-      const eventSource = new EventSource(`http://localhost:3005/api/setup/stream?packages=${ids}`);
+      const baseUrl = window.location.protocol === 'file:' ? 'http://localhost:3001' : '';
+      const eventSource = new EventSource(`${baseUrl}/api/setup/stream?packages=${ids}`);
 
       const addLog = (text, type = 'info') => {
         const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
