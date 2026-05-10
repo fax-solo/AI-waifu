@@ -4,73 +4,45 @@ A state-of-the-art AI companion application featuring a highly interactive **3D 
 
 ![Waifu AI Companion](https://img.shields.io/badge/Powered%20by-Gemini%20%26%20Groq-orange?style=for-the-badge)
 ![Physics](https://img.shields.io/badge/Physics-Premium-magenta?style=for-the-badge)
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-blue?style=for-the-badge)
+![Platform](https://img.shields.io/badge/Platform-Windows-blue?style=for-the-badge)
 
-## 🌟 Key Features
+## 📥 One-Click Setup (For Users)
 
-### 🎭 Interactive 3D Avatar (VRM)
-- **Natural Motion**: Custom physics engine with inertial weight shifting, spine counter-rotation, and procedural finger curling.
-- **Smart Expressions**: AI-driven facial expressions (happy, sad, angry, surprised, relaxed) that sync with the conversation.
-- **Intelligent Blinking**: Automatic blinking logic that respects active expressions to prevent eye clipping.
-- **Custom Avatar Library**: Upload your own `.vrm` files and customize your companion's appearance.
+Getting started is easier than ever. You don't need to install Node.js, Python, or Git to use Waifu AI.
 
-### 🧠 Advanced Intelligence
-- **Multi-LLM Support**: Toggle between **Google Gemini (3.1 Flash-Lite)** and **Groq (Llama 3.1 70B, Mixtral)** for lightning-fast responses.
-- **Smart Web Search**: Real-time information retrieval via Tavily for up-to-date answers.
-- **Memory System**: Remembers your preferences, name, and history across sessions.
-- **Privacy First**: Secure, encrypted storage for your custom API keys.
-
-### 🎙️ Immersive Voice
-- **High-Quality TTS**: Integrated Kokoro-82M engine for expressive, human-like voice synthesis.
-- **Ultra-Low Latency**: Sidecar server architecture ensuring near-instant speech generation.
-- **Voice Selection**: Choose from multiple premium voice models (Bella, Sarah, Nicole, etc.).
-
-### 💻 Premium Desktop Experience
-- **Resizable UI**: Modern, glassmorphism-inspired layout with adjustable sidebars.
-- **Electron Powered**: Available as a standalone `.exe` for Windows.
-- **Offline Core**: Core physics and UI logic run entirely on your machine.
+1.  **Download `WaifuAI-Setup.exe`** from the [Releases](https://github.com/fax-solo/AI-waifu/releases) page.
+2.  **Run the file**. The app will launch and detect that a first-time setup is needed.
+3.  **Click "Complete Setup"**. The app will automatically:
+    *   Download the high-speed 3D models.
+    *   Bootstrap its own local Python voice engine.
+    *   Configure its secure local database.
+4.  **Start Chatting!** Once finished, your companion will be ready to interact.
 
 ---
 
-## 🚀 Quick Start
-
-### Prerequisites
-- [Node.js](https://nodejs.org/) v20+
-- [Python 3.10+](https://www.python.org/) (for local TTS acceleration)
-- An NVIDIA GPU (Recommended for CUDA-accelerated TTS)
-
-### Installation
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/fax-solo/AI-waifu.git
-   cd AI-waifu
-   ```
-
-2. **Configure Environment:**
-   Copy `server/.env.example` to `server/.env` and add your API keys:
-   ```env
-   GEMINI_API_KEY=your_key
-   GROQ_API_KEY=your_key
-   TAVILY_API_KEY=your_key
-   ```
-
-3. **Install & Run (Development):**
-   ```bash
-   npm install
-   npm run dev
-   ```
+## 🎭 Interactive 3D Avatar (VRM)
+- **Natural Motion**: Custom physics engine with inertial weight shifting, spine counter-rotation, and procedural finger curling.
+- **Smart Expressions**: AI-driven facial expressions that sync with the conversation.
+- **Intelligent Blinking**: Automatic blinking logic that respects active expressions to prevent eye clipping.
+- **Custom Avatar Library**: Upload your own `.vrm` files and customize your companion's appearance.
 
 ---
 
 ## 🛠️ Build for Windows (.exe)
 
-I've optimized the build pipeline for easy packaging. To create a portable Windows executable:
+If you are a developer and want to build the setup file yourself:
 
-```bash
-npm run build:desktop
-```
-The output will be available in the `dist-desktop/` folder as a standalone `.exe`.
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/fax-solo/AI-waifu.git
+    cd AI-waifu
+    ```
+2.  **Install & Build:**
+    ```bash
+    npm install
+    npm run build:desktop
+    ```
+The output `WaifuAI-Setup.exe` will be created in the `dist-desktop/` folder.
 
 ---
 

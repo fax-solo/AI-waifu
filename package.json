@@ -55,7 +55,8 @@
     "asar": true,
     "win": {
       "target": "portable",
-      "icon": "client/public/icon.ico"
+      "icon": "client/public/icon.ico",
+      "artifactName": "WaifuAI-Setup.exe"
     },
     "linux": {
       "icon": "client/public/icon.png"
