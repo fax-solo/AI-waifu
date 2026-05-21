@@ -51,10 +51,8 @@ router.get('/', (req, res) => {
         ttsDevice: companion?.tts_device || 'cpu',
         ttsEngine: companion?.tts_engine || 'onnx',
         llmModel: companion?.llm_model || 'gemini-3.1-flash-lite',
-        llmProvider: companion?.llm_provider || 'gemini',
       },
       hasCustomApiKey: hasCustomKey,
-      hasGroqApiKey: !!companion?.groq_api_key_encrypted,
     });
   } catch (err) {
     console.error('[Settings] GET ERROR:', err);
@@ -100,7 +98,6 @@ router.put('/', (req, res) => {
               tts_device = COALESCE(?, tts_device),
               tts_engine = COALESCE(?, tts_engine),
               llm_model = COALESCE(?, llm_model),
-              llm_provider = COALESCE(?, llm_provider),
               updated_at = CURRENT_TIMESTAMP
           WHERE user_id = ?
         `).run(
@@ -115,13 +112,12 @@ router.put('/', (req, res) => {
           companion.ttsDevice || null,
           companion.ttsEngine || null,
           companion.llmModel || null,
-          companion.llmProvider || null,
           userId
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, llm_model, llm_provider)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, llm_model)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
           companion.name || 'Aria',
@@ -134,8 +130,7 @@ router.put('/', (req, res) => {
           companion.audioOutputDevice || 'default',
           companion.ttsDevice || 'cpu',
           companion.ttsEngine || 'onnx',
-          companion.llmModel || 'gemini-3.1-flash-lite',
-          companion.llmProvider || 'gemini'
+          companion.llmModel || 'gemini-3.1-flash-lite'
         );
       }
     }
@@ -187,58 +182,6 @@ router.post('/api-key', (req, res) => {
 });
 
 /**
- * POST /api/settings/groq-key
- * Store a user's custom Groq API key (encrypted).
- */
-router.post('/groq-key', (req, res) => {
-  const userId = req.headers['x-user-id'];
-  const { apiKey } = req.body;
-
-  if (!apiKey?.trim()) {
-    return res.status(400).json({ error: 'Groq API key cannot be empty.' });
-  }
-
-  // Groq keys usually start with "gsk_"
-  if (!apiKey.startsWith('gsk_')) {
-    return res.status(400).json({
-      error: 'Invalid Groq API key format. It typically starts with "gsk_".',
-    });
-  }
-
-  const encrypted = encrypt(apiKey.trim());
-
-  const existing = db.prepare(
-    'SELECT user_id FROM companion_settings WHERE user_id = ?'
-  ).get(userId);
-
-  if (existing) {
-    db.prepare(
-      'UPDATE companion_settings SET groq_api_key_encrypted = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-    ).run(encrypted, userId);
-  } else {
-    db.prepare(
-      'INSERT INTO companion_settings (user_id, groq_api_key_encrypted) VALUES (?, ?)'
-    ).run(userId, encrypted);
-  }
-
-  res.json({ success: true, message: 'Groq API key saved securely.' });
-});
-
-/**
- * DELETE /api/settings/groq-key
- * Remove a user's custom Groq API key.
- */
-router.delete('/groq-key', (req, res) => {
-  const userId = req.headers['x-user-id'];
-
-  db.prepare(
-    'UPDATE companion_settings SET groq_api_key_encrypted = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-  ).run(userId);
-
-  res.json({ success: true, message: 'Groq API key removed.' });
-});
-
-/**
  * DELETE /api/settings/api-key
  * Remove a user's custom API key.
  */
@@ -260,19 +203,15 @@ router.get('/rate-limit', (req, res) => {
   const userId = req.headers['x-user-id'];
   const status = getRateLimitStatus(userId);
 
-  // Check if user has custom key (either Gemini or Groq)
+  // Check if user has custom key
   const companion = db.prepare(
-    'SELECT custom_api_key_encrypted, groq_api_key_encrypted, llm_provider FROM companion_settings WHERE user_id = ?'
+    'SELECT custom_api_key_encrypted FROM companion_settings WHERE user_id = ?'
   ).get(userId);
-
-  const hasCustomKey = companion?.llm_provider === 'groq' 
-    ? !!companion?.groq_api_key_encrypted 
-    : !!companion?.custom_api_key_encrypted;
 
   res.json({
     ...status,
-    hasCustomKey: !!companion?.custom_api_key_encrypted || !!companion?.groq_api_key_encrypted,
-    bypassed: hasCustomKey,
+    hasCustomKey: !!companion?.custom_api_key_encrypted,
+    bypassed: !!companion?.custom_api_key_encrypted,
   });
 });
 
