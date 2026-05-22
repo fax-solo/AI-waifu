@@ -12,8 +12,6 @@
 import { useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef } from 'react';
 import * as THREE from 'three';
 import { useVRM } from './useVRM.js';
-import { useIdleAnimation } from './useIdleAnimation.js';
-import { useEmotionAnimation } from './useEmotionAnimation.js';
 import { useAnimationManager } from '../../animations/AnimationManager.js';
 
 const DEFAULT_SETTINGS = {
@@ -55,20 +53,26 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   const lastTimeRef = useRef(performance.now());
   const animFrameRef = useRef(null);
   const modelContainerRef = useRef(new THREE.Group());
+  const vrmRef = useRef(null);
+  const updateAnimationsRef = useRef(null);
 
   const { vrm, loading, progress, error, loadVRM, loadVRMFromFile, dispose } = useVRM();
-  const { updateAnimations, triggerEmote, triggerStance } = useAnimationManager();
+  const { updateAnimations, triggerAnimation } = useAnimationManager();
+
+  // Keep refs in sync so the render loop always sees current values
+  // without causing the renderer to be destroyed/recreated
+  vrmRef.current = vrm;
+  updateAnimationsRef.current = updateAnimations;
   
   const [hasModel, setHasModel] = useState(false);
   const [showControls, setShowControls] = useState(false);
-  const [isWalkingTest, setIsWalkingTest] = useState(false);
-  const [isIdle2Test, setIsIdle2Test] = useState(false);
-  const [testEmotion, setTestEmotion] = useState(null);
   const [avatarSettings, setAvatarSettings] = useState(loadAvatarSettings);
+  const avatarSettingsRef = useRef(avatarSettings);
+  const [webglError, setWebglError] = useState(null);
 
-  const currentEmotion = testEmotion || emotion || 'neutral';
+  const currentEmotion = emotion || 'neutral';
 
-  // Expose loadFile method to parent via ref
+  // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
     loadFile: async (input) => {
       if (typeof input === 'string') {
@@ -82,7 +86,10 @@ const AvatarViewport = forwardRef(function AvatarViewport({
         setHasModel(false);
       }
     },
-  }), [loadVRM, loadVRMFromFile, dispose]);
+    triggerAnimation: (type, filename, options) => {
+      return triggerAnimation(type, filename, options);
+    },
+  }), [loadVRM, loadVRMFromFile, dispose, triggerAnimation]);
 
   // ─── Animation State Ref ───────────────────────────────────
   // We use a ref for the state passed to updateAnimations to avoid 
@@ -91,44 +98,133 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     isThinking, 
     isTalking, 
     analyser,
-    isWalking: isWalkingTest,
     emotion: currentEmotion,
-    useIdle2: isIdle2Test,
     autoAnimate: avatarSettings.autoAnimate,
-    isTesting: !!testEmotion
+    isTesting: false,
+    mouseX: 0,
+    mouseY: 0,
+    mouseMoving: false,
   });
+
+  // Mouse tracking for lookAt and parallax
+  const mousePosRef = useRef({ x: 0, y: 0 });
+  const mouseMovingRef = useRef(false);
+  const mouseTimerRef = useRef(null);
+  const dynamicZoomRef = useRef(0);
+  const lastCameraBaseRef = useRef(new THREE.Vector3());
+
+  const handleMouseMove = useCallback((e) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    mousePosRef.current = { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) };
+    mouseMovingRef.current = true;
+    if (mouseTimerRef.current) clearTimeout(mouseTimerRef.current);
+    mouseTimerRef.current = setTimeout(() => {
+      mouseMovingRef.current = false;
+    }, 1500);
+  }, []);
 
   useEffect(() => {
     animStateRef.current = { 
       isThinking: avatarSettings.autoAnimate ? isThinking : false, 
       isTalking: avatarSettings.autoAnimate ? isTalking : false, 
       analyser,
-      isWalking: isWalkingTest,
       emotion: currentEmotion,
-      useIdle2: isIdle2Test,
       autoAnimate: avatarSettings.autoAnimate,
-      isTesting: !!testEmotion
+      isTesting: false,
+      mouseX: mousePosRef.current.x,
+      mouseY: mousePosRef.current.y,
+      mouseMoving: mouseMovingRef.current,
     };
-  }, [isThinking, isTalking, analyser, isWalkingTest, isIdle2Test, avatarSettings.autoAnimate, currentEmotion, testEmotion]);
+  }, [isThinking, isTalking, analyser, avatarSettings.autoAnimate, currentEmotion]);
 
-  // ─── Three.js Scene Setup ───────────────────────────────────
+  // ─── Three.js Scene Setup (React StrictMode Safe) ───────────
+  // CRITICAL: React StrictMode in dev does mount → unmount → mount.
+  // canvas.getContext() always returns the SAME context object for a canvas.
+  // Calling forceContextLoss() during unmount permanently kills it, and the
+  // re-mount gets back the dead context → getShaderPrecisionFormat() → null → crash.
+  // Fix: Reuse existing renderer on re-mount. Never call forceContextLoss().
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: true,
-      alpha: true,
-    });
-    renderer.setPixelRatio(1);
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.2;
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    rendererRef.current = renderer;
+    // ── Reuse existing renderer if available (StrictMode re-mount) ──
+    let renderer = rendererRef.current;
+    let isNewRenderer = false;
 
-    // Scene & Camera
+    if (!renderer) {
+      try {
+        renderer = new THREE.WebGLRenderer({
+          canvas,
+          powerPreference: 'high-performance',
+          failIfMajorPerformanceCaveat: false,
+          antialias: true,
+          alpha: true,
+          logarithmicDepthBuffer: true,
+        });
+        isNewRenderer = true;
+      } catch (e) {
+        console.error('[WebGL] Renderer initialization failed:', e);
+        setWebglError(
+          'WebGL context could not be created. ' +
+          'Ensure your GPU drivers are up to date and hardware acceleration is enabled.'
+        );
+        return;
+      }
+
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.2;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      rendererRef.current = renderer;
+
+      try {
+        const gl = renderer.getContext();
+        console.log('[WebGL] Renderer created successfully:', {
+          gpu: gl.getParameter(gl.RENDERER),
+          vendor: gl.getParameter(gl.VENDOR),
+          webglVersion: gl.getParameter(gl.VERSION),
+        });
+      } catch(e) {
+        console.log('[WebGL] Renderer created (could not query GPU info)');
+      }
+    } else {
+      console.log('[WebGL] Reusing existing renderer (StrictMode re-mount)');
+    }
+
+    // Clear any previous error state
+    setWebglError(null);
+
+    // ── GPU Context Loss / Restore Handlers ──────────────────
+    let contextLost = false;
+
+    const handleContextLost = (event) => {
+      event.preventDefault();
+      contextLost = true;
+      cancelAnimationFrame(animFrameRef.current);
+      console.warn('[WebGL] ⚠ GPU context lost. Pausing render loop...');
+      setWebglError('Graphics engine reset. Recovering...');
+    };
+
+    const handleContextRestored = () => {
+      console.log('[WebGL] ✓ GPU context restored. Rebuilding scene...');
+      contextLost = false;
+      setWebglError(null);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.2;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      animate();
+    };
+
+    canvas.addEventListener('webglcontextlost', handleContextLost);
+    canvas.addEventListener('webglcontextrestored', handleContextRestored);
+    canvas.addEventListener('mousemove', handleMouseMove);
+
+    // ── Scene, Camera & Lighting ─────────────────────────────
     const scene = new THREE.Scene();
     sceneRef.current = scene;
     scene.add(modelContainerRef.current);
@@ -171,35 +267,71 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(canvas.parentElement);
 
-    // Render loop
+    // ── Render Loop ──────────────────────────────────────────
     const animate = () => {
+      if (contextLost) return;
       animFrameRef.current = requestAnimationFrame(animate);
       const now = performance.now();
       let delta = (now - lastTimeRef.current) / 1000;
       lastTimeRef.current = now;
 
-      // FIX: Clamp delta to prevent "jumps" after alt-tab/backgrounding
       if (delta > 0.1) delta = 0.016; 
 
-      if (vrm && delta < 0.1) {
-        if (!vrm.scene.userData.clock) vrm.scene.userData.clock = new THREE.Clock();
-        const elapsedTime = vrm.scene.userData.clock.getElapsedTime();
+      const currentVrm = vrmRef.current;
+      const currentUpdateAnimations = updateAnimationsRef.current;
+      if (currentVrm && delta < 0.1) {
+        if (!currentVrm.scene.userData.clock) currentVrm.scene.userData.clock = new THREE.Clock();
+        const elapsedTime = currentVrm.scene.userData.clock.getElapsedTime();
 
-        updateAnimations(vrm, delta, { 
-          ...animStateRef.current,
-          elapsedTime 
-        });
+        // Sync mouse state into anim state ref every frame
+        animStateRef.current.mouseX = mousePosRef.current.x;
+        animStateRef.current.mouseY = mousePosRef.current.y;
+        animStateRef.current.mouseMoving = mouseMovingRef.current;
+
+        if (currentUpdateAnimations) {
+          currentUpdateAnimations(currentVrm, delta, { 
+            ...animStateRef.current,
+            elapsedTime 
+          });
+        }
       }
+
+      // ── Dynamic Camera: Auto-Zoom & Parallax ────────────────
+      const settings = avatarSettingsRef.current;
+      const targetZoomOffset = animStateRef.current.isTalking ? -0.35 : 0;
+      dynamicZoomRef.current += (targetZoomOffset - dynamicZoomRef.current) * delta * 4;
+
+      const mx = mousePosRef.current.x * 0.04;
+      const my = mousePosRef.current.y * 0.03;
+      const parallaxX = mx * (settings.cameraZoom * 0.15);
+      const parallaxY = my * (settings.cameraZoom * 0.1);
+
+      camera.position.x = (settings.positionX ?? 0) + parallaxX;
+      camera.position.y = settings.cameraHeight + parallaxY;
+      camera.position.z = (settings.positionZ ?? 0) + settings.cameraZoom + dynamicZoomRef.current;
+
+      const lookTargetY = settings.cameraHeight - 0.15 + my * 0.02;
+      camera.lookAt(settings.positionX ?? 0, lookTargetY, settings.positionZ ?? 0);
+
       renderer.render(scene, camera);
     };
     animate();
 
+    // ── Cleanup ──────────────────────────────────────────────
+    // NEVER call forceContextLoss() — it permanently poisons the canvas
+    // context and makes re-mount impossible (React StrictMode).
     return () => {
       cancelAnimationFrame(animFrameRef.current);
       resizeObserver.disconnect();
-      renderer.dispose();
+      canvas.removeEventListener('webglcontextlost', handleContextLost);
+      canvas.removeEventListener('webglcontextrestored', handleContextRestored);
+      canvas.removeEventListener('mousemove', handleMouseMove);
+      if (mouseTimerRef.current) clearTimeout(mouseTimerRef.current);
+      // Renderer is intentionally NOT disposed here — it will be reused
+      // on StrictMode re-mount, or garbage collected on true unmount.
     };
-  }, [vrm, updateAnimations]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── Apply avatar settings ──────────────────────────────────
   // Use a ref for immediate Three.js updates without waiting for React cycle if needed,
@@ -223,13 +355,9 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     // Apply rotation
     container.rotation.y = avatarSettings.rotationY ?? 0;
 
-    // Apply camera
-    if (camera) {
-      const targetX = avatarSettings.positionX ?? 0;
-      const targetZ = avatarSettings.positionZ ?? 0;
-      camera.position.set(targetX, avatarSettings.cameraHeight, targetZ + avatarSettings.cameraZoom);
-      camera.lookAt(targetX, avatarSettings.cameraHeight - 0.15, targetZ);
-    }
+    // Camera is now managed dynamically in the render loop
+    // (auto-zoom when talking, parallax from mouse movement)
+    avatarSettingsRef.current = avatarSettings;
 
     // Debounce localStorage save to avoid lag during slider movement
     const timer = setTimeout(() => {
@@ -414,10 +542,10 @@ const AvatarViewport = forwardRef(function AvatarViewport({
       )}
 
       {/* Error Message */}
-      {error && (
+      {(error || webglError) && (
         <div className="avatar-error-overlay">
           <div className="avatar-error-icon">⚠️</div>
-          <div className="avatar-error-text">{error}</div>
+          <div className="avatar-error-text">{error || webglError}</div>
           <button className="avatar-error-retry" onClick={() => window.location.reload()}>Retry</button>
         </div>
       )}
@@ -540,57 +668,22 @@ const AvatarViewport = forwardRef(function AvatarViewport({
           </div>
 
           <div className="avatar-controls-title">Test Animations</div>
-          
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '12px' }}>
-            <button className="avatar-controls-reset" onClick={() => triggerStance('neutral')}>Neutral Stance</button>
-            <button className="avatar-controls-reset" style={{ background: '#ff555522' }} onClick={() => triggerStance('none')}>No Stance (Reset)</button>
-            <button className="avatar-controls-reset" onClick={() => triggerStance('relaxed')}>Relaxed</button>
-            <button className="avatar-controls-reset" onClick={() => triggerStance('attentive')}>Attentive</button>
-            <button className="avatar-controls-reset" onClick={() => triggerStance('cute')}>Cute Pose</button>
-            <button className="avatar-controls-reset" onClick={() => triggerEmote('happy_jump', 1.0)}>Jump! 🐰</button>
-            <button 
-              className="avatar-controls-reset" 
-              style={{ background: isIdle2Test ? 'var(--color-accent)' : '', color: isIdle2Test ? '#fff' : '' }}
-              onClick={() => setIsIdle2Test(!isIdle2Test)}
-            >
-              {isIdle2Test ? 'Stop Idle2' : 'Test Idle2'}
-            </button>
-            <button 
-              className="avatar-controls-reset" 
-              style={{ background: isWalkingTest ? 'var(--color-accent)' : '', color: isWalkingTest ? '#fff' : '' }}
-              onClick={() => setIsWalkingTest(!isWalkingTest)}
-            >
-              {isWalkingTest ? 'Stop Walk' : 'Test Walk'}
-            </button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'idle_sway.json', { blendSpeed: 6 })}>Idle Sway</button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'thinking.json', { blendSpeed: 8 })}>Thinking</button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'wave.json', { blendSpeed: 10 })}>Wave</button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'nod.json', { blendSpeed: 12 })}>Nod</button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'jump.json', { blendSpeed: 10 })}>Jump</button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'talking_gestures.json', { blendSpeed: 6 })}>Gestures</button>
           </div>
 
-          <div className="avatar-controls-title">Test Emotions</div>
+          <div className="avatar-controls-title">Test Expressions</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '12px' }}>
-            {['happy', 'sad', 'angry', 'excited', 'surprised', 'relaxed'].map(e => (
-              <button 
-                key={e}
-                className="avatar-controls-reset"
-                style={{ 
-                  background: testEmotion === e ? 'var(--color-accent)' : '', 
-                  color: testEmotion === e ? '#fff' : '',
-                  fontSize: '10px',
-                  padding: '4px 2px'
-                }}
-                onClick={() => setTestEmotion(testEmotion === e ? null : e)}
-              >
-                {e.charAt(0).toUpperCase() + e.slice(1)}
-              </button>
-            ))}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px' }}>
-            <button className="avatar-controls-reset" onClick={() => triggerEmote('nod')}>Nod</button>
-            <button className="avatar-controls-reset" onClick={() => triggerEmote('shake')}>Shake</button>
-            <button className="avatar-controls-reset" onClick={() => triggerEmote('tilt')}>Tilt</button>
-            <button className="avatar-controls-reset" onClick={() => triggerEmote('jump')}>Jump</button>
-            <button className="avatar-controls-reset" onClick={() => triggerEmote('wink')}>Wink</button>
-            <button className="avatar-controls-reset" onClick={() => triggerEmote('pout')}>Pout</button>
-            <button className="avatar-controls-reset" onClick={() => triggerEmote('kawaii')}>Kawaii</button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('facial', 'happy.json', { blendSpeed: 10 })}>Happy</button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('facial', 'sad.json', { blendSpeed: 8 })}>Sad</button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('facial', 'angry.json', { blendSpeed: 10 })}>Angry</button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('facial', 'surprised.json', { blendSpeed: 12 })}>Surprised</button>
+            <button className="avatar-controls-reset" onClick={() => triggerAnimation('facial', 'wink.json', { blendSpeed: 12 })}>Wink</button>
           </div>
         </div>
       )}

@@ -1,0 +1,13 @@
+{
+  "name": "Happy",
+  "type": "facial",
+  "loop": false,
+  "duration": 1.0,
+  "blendSpeed": 10,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "happy": 0 } },
+    { "time": 0.3, "expressions": { "happy": 1.0, "joy": 0.6 } },
+    { "time": 0.7, "expressions": { "happy": 0.8, "joy": 0.4 } },
+    { "time": 1.0, "expressions": { "happy": 0 } }
+  ]
+}

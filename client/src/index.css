@@ -676,20 +676,50 @@ input:checked + .slider:before {
   to { transform: rotate(360deg); }
 }
 
-/* Avatar: Error */
-.avatar-error {
+/* Avatar: Error Overlay */
+.avatar-error-overlay {
   position: absolute;
-  bottom: 16px;
-  left: 16px;
-  right: 16px;
-  padding: 10px 16px;
-  background: rgba(255, 107, 122, 0.12);
-  border: 1px solid rgba(255, 107, 122, 0.25);
+  inset: 0;
+  background: rgba(20, 5, 8, 0.95); /* Dark solid background instead of blur */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 32px;
+  text-align: center;
+  border: 1px solid rgba(255, 107, 122, 0.1);
+}
+
+.avatar-error-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.avatar-error-text {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  color: var(--color-error);
+  margin-bottom: 24px;
+  line-height: 1.5;
+  max-width: 400px;
+}
+
+.avatar-error-retry {
+  padding: 10px 32px;
+  background: rgba(255, 107, 122, 0.15);
+  border: 1px solid rgba(255, 107, 122, 0.3);
   border-radius: var(--radius-md);
   color: var(--color-error);
-  font-size: 0.82rem;
-  text-align: center;
-  z-index: 5;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.avatar-error-retry:hover {
+  background: rgba(255, 107, 122, 0.25);
+  transform: translateY(-2px);
 }
 
 /* Avatar: Change Button */
@@ -1834,4 +1864,37 @@ input:checked + .slider:before {
 
 .avatar-controls-header .avatar-controls-title {
   margin-bottom: 0;
+}
+
+/* Animation Cards */
+.animation-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  transition: border-color 0.2s ease;
+}
+
+.animation-card:hover {
+  border-color: var(--color-accent);
+}
+
+.animation-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.animation-card-name {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.animation-card-meta {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
 }

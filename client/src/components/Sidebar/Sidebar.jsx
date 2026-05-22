@@ -1,4 +1,5 @@
 import { MessageSquare, Plus, Trash2, Settings } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 export default function Sidebar({
   conversations,
@@ -10,6 +11,7 @@ export default function Sidebar({
   onOpenSettings,
   onClose,
 }) {
+  const { t } = useLanguage();
   return (
     <>
       {/* Mobile overlay */}
@@ -32,8 +34,8 @@ export default function Sidebar({
         <div className="sidebar-header">
           <div className="sidebar-logo">✦</div>
           <div>
-            <div className="sidebar-title">Waifu</div>
-            <div className="sidebar-subtitle">AI Companion</div>
+            <div className="sidebar-title">{t('sidebar.waifu')}</div>
+            <div className="sidebar-subtitle">{t('sidebar.aiCompanion')}</div>
           </div>
         </div>
 
@@ -44,7 +46,7 @@ export default function Sidebar({
           onClick={onNewChat}
         >
           <Plus size={18} />
-          New Chat
+          {t('common.newChat')}
         </button>
 
         {/* Conversation List */}
@@ -60,9 +62,9 @@ export default function Sidebar({
                 size={32}
                 style={{ margin: '0 auto 12px', opacity: 0.3 }}
               />
-              <p>No conversations yet</p>
+              <p>{t('sidebar.noConversations')}</p>
               <p style={{ fontSize: '0.78rem', marginTop: 4 }}>
-                Start a new chat to begin!
+                {t('sidebar.startNewChat')}
               </p>
             </div>
           ) : (
@@ -100,7 +102,7 @@ export default function Sidebar({
             onClick={onOpenSettings}
           >
             <Settings size={16} />
-            Settings
+            {t('common.settings')}
           </button>
         </div>
       </aside>

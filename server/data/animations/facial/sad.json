@@ -1,0 +1,13 @@
+{
+  "name": "Sad",
+  "type": "facial",
+  "loop": false,
+  "duration": 1.2,
+  "blendSpeed": 8,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "sad": 0 } },
+    { "time": 0.4, "expressions": { "sad": 1.0, "sorrow": 0.7 } },
+    { "time": 0.8, "expressions": { "sad": 0.6, "sorrow": 0.4 } },
+    { "time": 1.2, "expressions": { "sad": 0 } }
+  ]
+}

@@ -165,11 +165,6 @@ export default function PackageSelection({ onNext, onPackagesSelected, systemInf
 
   return (
     <div className="setup-screen">
-      <div className="setup-header">
-        <h1>Component Selection</h1>
-        <span className="step-indicator">Step 1 of 2</span>
-      </div>
-
       <div className="package-grid">
         {updatedPackages.map(pkg => {
           const isSelected = selectedIds.has(pkg.id);

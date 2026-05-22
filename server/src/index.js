@@ -7,9 +7,15 @@
 
 import 'dotenv/config';
 import express from 'express';
+import path from 'path';
 import cors from 'cors';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
 import db from './config/database.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Routes
 import chatRoutes from './routes/chat.js';
@@ -18,6 +24,7 @@ import settingsRoutes from './routes/settings.js';
 import ttsRoutes from './routes/tts.js';
 import avatarRoutes, { UPLOADS_BASE } from './routes/avatars.js';
 import setupRoutes from './routes/setup.js';
+import animationRoutes from './routes/animations.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -48,6 +55,37 @@ app.use('/api', (req, res, next) => {
     db.prepare('INSERT INTO users (id) VALUES (?)').run(userId);
   }
 
+  // Seed default avatar if none exist for this user
+  try {
+    const avatarCount = db.prepare('SELECT COUNT(*) as count FROM vrm_models WHERE user_id = ?').get(userId);
+    if (!avatarCount || avatarCount.count === 0) {
+      const AVATARS_DIR = path.join(UPLOADS_BASE, 'avatars');
+      if (!fs.existsSync(AVATARS_DIR)) {
+        fs.mkdirSync(AVATARS_DIR, { recursive: true });
+      }
+      
+      const seedSrc = path.join(__dirname, 'seed.vrm');
+      if (fs.existsSync(seedSrc)) {
+        const seedFilename = `${uuidv4()}.vrm`;
+        const destPath = path.join(AVATARS_DIR, seedFilename);
+        fs.copyFileSync(seedSrc, destPath);
+        
+        const avatarId = uuidv4();
+        const file_path = `/uploads/avatars/${seedFilename}`;
+        
+        db.prepare(`
+          INSERT INTO vrm_models (id, user_id, name, file_path, pfp_path)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(avatarId, userId, 'Default Aria', file_path, null);
+        console.log(`[Seeding] Successfully seeded default avatar for user: ${userId}`);
+      } else {
+        console.warn(`[Seeding] Seed VRM file not found at: ${seedSrc}`);
+      }
+    }
+  } catch (err) {
+    console.error('[Seeding] Error auto-seeding avatar:', err);
+  }
+
   req.headers['x-user-id'] = userId;
   next();
 });
@@ -60,9 +98,11 @@ app.use('/api/settings', settingsRoutes);
 app.use('/api/tts', ttsRoutes);
 app.use('/api/avatars', avatarRoutes);
 app.use('/api/setup', setupRoutes);
+app.use('/api/animations', animationRoutes);
 
-// Static files for uploads
+// Static files
 app.use('/uploads', express.static(UPLOADS_BASE));
+app.use('/animations', express.static(path.resolve('data/animations')));
 
 // Health check
 app.get('/api/health', (req, res) => {

@@ -84,19 +84,14 @@ export async function deleteAvatar(id) {
 
 export function getUploadUrl(path) {
   if (!path) return null;
-  // If it's already a full URL or blob URL, return as is
   if (path.startsWith('http') || path.startsWith('blob:') || path.startsWith('data:')) return path;
-  
-  // Point to the server's static uploads folder
-  // In development, the proxy will handle /uploads
-  const base = API_BASE.replace('/api', '');
+
+  const serverBase = window.location.protocol === 'file:'
+    ? 'http://localhost:3005'
+    : 'http://localhost:3005';
+
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  
-  // If base is empty or just a slash (web proxy), return the absolute path for the browser
-  if (!base || base === '/' || base === '') return cleanPath;
-  
-  // In Electron/Production, join base and path
-  return `${base}${cleanPath}`;
+  return `${serverBase}${cleanPath}`;
 }
 
 // ─── Chat API ──────────────────────────────────────────────────
@@ -175,6 +170,40 @@ export async function getMemories() {
 export async function deleteMemory(id) {
   return request(`/settings/memories/${id}`, { method: 'DELETE' });
 }
+
+// ─── Animations API ─────────────────────────────────────────────
+
+export async function getAnimations() {
+  return request('/animations');
+}
+
+export async function getAnimation(type, filename) {
+  return fetchApi(`/animations/${type}/${filename}`, { method: 'GET' });
+}
+
+export async function getAnimationText(type, filename) {
+  const userId = getUserId();
+  const response = await fetch(`${API_BASE}/animations/${type}/${filename}`, {
+    headers: { 'x-user-id': userId },
+  });
+  if (!response.ok) throw new Error('Failed to fetch animation');
+  return response.text();
+}
+
+export async function deleteAnimation(type, filename) {
+  return request(`/animations/${type}/${filename}`, { method: 'DELETE' });
+}
+
+export async function uploadAnimation(type, file) {
+  const formData = new FormData();
+  formData.append('animation', file);
+  return fetchApi(`/animations/upload/${type}`, {
+    method: 'POST',
+    body: formData,
+  });
+}
+
+// ─── TTS API ──────────────────────────────────────────────────
 
 export async function getTTS(text, voice = 'af_bella', speed = 1.0) {
   const userId = getUserId();

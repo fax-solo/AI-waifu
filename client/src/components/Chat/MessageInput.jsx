@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Send, Mic, MicOff } from 'lucide-react';
 
-export default function MessageInput({ onSend, disabled }) {
+export default function MessageInput({ onSend, disabled, placeholder = "Type a message..." }) {
   const [text, setText] = useState('');
   const textareaRef = useRef(null);
 
@@ -89,7 +89,7 @@ export default function MessageInput({ onSend, disabled }) {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
+          placeholder={placeholder}
           disabled={disabled}
           rows={1}
         />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Menu, Volume2, VolumeX } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import MessageBubble from './MessageBubble.jsx';
 import MessageInput from './MessageInput.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
@@ -26,6 +27,7 @@ export default function ChatWindow({
   ttsEnabled,
   onToggleTTS,
 }) {
+  const { t } = useLanguage();
   const [showError, setShowError] = useState(false);
 
   useEffect(() => {
@@ -143,6 +145,7 @@ export default function ChatWindow({
       <MessageInput
         onSend={onSend}
         disabled={isSending || (rateLimit && rateLimit.remaining <= 0 && !rateLimit.bypassed)}
+        placeholder={t('chat.typeMessage')}
       />
     </div>
   );

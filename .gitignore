@@ -21,6 +21,9 @@ out/
 # Python Virtual Environments
 python/venv/
 python/.venv/
+python/venv_py311/
+python/runtime/
+python/tts_cache/
 venv/
 .venv/
 __pycache__/

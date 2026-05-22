@@ -26,17 +26,44 @@ export default function SetupUI({ onComplete, systemInfo }) {
 
   return (
     <div className="setup-container">
-      <div className={`setup-slider screen-${screen} ${isReady ? 'is-ready' : 'is-mounting'}`}>
-        <PackageSelection 
-          onPackagesSelected={handlePackagesSelected} 
-          onNext={goToInstall} 
-          systemInfo={systemInfo}
-        />
-        <InstallProgress 
-          packages={selectedPackages} 
-          isActive={screen === 2}
-          onComplete={onComplete}
-        />
+      <div className="setup-header">
+        <div className="setup-header-left">
+          <h1>
+            {screen === 1 ? 'Component Selection' : 'Installation'}
+          </h1>
+          <p className="setup-header-subtitle">
+            {screen === 1 
+              ? 'Select components to download and configure local services' 
+              : 'Downloading and configuring local AI companions'}
+          </p>
+        </div>
+        <div className="step-progress-indicator">
+          <div className={`step-dot ${screen >= 1 ? 'active' : ''} ${screen > 1 ? 'completed' : ''}`}>
+            {screen > 1 ? '✓' : '1'}
+          </div>
+          <div className="step-line-connector">
+            <div className="step-line-fill" style={{ width: screen >= 2 ? '100%' : '0%' }}></div>
+          </div>
+          <div className={`step-dot ${screen >= 2 ? 'active' : ''}`}>
+            2
+          </div>
+        </div>
+      </div>
+
+      <div className="setup-content-area">
+        {screen === 1 && (
+          <PackageSelection 
+            onPackagesSelected={handlePackagesSelected} 
+            onNext={goToInstall} 
+            systemInfo={systemInfo}
+          />
+        )}
+        {screen === 2 && (
+          <InstallProgress 
+            packages={selectedPackages} 
+            onComplete={onComplete}
+          />
+        )}
       </div>
     </div>
   );

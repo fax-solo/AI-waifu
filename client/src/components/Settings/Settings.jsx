@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from 'react';
-import { X, User, Sparkles, Key, Brain, Shield, Image, Volume2, Camera, Plus, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { X, User, Sparkles, Key, Brain, Shield, Image, Volume2, Camera, Plus, Trash2, Cpu, Globe, Film, RefreshCw, Play, Upload, FolderOpen } from 'lucide-react';
 import * as api from '../../utils/api.js';
 import { useTTS } from '../../hooks/useTTS.js';
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 const VOICES = [
   { id: 'af_bella', name: 'Bella (US Female)', desc: 'Friendly & clear' },
@@ -28,7 +29,8 @@ const GROQ_MODELS = [
   { id: 'gemma2-9b-it', name: 'Gemma 2 9B', desc: 'Google lightweight model', free: true },
 ];
 
-export default function Settings({ onClose, onVRMFileSelected }) {
+export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
+  const { t, language, setLanguage } = useLanguage();
   const [settings, setSettings] = useState(null);
   const [displayName, setDisplayName] = useState('');
   const [companion, setCompanion] = useState({
@@ -53,9 +55,12 @@ export default function Settings({ onClose, onVRMFileSelected }) {
   const [saveMessage, setSaveMessage] = useState('');
   const [memories, setMemories] = useState([]);
   const [activeTab, setActiveTab] = useState('profile');
+  const [animations, setAnimations] = useState({ facial: [], body: [] });
+  const [animLoading, setAnimLoading] = useState(false);
+  const [testStatus, setTestStatus] = useState({});
   const [currentVRMName, setCurrentVRMName] = useState(null);
   
-  // Avatar Library State
+  // {t('settings.avatar.title')} State
   const [avatars, setAvatars] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [showUploadForm, setShowUploadForm] = useState(false);
@@ -68,6 +73,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
 
   const fileInputRef = useRef(null);
   const pfpInputRef = useRef(null);
+  const animFileInputRef = useRef(null);
 
   // Audio Devices State
   const [audioDevices, setAudioDevices] = useState({
@@ -161,6 +167,57 @@ export default function Settings({ onClose, onVRMFileSelected }) {
       navigator.mediaDevices.ondevicechange = null;
     };
   }, []);
+
+  const loadAnimations = useCallback(async () => {
+    setAnimLoading(true);
+    try {
+      const data = await api.getAnimations();
+      setAnimations(data);
+    } catch (e) {
+      console.error('Failed to load animations:', e);
+    }
+    setAnimLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'animations') loadAnimations();
+  }, [activeTab, loadAnimations]);
+
+  const handleTestAnimation = (type, filename) => {
+    const key = `${type}/${filename}`;
+    setTestStatus((p) => ({ ...p, [key]: 'playing' }));
+    if (avatarRef?.current?.triggerAnimation) {
+      avatarRef.current.triggerAnimation(type, filename, { blendSpeed: 8 });
+    }
+    setTimeout(() => {
+      setTestStatus((p) => ({ ...p, [key]: 'idle' }));
+    }, 2000);
+  };
+
+  const handleDeleteAnimation = async (type, filename) => {
+    try {
+      await api.deleteAnimation(type, filename);
+      loadAnimations();
+    } catch (e) {
+      console.error('Failed to delete animation:', e);
+    }
+  };
+
+  const handleUploadAnimation = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    setAnimLoading(true);
+    for (const file of files) {
+      try {
+        await api.uploadAnimation('body', file);
+      } catch (err) {
+        console.error('Failed to upload animation:', err);
+      }
+    }
+    loadAnimations();
+    e.target.value = '';
+    setAnimLoading(false);
+  };
 
   const loadMemories = async () => {
     try {
@@ -333,12 +390,13 @@ export default function Settings({ onClose, onVRMFileSelected }) {
 
 
   const tabs = [
-    { id: 'profile', label: 'Profile', icon: User },
-    { id: 'companion', label: 'Companion', icon: Sparkles },
-    { id: 'avatar', label: 'Avatar', icon: Image },
-    { id: 'voice', label: 'Voice', icon: Volume2 },
-    { id: 'apikey', label: 'API Key', icon: Key },
-    { id: 'memories', label: 'Memories', icon: Brain },
+    { id: 'profile', label: t('settings.tabs.profile'), icon: User },
+    { id: 'companion', label: t('settings.tabs.companion'), icon: Sparkles },
+    { id: 'avatar', label: t('settings.tabs.avatar'), icon: Image },
+    { id: 'voice', label: t('settings.tabs.voice'), icon: Volume2 },
+    { id: 'apikey', label: t('settings.tabs.apikey'), icon: Key },
+    { id: 'memories', label: t('settings.tabs.memories'), icon: Brain },
+    { id: 'animations', label: t('settings.tabs.animations'), icon: Film },
   ];
 
   return (
@@ -392,8 +450,32 @@ export default function Settings({ onClose, onVRMFileSelected }) {
           {activeTab === 'profile' && (
             <div className="settings-section">
               <div className="settings-section-title">
+                <Globe size={18} className="icon" />
+                {t('settings.system.language')}
+              </div>
+              <div className="form-group" style={{ marginBottom: 24 }}>
+                <label>{t('settings.system.selectLanguage')}</label>
+                <select 
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    borderRadius: 'var(--radius-md)',
+                    background: 'var(--color-surface)',
+                    border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  <option value="en">{t('settings.system.english')}</option>
+                  <option value="ar">{t('settings.system.arabic')}</option>
+                </select>
+              </div>
+
+              <div className="settings-section-title">
                 <User size={18} className="icon" />
-                Your Profile
+                {t('settings.profile.title')}
               </div>
               <div className="form-group">
                 <label htmlFor="display-name">Display Name</label>
@@ -417,7 +499,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
             <div className="settings-section">
               <div className="settings-section-title">
                 <Sparkles size={18} className="icon" />
-                Companion Personality
+                {t('settings.companion.title')}
               </div>
               <div className="form-group">
                 <label htmlFor="companion-name">Companion Name</label>
@@ -471,7 +553,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
             <div className="settings-section">
               <div className="settings-section-title">
                 <Image size={18} className="icon" />
-                Avatar Library
+                {t('settings.avatar.title')}
                 <button 
                   className="btn btn-secondary" 
                   style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: '0.75rem' }}
@@ -676,7 +758,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
             <div className="settings-section">
               <div className="settings-section-title">
                 <Volume2 size={18} className="icon" />
-                Text-to-Speech Voice
+                {t('settings.voice.title')}
               </div>
 
               <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -686,20 +768,20 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                   checked={companion.ttsEnabled}
                   onChange={(e) => setCompanion({ ...companion, ttsEnabled: e.target.checked })}
                 />
-                <label htmlFor="tts-enabled" style={{ margin: 0 }}>Enable Voice Synthesizer</label>
+                <label htmlFor="tts-enabled" style={{ margin: 0 }}>{t('settings.voice.enableTTS')}</label>
               </div>
 
               {companion.ttsEnabled && (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
                     <div className="form-group">
-                      <label>Microphone (Input)</label>
+                      <label>{t('settings.voice.mic')}</label>
                       <select 
                         value={companion.audioInputDevice} 
                         onChange={(e) => setCompanion({ ...companion, audioInputDevice: e.target.value })}
                         style={{ width: '100%', padding: '8px', borderRadius: '4px', background: 'var(--color-bg-secondary)', color: 'white', border: '1px solid var(--color-border)' }}
                       >
-                        <option value="default">System Default</option>
+                        <option value="default">{t('settings.voice.systemDefault')}</option>
                         {audioDevices.inputs.map(d => (
                           <option key={d.id} value={d.id}>{d.label}</option>
                         ))}
@@ -707,13 +789,13 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                     </div>
 
                     <div className="form-group">
-                      <label>Speaker (Output)</label>
+                      <label>{t('settings.voice.speaker')}</label>
                       <select 
                         value={companion.audioOutputDevice} 
                         onChange={(e) => setCompanion({ ...companion, audioOutputDevice: e.target.value })}
                         style={{ width: '100%', padding: '8px', borderRadius: '4px', background: 'var(--color-bg-secondary)', color: 'white', border: '1px solid var(--color-border)' }}
                       >
-                        <option value="default">System Default</option>
+                        <option value="default">{t('settings.voice.systemDefault')}</option>
                         {audioDevices.outputs.map(d => (
                           <option key={d.id} value={d.id}>{d.label}</option>
                         ))}
@@ -721,18 +803,18 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                     </div>
 
                     <div className="form-group">
-                      <label>Hardware Acceleration</label>
+                      <label>{t('settings.voice.hardwareAccel')}</label>
                       <select 
                         value={companion.ttsDevice} 
                         onChange={(e) => setCompanion({ ...companion, ttsDevice: e.target.value })}
                         style={{ width: '100%', padding: '8px', borderRadius: '4px', background: 'var(--color-bg-secondary)', color: 'white', border: '1px solid var(--color-border)' }}
                       >
-                        <option value="cpu">CPU (Standard)</option>
-                        <option value="gpu">GPU (Hardware Accelerated)</option>
+                        <option value="cpu">{t('settings.voice.cpuStandard')}</option>
+                        <option value="gpu">{t('settings.voice.gpuAccel')}</option>
                       </select>
                       <div className="hint">
                         {ttsStatus.device.includes('gpu') || ttsStatus.device === 'cuda'
-                          ? `✅ GPU Hardware Acceleration ACTIVE (${ttsStatus.device}).`
+                          ? `✅ GPU {t('settings.voice.hardwareAccel')} ACTIVE (${ttsStatus.device}).`
                           : ttsStatus.status === 'offline'
                           ? "❌ TTS Server Offline."
                           : "⚠️ GPU NOT FOUND. PyTorch is running on CPU."}
@@ -740,14 +822,14 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                     </div>
 
                     <div className="form-group">
-                      <label>TTS Engine</label>
+                      <label>{t('settings.voice.ttsEngine')}</label>
                       <select 
                         value={companion.ttsEngine} 
                         onChange={(e) => setCompanion({ ...companion, ttsEngine: e.target.value })}
                         style={{ width: '100%', padding: '8px', borderRadius: '4px', background: 'var(--color-bg-secondary)', color: 'white', border: '1px solid var(--color-border)' }}
                       >
-                        <option value="onnx">ONNX (Standard)</option>
-                        <option value="torch">PyTorch (Requires torch)</option>
+                        <option value="onnx">{t('settings.voice.onnxStandard')}</option>
+                        <option value="torch">{t('settings.voice.torchFull')}</option>
                       </select>
                       <div className="hint">
                         {companion.ttsEngine === 'torch' 
@@ -758,7 +840,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                   </div>
 
                   <div className="form-group" style={{ marginBottom: '24px' }}>
-                    <label>Test Voice Model</label>
+                    <label>{t('settings.voice.testVoice')}</label>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <input 
                         type="text" 
@@ -787,7 +869,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                     </div>
                   </div>
 
-                  <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem' }}>Available Voices</label>
+                  <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem' }}>{t('settings.voice.availableVoices')}</label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
                     {VOICES.map((v) => (
                       <div 
@@ -811,7 +893,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
               )}
               
               <button className="btn btn-primary btn-save" onClick={handleSave} disabled={saving} style={{ marginTop: '24px' }}>
-                {saving ? 'Saving...' : 'Save Voice Settings'}
+                {saving ? 'Saving...' : t('settings.voice.save')}
               </button>
             </div>
           )}
@@ -821,10 +903,10 @@ export default function Settings({ onClose, onVRMFileSelected }) {
             <div className="settings-section">
               <div className="settings-section-title">
                 <Sparkles size={18} className="icon" />
-                AI Model Selection
+                {t('settings.apikey.modelSelectionTitle')}
               </div>
               <div className="form-group" style={{ marginBottom: 24 }}>
-                <label>AI Provider</label>
+                <label>{t('settings.apikey.aiProvider')}</label>
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                   <button 
                     className={`btn ${companion.llmProvider === 'gemini' ? 'btn-primary' : 'btn-secondary'}`}
@@ -842,7 +924,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                   </button>
                 </div>
 
-                <label htmlFor="llm-model">Preferred {companion.llmProvider === 'groq' ? 'Groq' : 'Gemini'} Model</label>
+                <label htmlFor="llm-model">{t('settings.apikey.preferredModel').replace('{provider}', companion.llmProvider === 'groq' ? 'Groq' : 'Gemini')}</label>
                 <select
                   id="llm-model"
                   value={companion.llmModel}
@@ -872,25 +954,25 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                   onClick={handleSave} 
                   disabled={saving}
                 >
-                  {saving ? 'Saving...' : 'Update Model Selection'}
+                  {saving ? 'Saving...' : t('settings.apikey.updateModel')}
                 </button>
               </div>
 
               <div className="settings-section-title" style={{ marginTop: 32 }}>
                 <Key size={18} className="icon" />
-                Bring Your Own API Key
+                {t('settings.apikey.bringYourOwnKey')}
               </div>
               <div className="api-key-section" style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: '24px', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                   <img src="https://www.gstatic.com/lamda/images/favicon_v2_16x16.png" alt="Gemini" style={{ width: 16, height: 16 }} />
-                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Google Gemini Key</span>
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t('settings.apikey.geminiKey')}</span>
                 </div>
                 
                 <div className={`api-key-status ${hasCustomKey ? 'active' : 'inactive'}`} style={{ marginBottom: 12 }}>
                   <Shield size={16} />
                   {hasCustomKey
-                    ? 'Custom Gemini key active'
-                    : 'Using default server Gemini key'
+                    ? t('settings.apikey.customGeminiActive')
+                    : t('settings.apikey.defaultGeminiActive')
                   }
                 </div>
 
@@ -900,7 +982,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                       type="password"
                       value={apiKeyInput}
                       onChange={(e) => setApiKeyInput(e.target.value)}
-                      placeholder="Paste Gemini API key..."
+                      placeholder={t("settings.apikey.pasteGeminiKey")}
                       style={{ flex: 1 }}
                     />
                     <button className="btn btn-primary" onClick={handleSetApiKey} disabled={saving || !apiKeyInput.trim()}>
@@ -909,25 +991,25 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                   </div>
                 ) : (
                   <button className="btn btn-danger" onClick={handleRemoveApiKey} style={{ width: '100%' }}>
-                    Remove Gemini Key
+                    {t('settings.apikey.removeGeminiKey')}
                   </button>
                 )}
                 <div className="hint" style={{ marginTop: 8 }}>
-                  Get a free key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>
+                  {t('settings.apikey.getFreeKeyAt')} <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>
                 </div>
               </div>
 
               <div className="api-key-section">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                   <div style={{ width: 16, height: 16, background: '#f55036', borderRadius: '4px' }} />
-                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Groq API Key (Fastest)</span>
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t('settings.apikey.groqKey')}</span>
                 </div>
 
                 <div className={`api-key-status ${hasGroqKey ? 'active' : 'inactive'}`} style={{ marginBottom: 12 }}>
                   <Shield size={16} />
                   {hasGroqKey
-                    ? 'Custom Groq key active'
-                    : 'Using default server Groq key'
+                    ? t('settings.apikey.customGroqActive')
+                    : t('settings.apikey.defaultGroqActive')
                   }
                 </div>
 
@@ -937,7 +1019,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                       type="password"
                       value={groqApiKeyInput}
                       onChange={(e) => setGroqApiKeyInput(e.target.value)}
-                      placeholder="Paste Groq API key (gsk_...)"
+                      placeholder={t("settings.apikey.pasteGroqKey")}
                       style={{ flex: 1 }}
                     />
                     <button className="btn btn-primary" onClick={handleSetGroqKey} disabled={saving || !groqApiKeyInput.trim()}>
@@ -946,11 +1028,11 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                   </div>
                 ) : (
                   <button className="btn btn-danger" onClick={handleRemoveGroqKey} style={{ width: '100%' }}>
-                    Remove Groq Key
+                    {t('settings.apikey.removeGroqKey')}
                   </button>
                 )}
                 <div className="hint" style={{ marginTop: 8 }}>
-                  Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">Groq Console</a>
+                  {t('settings.apikey.getFreeKeyAt')} <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">Groq Console</a>
                 </div>
               </div>
             </div>
@@ -961,7 +1043,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
             <div className="settings-section">
               <div className="settings-section-title">
                 <Brain size={18} className="icon" />
-                What I Remember About You
+                {t('settings.memories.title')}
               </div>
               {memories.length === 0 ? (
                 <div style={{
@@ -971,7 +1053,7 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                   fontSize: '0.85rem',
                 }}>
                   <Brain size={32} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
-                  <p>No memories yet! Chat with me and I'll start remembering things about you.</p>
+                  <p>{t('settings.memories.empty')}</p>
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1002,6 +1084,120 @@ export default function Settings({ onClose, onVRMFileSelected }) {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Animations Tab */}
+          {activeTab === 'animations' && (
+            <div className="settings-section">
+              <div className="settings-section-title">
+                <Film size={18} className="icon" />
+                {t('settings.animations.title')}
+              </div>
+              <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: 16 }}>
+                {t('settings.animations.hint')}
+              </p>
+
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                <button className="btn btn-primary" onClick={loadAnimations} disabled={animLoading} style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
+                  <RefreshCw size={14} style={{ marginRight: 6 }} />
+                  {t('settings.animations.refresh')}
+                </button>
+                <button className="btn btn-primary" onClick={() => animFileInputRef.current?.click()} disabled={animLoading} style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
+                  <Upload size={14} style={{ marginRight: 6 }} />
+                  {t('settings.animations.upload')}
+                </button>
+                <input
+                  ref={animFileInputRef}
+                  type="file"
+                  accept=".json,.bvh"
+                  multiple
+                  style={{ display: 'none' }}
+                  onChange={handleUploadAnimation}
+                />
+              </div>
+
+              {/* Facial Expressions */}
+              <div style={{ marginBottom: 20 }}>
+                <h4 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
+                  {t('settings.animations.facial')}
+                </h4>
+                {animations.facial.length === 0 ? (
+                  <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.82rem', background: 'var(--color-surface)', borderRadius: 'var(--radius-md)' }}>
+                    {t('settings.animations.empty')}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {animations.facial.map((anim) => (
+                      <div key={anim.filename} className="animation-card">
+                        <div className="animation-card-info">
+                          <span className="animation-card-name">{anim.name}</span>
+                          <span className="animation-card-meta">{anim.duration.toFixed(1)}s {anim.loop ? '(loop)' : ''}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                            onClick={() => handleTestAnimation('facial', anim.filename)}
+                            disabled={testStatus[`facial/${anim.filename}`] === 'playing'}>
+                            <Play size={12} style={{ marginRight: 4 }} />
+                            {testStatus[`facial/${anim.filename}`] === 'playing' ? t('common.playing') : t('common.test')}
+                          </button>
+                          <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                            onClick={() => handleDeleteAnimation('facial', anim.filename)}>
+                            {t('common.delete')}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Body Animations */}
+              <div>
+                <h4 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
+                  {t('settings.animations.body')}
+                </h4>
+                {animations.body.length === 0 ? (
+                  <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.82rem', background: 'var(--color-surface)', borderRadius: 'var(--radius-md)' }}>
+                    {t('settings.animations.empty')}
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {animations.body.map((anim) => (
+                      <div key={anim.filename} className="animation-card">
+                        <div className="animation-card-info">
+                          <span className="animation-card-name">
+                            {anim.name}
+                            {anim.format === 'bvh' && (
+                              <span style={{ marginLeft: 6, fontSize: '0.65rem', fontWeight: 600, color: '#a78bfa', background: 'rgba(167,139,250,0.15)', padding: '1px 6px', borderRadius: 4, verticalAlign: 'middle' }}>BVH</span>
+                            )}
+                          </span>
+                          <span className="animation-card-meta">{anim.duration.toFixed(1)}s {anim.loop ? '(loop)' : ''} {anim.format === 'bvh' ? '| motion capture' : ''}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                            onClick={() => handleTestAnimation('body', anim.filename)}
+                            disabled={testStatus[`body/${anim.filename}`] === 'playing'}>
+                            <Play size={12} style={{ marginRight: 4 }} />
+                            {testStatus[`body/${anim.filename}`] === 'playing' ? t('common.playing') : t('common.test')}
+                          </button>
+                          <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                            onClick={() => handleDeleteAnimation('body', anim.filename)}>
+                            {t('common.delete')}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginTop: 20, padding: 12, background: 'var(--color-surface)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--color-border)', textAlign: 'center' }}>
+                <FolderOpen size={20} style={{ opacity: 0.4, marginBottom: 4 }} />
+                <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', margin: 0 }}>
+                  {t('settings.animations.folderHint')}
+                </p>
+              </div>
             </div>
           )}
 

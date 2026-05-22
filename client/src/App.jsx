@@ -1,3 +1,4 @@
+import { useLanguage } from './contexts/LanguageContext.jsx';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useChat } from './hooks/useChat.js';
 import Sidebar from './components/Sidebar/Sidebar.jsx';
@@ -12,6 +13,7 @@ const MIN_PANEL_WIDTH = 250;
 const DEFAULT_PANEL_WIDTH = 400;
 
 export default function App() {
+  const { t } = useLanguage();
   const [showSetup, setShowSetup] = useState(false);
   const [checkingSetup, setCheckingSetup] = useState(true);
   const [systemInfo, setSystemInfo] = useState(null);
@@ -94,11 +96,23 @@ export default function App() {
   useEffect(() => {
     async function loadActiveAvatar() {
       const savedId = localStorage.getItem('waifu-vrm-id');
-      if (!savedId) return;
 
       try {
         const avatars = await api.getAvatars();
-        const active = avatars.find(a => a.id === savedId);
+        if (avatars.length === 0) return;
+
+        let active = null;
+        if (savedId) {
+          active = avatars.find(a => a.id === savedId);
+        }
+
+        // Fallback: If no saved avatar or saved avatar was deleted, use the first one from the list
+        if (!active) {
+          active = avatars[0];
+          localStorage.setItem('waifu-vrm-id', active.id);
+          localStorage.setItem('waifu-vrm-name', active.name);
+        }
+
         if (active && avatarRef.current) {
           const url = api.getUploadUrl(active.file_path);
           avatarRef.current.loadFile(url);
@@ -204,7 +218,7 @@ export default function App() {
   if (checkingSetup) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'center', height: '100vh', background: '#0f1115', color: '#e6edf3' }}>
-        <div style={{ margin: 'auto' }}>Checking system status...</div>
+        <div style={{ margin: 'auto' }}>{t('setup.checking')}</div>
       </div>
     );
   }
@@ -281,6 +295,11 @@ export default function App() {
         <Settings
           onClose={handleSettingsClose}
           onVRMFileSelected={handleVRMFileSelected}
+          avatarRef={avatarRef}
+          onTriggerSetup={() => {
+            setShowSettings(false);
+            setShowSetup(true);
+          }}
         />
       )}
     </div>

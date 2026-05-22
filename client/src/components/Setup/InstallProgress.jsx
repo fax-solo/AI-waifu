@@ -1,6 +1,8 @@
+import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function InstallProgress({ packages, onComplete, isActive }) {
+export default function InstallProgress({ packages, onComplete }) {
+  const { t } = useLanguage();
   const [logOpen, setLogOpen] = useState(false);
   const [logs, setLogs] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -19,7 +21,7 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
   }, [logs, logOpen]);
 
   useEffect(() => {
-    if (!isActive || isFinished || !hasStarted || packages.length === 0) return;
+    if (isFinished || !hasStarted || packages.length === 0) return;
 
     // Small delay to allow the screen transition animation to finish (0.6s)
     const timer = setTimeout(() => {
@@ -78,7 +80,7 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive]);
+  }, [hasStarted, isFinished]);
 
   // Calculate overall progress
   const totalWeight = packages.length * 100;
@@ -87,18 +89,13 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
 
   return (
     <div className="setup-screen">
-      <div className="setup-header">
-        <h1>Installation</h1>
-        <span className="step-indicator">Step 2 of 2</span>
-      </div>
-
       {!isFinished ? (
         <div className="install-container">
           {!hasStarted ? (
             <div className="confirmation-overlay">
               <div className="confirmation-card">
-                <h2>Confirm Installation</h2>
-                <p>The app will now download and configure the following components:</p>
+                <h2>{t('setup.confirmTitle')}</h2>
+                <p>{t('setup.confirmDesc')}</p>
                 <div className="summary-list">
                   {packages.map(pkg => (
                     <div key={pkg.id} className="summary-item">
@@ -108,7 +105,7 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
                   ))}
                 </div>
                 <button className="btn-primary" onClick={() => setHasStarted(true)} style={{ width: '100%', marginTop: '1.5rem', height: '3.5rem', fontSize: '1.125rem' }}>
-                  Start Installation
+                  {t('setup.startInstall')}
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="7 13 12 18 17 13"></polyline>
                     <polyline points="7 6 12 11 17 6"></polyline>
@@ -120,7 +117,7 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
             <>
               <div className="overall-progress">
                 <div className="progress-header">
-                  <h2>Installing Components</h2>
+                  <h2>{t('setup.installingComponents')}</h2>
                   <span className="progress-percentage">{overallProgress}%</span>
                 </div>
                 <div className="progress-bar-container">
@@ -156,7 +153,7 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
                       </div>
                       <div className={`item-status ${status}`}>
                         {status === 'active' ? `Installing... ${Math.floor(progress)}%` : 
-                         status === 'done' ? 'Installed' : 'Waiting...'}
+                         status === 'done' ? t('setup.installStatusInstalled') : t('setup.installStatusWaiting')}
                       </div>
                     </div>
                   );
@@ -173,8 +170,8 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
               <polyline points="22 4 12 14.01 9 11.01"></polyline>
             </svg>
           </div>
-          <h2>Ready to Launch</h2>
-          <p>All selected components have been successfully downloaded and configured.</p>
+          <h2>{t('setup.readyToLaunch')}</h2>
+          <p>{t('setup.readyDesc')}</p>
           <button className="btn-primary" onClick={onComplete} style={{ fontSize: '1.125rem', padding: '1rem 2.5rem' }}>
             Launch App
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -193,13 +190,13 @@ export default function InstallProgress({ packages, onComplete, isActive }) {
             <line x1="14" y1="10" x2="21" y2="3"></line>
             <line x1="3" y1="21" x2="10" y2="14"></line>
           </svg>
-          {logOpen ? 'Hide Log' : 'Show Log'}
+          {logOpen ? t('setup.hideLog') : t('setup.showLog')}
         </button>
       </div>
 
       <div className={`log-drawer ${!logOpen ? 'closed' : ''}`} style={{ height: '300px' }}>
         <div className="log-header">
-          <span className="log-title">Console Output</span>
+          <span className="log-title">{t('setup.consoleOutput')}</span>
           <button style={{ background: 'transparent', border: 'none', color: 'var(--setup-text-secondary)', cursor: 'pointer' }} onClick={() => setLogOpen(false)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>

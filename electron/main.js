@@ -23,14 +23,30 @@ function startTTSSidecar() {
   // Resolve python path
   let pythonPath;
   if (!isPackaged) {
-    pythonPath = process.platform === 'win32'
-      ? path.join(__dirname, '../python/venv/Scripts/python.exe')
-      : path.join(__dirname, '../python/venv/bin/python');
+    const py311Path = process.platform === 'win32'
+      ? path.join(__dirname, '../python/venv_py311/Scripts/python.exe')
+      : path.join(__dirname, '../python/venv_py311/bin/python');
+      
+    if (fs.existsSync(py311Path)) {
+      pythonPath = py311Path;
+    } else {
+      pythonPath = process.platform === 'win32'
+        ? path.join(__dirname, '../python/venv/Scripts/python.exe')
+        : path.join(__dirname, '../python/venv/bin/python');
+    }
   } else {
     // In production, check for venv in the resources folder
-    pythonPath = process.platform === 'win32'
-      ? path.join(process.resourcesPath, 'python/venv/Scripts/python.exe')
-      : path.join(process.resourcesPath, 'python/venv/bin/python');
+    const py311Path = process.platform === 'win32'
+      ? path.join(process.resourcesPath, 'python/venv_py311/Scripts/python.exe')
+      : path.join(process.resourcesPath, 'python/venv_py311/bin/python');
+      
+    if (fs.existsSync(py311Path)) {
+      pythonPath = py311Path;
+    } else {
+      pythonPath = process.platform === 'win32'
+        ? path.join(process.resourcesPath, 'python/venv/Scripts/python.exe')
+        : path.join(process.resourcesPath, 'python/venv/bin/python');
+    }
   }
 
   const scriptPath = !isPackaged
@@ -127,6 +143,19 @@ function createWindow() {
     win.loadFile(path.join(__dirname, '../client/dist/index.html'));
   }
 }
+
+// ─── GPU Fix: NVIDIA + Wayland/Hyprland + Electron ──────────────────────────
+// Root cause: Chromium's Ozone layer uses DMA-BUF to share GPU textures between
+// its internal processes. NVIDIA's Wayland EGL implementation does NOT support
+// the DMA-BUF formats Ozone expects, causing eglCreateImage failures and
+// OzoneImageBacking crashes.
+//
+// Fix: Force XWayland mode (where NVIDIA's GL stack is battle-tested) and run
+// the GPU in-process to bypass the broken inter-process texture sharing entirely.
+app.commandLine.appendSwitch('ozone-platform', 'x11');
+app.commandLine.appendSwitch('in-process-gpu');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('enable-webgl');
 
 app.whenReady().then(() => {
   startTTSSidecar();

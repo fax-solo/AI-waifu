@@ -44,7 +44,8 @@ router.get('/status', async (req, res) => {
       : (process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd());
       
     const pythonDir = path.join(rootDir, 'python');
-    const venvPath = path.join(pythonDir, 'venv');
+    const venvDirName = fs.existsSync(path.join(pythonDir, 'venv_py311')) ? 'venv_py311' : 'venv';
+    const venvPath = path.join(pythonDir, venvDirName);
     const modelsPath = path.join(rootDir, 'models.json');
     
     let modelsMissing = false;
@@ -65,7 +66,7 @@ router.get('/status', async (req, res) => {
 
     const isWindows = os.platform() === 'win32';
     const binDir = isWindows ? path.join(venvPath, 'Scripts') : path.join(venvPath, 'bin');
-    const venvValid = fs.existsSync(venvPath) && fs.existsSync(binDir);
+    const venvValid = (fs.existsSync(venvPath) && fs.existsSync(binDir)) || fs.existsSync(path.join(pythonDir, 'venv_py311'));
 
     const gpuInfo = await getGpuInfo();
 
@@ -313,6 +314,7 @@ router.get('/stream', async (req, res) => {
       
     const modelsPath = path.join(rootDir, 'models.json');
     const VENV_PATH = path.join(rootDir, 'python');
+    const venvDirName = fs.existsSync(path.join(VENV_PATH, 'venv_py311')) ? 'venv_py311' : 'venv';
     
     let packagesToDownload = [];
     if (fs.existsSync(modelsPath)) {
@@ -361,7 +363,7 @@ router.get('/stream', async (req, res) => {
 
     for (const pkg of targetPackages) {
       if (pkg.type === 'python-env') {
-        await bootstrapPython(pkg.id, path.join(VENV_PATH, 'venv'), sendEvent, gpuNvidia, gpuAmd, gpuName);
+        await bootstrapPython(pkg.id, path.join(VENV_PATH, venvDirName), sendEvent, gpuNvidia, gpuAmd, gpuName);
         continue;
       }
 

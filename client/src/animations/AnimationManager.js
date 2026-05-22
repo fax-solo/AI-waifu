@@ -1,94 +1,136 @@
-/**
- * AnimationManager
- * 
- * Orchestrates all procedural animations for the VRM model.
- * This is the central point for adding new animations without cluttering the viewport.
- */
-
 import { useCallback, useMemo, useRef } from 'react';
-console.log('[AnimationManager] Module Loaded');
-import { useBasePose } from './useBasePose.js';
-import { useThinkingAnimation } from './useThinkingAnimation.js';
-import { useTalkingAnimation } from './useTalkingAnimation.js';
-import { useEmoteAnimation } from './useEmoteAnimation.js';
-import { useWalkingAnimation } from './useWalkingAnimation.js';
-import { useStanceAnimation } from './useStanceAnimation.js';
-import { useBodyMotion } from './useBodyMotion.js';
-import { useIdleAnimation } from '../components/Avatar/useIdleAnimation.js';
-import { useEmotionAnimation } from '../components/Avatar/useEmotionAnimation.js';
+import { useBuiltinAnimations } from './useBuiltinAnimations.js';
+import { useAnimationPlayer } from './useAnimationPlayer.js';
 
 export function useAnimationManager() {
-  const { applyBasePose } = useBasePose();
-  const { updateThinking } = useThinkingAnimation();
-  const { updateTalking } = useTalkingAnimation();
-  const { updateEmote, triggerEmote } = useEmoteAnimation();
-  const { updateWalking } = useWalkingAnimation();
-  const { updateStance, triggerStance } = useStanceAnimation();
-  const { updateBody } = useBodyMotion();
-  const { updateIdle } = useIdleAnimation();
-  const { updateEmotion } = useEmotionAnimation();
+  const { updateBuiltins } = useBuiltinAnimations();
+  const { playAnimation, stopAnimation, stopAllAnimations, listAnimations, updateAnimations: updatePlayer } = useAnimationPlayer();
 
-  const currentVrmRef = useRef(null);
   const lastEmotionRef = useRef('neutral');
+  const autoAnimationsRef = useRef({});
 
   const updateAnimations = useCallback((vrm, deltaTime, state) => {
     if (!vrm) return;
 
-    // --- Smart Emotional Context System ---
-    const currentEmotion = state.emotion || 'neutral';
-    if (currentEmotion !== lastEmotionRef.current && state.autoAnimate && !state.isTesting) {
-      // Ignore rapid fluctuations during "thinking" to prevent "shaking"
-      if (!state.isThinking || Math.random() > 0.7) {
-        console.log(`[AnimationManager] Emotion changed: ${lastEmotionRef.current} -> ${currentEmotion}`);
-        
-        // Trigger context-aware animations
-        if (currentEmotion === 'surprised') {
-          triggerEmote('surprised', 0.6);
-        } else if (currentEmotion === 'angry') {
-          triggerEmote('angry', 0.8);
-        } else if (currentEmotion === 'sad') {
-          triggerEmote('sad', 1.2);
-        } else if (currentEmotion === 'happy') {
-          triggerEmote('happy_jump', 0.7);
-        } else if (currentEmotion === 'relaxed') {
-          triggerEmote('tilt', 1.0);
-        }
-        
-        lastEmotionRef.current = currentEmotion;
-      }
-    }
-    
-    // Reset to base
+    // Reset all bones to neutral
     applyBasePose(vrm);
 
-    // Always update stance and body layers to keep a natural pose
-    updateStance(vrm, deltaTime, state.autoAnimate);
-    updateBody(vrm, deltaTime, state.autoAnimate);
-    updateWalking(vrm, deltaTime, state.isWalking);
-    
-    // The new 2.1 Idle handles everything (eyes, breath, sway, weight shift)
-    updateIdle(vrm, deltaTime, state.emotion || 'neutral', state.isTesting);
+    // Run built-in procedural animations (blink, breathing, eye tracking)
+    updateBuiltins(vrm, deltaTime, {
+      mouseX: state.mouseX || 0,
+      mouseY: state.mouseY || 0,
+      mouseMoving: state.mouseMoving || false,
+    });
 
-    updateThinking(vrm, deltaTime, state.isThinking);
-    updateTalking(vrm, deltaTime, state.isTalking, state.analyser);
-    
-    // Only update base emotion if:
-    // - No active procedural emote is modifying expressions
-    // - Model is NOT talking (lip sync needs exclusive control of the mouth)
-    const emoteActive = updateEmote(vrm, deltaTime);
-    
-    if (!emoteActive && !state.isTalking) {
-      updateEmotion(vrm, state.emotion, deltaTime);
+    // Run user-provided JSON animations from the player
+    updatePlayer(vrm, deltaTime);
+
+    // Auto-trigger facial animation when emotion changes
+    const currentEmotion = state.emotion || 'neutral';
+    if (currentEmotion !== lastEmotionRef.current && state.autoAnimate && !state.isTesting) {
+      lastEmotionRef.current = currentEmotion;
+      if (currentEmotion !== 'neutral') {
+        const facialAnim = `facial/${currentEmotion}.json`;
+        playAnimation('facial', `${currentEmotion}.json`, { blendSpeed: 10 });
+        const bodyAnimFile = `${currentEmotion}.json`;
+        const bodyAnims = {
+          happy: 'jump.json',
+          surprised: 'jump.json',
+        };
+        if (bodyAnims[currentEmotion]) {
+          playAnimation('body', bodyAnims[currentEmotion], { blendSpeed: 8 });
+        }
+      }
     }
-    
+
+    // Auto-play talking gestures when talking
+    if (state.isTalking) {
+      if (!autoAnimationsRef.current.talking) {
+        autoAnimationsRef.current.talking = playAnimation('body', 'talking_gestures.json', { blendSpeed: 6 });
+      }
+    } else if (autoAnimationsRef.current.talking) {
+      stopAnimation(autoAnimationsRef.current.talking);
+      autoAnimationsRef.current.talking = null;
+    }
+
+    // Auto-play thinking when thinking
+    if (state.isThinking) {
+      if (!autoAnimationsRef.current.thinking) {
+        autoAnimationsRef.current.thinking = playAnimation('body', 'thinking.json', { blendSpeed: 8 });
+      }
+    } else if (autoAnimationsRef.current.thinking) {
+      stopAnimation(autoAnimationsRef.current.thinking);
+      autoAnimationsRef.current.thinking = null;
+    }
+
     vrm.update(deltaTime);
-  }, [applyBasePose, updateThinking, updateTalking, updateEmote, updateWalking, updateStance, updateBody, updateIdle, updateEmotion]);
+
+    if (vrm.springBoneManager) {
+      vrm.springBoneManager.update(deltaTime);
+    }
+  }, [updateBuiltins, updatePlayer, playAnimation, stopAnimation]);
+
+  const triggerAnimation = useCallback((type, filename, options = {}) => {
+    return playAnimation(type, filename, options);
+  }, [playAnimation]);
 
   return useMemo(() => ({
     updateAnimations,
-    triggerEmote,
-    triggerStance
-  }), [updateAnimations, triggerEmote, triggerStance]);
+    triggerAnimation,
+    listAnimations,
+    stopAnimation,
+    stopAllAnimations,
+  }), [updateAnimations, triggerAnimation, listAnimations, stopAnimation, stopAllAnimations]);
+}
+
+function applyBasePose(vrm) {
+  if (!vrm || !vrm.humanoid) return;
+
+  const bones = [
+    'hips', 'spine', 'chest', 'neck', 'head',
+    'leftUpperArm', 'leftLowerArm', 'leftHand',
+    'rightUpperArm', 'rightLowerArm', 'rightHand',
+    'leftUpperLeg', 'leftLowerLeg', 'leftFoot',
+    'rightUpperLeg', 'rightLowerLeg', 'rightFoot',
+    'leftShoulder', 'rightShoulder',
+    'leftClavicle', 'rightClavicle',
+  ];
+
+  bones.forEach(b => {
+    const node = vrm.humanoid.getNormalizedBoneNode
+      ? vrm.humanoid.getNormalizedBoneNode(b)
+      : vrm.humanoid.getBoneNode(b);
+
+    if (node) {
+      node.rotation.set(0, 0, 0);
+      if (b === 'leftUpperArm') node.rotation.z = 1.2;
+      if (b === 'rightUpperArm') node.rotation.z = -1.2;
+      if (b === 'leftLowerArm') node.rotation.x = 0.2;
+      if (b === 'rightLowerArm') node.rotation.x = 0.2;
+      node.scale.set(1, 1, 1);
+      if (b === 'hips') {
+        node.position.set(0, 0, 0);
+      }
+      if (b === 'chest' || b === 'upperChest') {
+        node.position.set(0, 0, 0);
+      }
+    }
+  });
+
+  const fingers = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'];
+  fingers.forEach(f => {
+    ['Proximal', 'Intermediate', 'Distal'].forEach(j => {
+      ['left', 'right'].forEach(side => {
+        const boneName = `${side}${f}${j}`;
+        const node = vrm.humanoid.getNormalizedBoneNode
+          ? vrm.humanoid.getNormalizedBoneNode(boneName)
+          : vrm.humanoid.getBoneNode(boneName);
+        if (node) node.rotation.set(0, 0, 0);
+      });
+    });
+  });
+
+  if (vrm.scene) vrm.scene.visible = true;
 }
 
 export default useAnimationManager;

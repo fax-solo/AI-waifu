@@ -1,0 +1,16 @@
+{
+  "name": "Wink",
+  "type": "facial",
+  "loop": false,
+  "duration": 0.6,
+  "blendSpeed": 12,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "blinkRight": 0, "happy": 0 } },
+    { "time": 0.15, "expressions": { "blinkRight": 0.65, "happy": 0.4 } },
+    { "time": 0.3, "expressions": { "blinkRight": 0, "happy": 0.2 } },
+    { "time": 0.6, "expressions": { "blinkRight": 0, "happy": 0 } }
+  ],
+  "bones": {
+    "head": { "z": 0.1 }
+  }
+}
