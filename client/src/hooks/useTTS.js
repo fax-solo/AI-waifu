@@ -17,7 +17,7 @@ const TTS_URL = '/api/tts';
 /** Split text into speakable sentences */
 function splitSentences(text) {
   return text
-    .split(/(?<=[.!?])\s+|\n+/)
+    .split(/(?<=[.!?])\s+|(?<=[。！？])\s*|\n+/)
     .map(s => s.trim())
     .filter(s => s.length > 0);
 }
@@ -67,6 +67,8 @@ export function useTTS() {
       enabled = true,
       voice = 'af_bella',
       speed = 1.0,
+      pitch = 1.0,
+      volume = 1.0,
       outputDeviceId = 'default',
       device = 'cpu',
     } = options;
@@ -91,7 +93,7 @@ export function useTTS() {
       fetch(TTS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: sentence, voice, speed, device }),
+        body: JSON.stringify({ text: sentence, voice, speed, pitch, volume, device }),
         signal: controller.signal,
       })
         .then(async (res) => {

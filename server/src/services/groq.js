@@ -76,19 +76,29 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
       const data = await response.json();
       const fullText = data.choices[0]?.message?.content || '';
 
-      // Parse emotion tag: [emotion] message (Same logic as Gemini)
-      const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised)\]\s*(.*)/i);
-      
+      // Parse emotion tag: [emotion] message and optional [animation:file.bvh] tag
+      const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud)\]\s*(.*)/i);
+      const animMatch = fullText.match(/\[animation:([\w.\-]+?\.bvh)\]/i);
+
+      let text = emotionMatch ? emotionMatch[2].trim() : fullText.trim();
+      let animation = animMatch ? animMatch[1].toLowerCase() : null;
+
+      if (animation) {
+        text = text.replace(/\[animation:[\w.\-]+?\.bvh\]/gi, '').trim();
+      }
+
       if (emotionMatch) {
         return {
           emotion: emotionMatch[1].toLowerCase(),
-          text: emotionMatch[2].trim()
+          animation,
+          text,
         };
       }
 
       return {
         emotion: 'neutral',
-        text: fullText.trim()
+        animation,
+        text,
       };
 
     } catch (error) {

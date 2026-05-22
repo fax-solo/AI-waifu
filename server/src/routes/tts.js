@@ -14,7 +14,7 @@ const TTS_SERVER_URL = process.env.TTS_SERVER_URL || 'http://127.0.0.1:5000';
 router.post('/', async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
-    const { text, voice, speed } = req.body;
+    const { text, voice, speed, pitch, volume } = req.body;
 
     if (!text) {
       return res.status(400).json({ error: 'Text is required' });
@@ -32,7 +32,7 @@ router.post('/', async (req, res) => {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ text, voice, speed, device }),
+      body: JSON.stringify({ text, voice, speed: speed ?? 1.0, pitch: pitch ?? 1.0, volume: volume ?? 1.0, device }),
     });
 
     if (!response.ok) {

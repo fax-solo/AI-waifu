@@ -123,6 +123,8 @@ class TTSRequest(BaseModel):
     text: str
     voice: str = "af_bella"
     speed: float = 1.0
+    pitch: float = 1.0
+    volume: float = 1.0
     device: str = "gpu"
 
 def clean_text_for_tts(text):
@@ -132,6 +134,14 @@ def clean_text_for_tts(text):
     text = re.sub(r'\[[^\w\s]*?\]', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
+
+def has_japanese(text):
+    """Check if text contains Japanese characters (hiragana, katakana, kanji)."""
+    for ch in text:
+        cp = ord(ch)
+        if 0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF or 0x4E00 <= cp <= 0x9FFF:
+            return True
+    return False
 
 @app.post("/tts")
 async def text_to_speech(request: TTSRequest):
@@ -143,26 +153,30 @@ async def text_to_speech(request: TTSRequest):
         safe_print(f"[TTS] Skipping message with no speakable content")
         raise HTTPException(status_code=400, detail="No speakable content")
 
-    cache_key = hashlib.md5(f"{clean_text}|{request.voice}|{request.speed}|{current_device}".encode()).hexdigest()
+    if not pipelines:
+        init_engine()
+        if not pipelines:
+            raise HTTPException(status_code=503, detail="TTS Engine not initialized (missing models?)")
+
+    # Determine language pipeline before cache check
+    lang_code = 'a'
+    if request.voice.startswith("bf_") or request.voice.startswith("bm_"):
+        lang_code = 'b'
+    elif request.voice.startswith("jf_") or request.voice.startswith("jm_"):
+        if has_japanese(clean_text):
+            lang_code = 'j'
+        else:
+            lang_code = 'a'
+
+    cache_key = hashlib.md5(f"{clean_text}|{request.voice}|{request.speed}|{request.pitch}|{request.volume}|{current_device}|{lang_code}".encode()).hexdigest()
     cache_path = os.path.join(CACHE_DIR, f"{cache_key}.wav")
 
     if os.path.exists(cache_path):
         with open(cache_path, "rb") as f:
             return Response(content=f.read(), media_type="audio/wav")
 
-    if not pipelines:
-        init_engine()
-        if not pipelines:
-            raise HTTPException(status_code=503, detail="TTS Engine not initialized (missing models?)")
-
     try:
         start_time = time.time()
-        
-        lang_code = 'a'
-        if request.voice.startswith("bf_") or request.voice.startswith("bm_"):
-            lang_code = 'b'
-        elif request.voice.startswith("jf_") or request.voice.startswith("jm_"):
-            lang_code = 'j'
             
         pipeline = pipelines.get(lang_code)
         if not pipeline:
@@ -187,7 +201,20 @@ async def text_to_speech(request: TTSRequest):
             
         samples = np.concatenate(all_audio)
         sample_rate = 24000
-        
+
+        # Apply volume
+        if request.volume != 1.0:
+            samples = samples * max(0.0, min(2.0, request.volume))
+
+        # Apply pitch shift via linear interpolation resampling
+        if request.pitch != 1.0:
+            orig_len = len(samples)
+            step = request.pitch
+            indices = np.arange(0, orig_len, step)
+            indices = indices[indices < orig_len]
+            if len(indices) > 0:
+                samples = np.interp(indices, np.arange(orig_len), samples).astype(samples.dtype)
+
         gen_time = time.time() - start_time
         safe_print(f"[TTS] Generated audio in {gen_time:.2f}s on {current_device}")
         

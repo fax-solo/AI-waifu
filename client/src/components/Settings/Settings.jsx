@@ -13,6 +13,11 @@ const VOICES = [
   { id: 'am_michael', name: 'Michael (US Male)', desc: 'Natural' },
   { id: 'bf_emma', name: 'Emma (UK Female)', desc: 'British accent' },
   { id: 'bm_george', name: 'George (UK Male)', desc: 'British accent' },
+  { id: 'jf_alpha', name: 'Alpha (JP Female)', desc: 'Cute anime-style' },
+  { id: 'jf_gongitsune', name: 'Gongitsune (JP Female)', desc: 'Sweet & playful' },
+  { id: 'jf_nezumi', name: 'Nezumi (JP Female)', desc: 'High-pitched & adorable' },
+  { id: 'jf_tebukuro', name: 'Tebukuro (JP Female)', desc: 'Soft & gentle' },
+  { id: 'jm_kumo', name: 'Kumo (JP Male)', desc: 'Calm & composed' },
 ];
 
 const GEMINI_MODELS = [
@@ -727,14 +732,56 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                     </div>
                   </div>
 
-                  <div className="form-group">
-                    <label>{t('settings.voice.testVoice')}</label>
+                    <div className="form-group">
+                      <label>{t('settings.voice.speed')}: {companion.ttsSpeed?.toFixed(2) ?? 1.00}x</label>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2.0"
+                        step="0.05"
+                        value={companion.ttsSpeed ?? 1.0}
+                        onChange={(e) => setCompanion({ ...companion, ttsSpeed: parseFloat(e.target.value) })}
+                        style={{ width: '100%' }}
+                      />
+                      <div className="hint">{t('settings.voice.speedHint')}</div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>{t('settings.voice.pitch')}: {companion.ttsPitch?.toFixed(2) ?? 1.00}</label>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="2.0"
+                        step="0.05"
+                        value={companion.ttsPitch ?? 1.0}
+                        onChange={(e) => setCompanion({ ...companion, ttsPitch: parseFloat(e.target.value) })}
+                        style={{ width: '100%' }}
+                      />
+                      <div className="hint">{t('settings.voice.pitchHint')}</div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>{t('settings.voice.volume')}: {companion.ttsVolume?.toFixed(2) ?? 1.00}</label>
+                      <input
+                        type="range"
+                        min="0.0"
+                        max="2.0"
+                        step="0.05"
+                        value={companion.ttsVolume ?? 1.0}
+                        onChange={(e) => setCompanion({ ...companion, ttsVolume: parseFloat(e.target.value) })}
+                        style={{ width: '100%' }}
+                      />
+                      <div className="hint">{t('settings.voice.volumeHint')}</div>
+                    </div>
+
+                    <div className="form-group">
+                      <label>{t('settings.voice.testVoice')}</label>
                     <div className="settings-test-row">
                       <input 
                         type="text" 
                         value={testText}
                         onChange={(e) => setTestText(e.target.value)}
-                        placeholder="Type something to test..."
+                        placeholder={t('settings.voice.testPlaceholder')}
                       />
                       <button 
                         className="btn btn-primary"
@@ -743,6 +790,9 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                           speak(testText, {
                             enabled: true,
                             voice: companion.ttsVoice,
+                            speed: companion.ttsSpeed ?? 1.0,
+                            pitch: companion.ttsPitch ?? 1.0,
+                            volume: companion.ttsVolume ?? 1.0,
                             outputDeviceId: companion.audioOutputDevice,
                             device: companion.ttsDevice,
                             engine: companion.ttsEngine
@@ -751,7 +801,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                         disabled={isTestingVoice || !testText.trim()}
                         style={{ padding: '0 20px', whiteSpace: 'nowrap' }}
                       >
-                        {isTestingVoice ? 'Playing...' : '▶ Test'}
+                        {isTestingVoice ? t('common.playing') : '▶ ' + t('common.test')}
                       </button>
                     </div>
                   </div>

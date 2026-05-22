@@ -10,6 +10,34 @@ const EMOTION_BVH = {
   angry: 'anger.bvh',
   fearful: 'fear.bvh',
   disgusted: 'disgust.bvh',
+  excited: 'excitement.bvh',
+  embarrassed: 'embarrassment.bvh',
+  nervous: 'nervousness.bvh',
+  affectionate: 'love.bvh',
+  playful: 'amusement.bvh',
+  tired: 'neutral_idle2.bvh',
+  thoughtful: 'confusion.bvh',
+  smug: 'pride.bvh',
+  loving: 'love.bvh',
+  grateful: 'admiration.bvh',
+  annoyed: 'annoyance.bvh',
+  curious: 'curiosity.bvh',
+  worried: 'fear.bvh',
+  proud: 'pride.bvh',
+  neutral: 'neutral_idle.bvh',
+  relaxed: 'neutral_idle.bvh',
+};
+
+const EMOTION_FACIAL = {
+  happy: 'happy.json',
+  sad: 'sad.json',
+  angry: 'angry.json',
+  surprised: 'surprised.json',
+  fearful: 'fear.json',
+  disgusted: 'disgust.json',
+  loving: 'happy.json',
+  playful: 'happy.json',
+  embarrassed: 'surprised.json',
 };
 
 const SKELETON_BONES = [
@@ -293,45 +321,72 @@ export function useAnimator() {
       }
     }
 
-    // 7. Auto-trigger: emotion → BVH
-    const emotion = state.emotion || 'neutral';
-    if (emotion !== lastEmotion.current && state.autoAnimate && !state.isTesting) {
-      const prev = lastEmotion.current;
-      lastEmotion.current = emotion;
-      if (emotion === 'neutral' && prev !== 'neutral') {
-        // Back to neutral → stop emotion BVH so idle can take over
-        if (bvh.current && EMOTION_BVH[prev] && bvh.current.filename === EMOTION_BVH[prev]) {
-          stopBVH();
+    // 7. Auto-trigger: emotion → BVH + facial expression
+    // Skip BVH override when an AI-triggered animation is active
+    const aiActive = state.aiAnimationActive;
+    if (aiActive) {
+      // Still update lastEmotion, but don't map to BVH
+      if (state.emotion && state.emotion !== lastEmotion.current) {
+        lastEmotion.current = state.emotion;
+      }
+      // Keep aiActive alive while the file is still loading (pending) or playing
+      // Only clear when neither pending nor active animation matches
+      const stillLoading = pending.current?.filename === aiActive;
+      const stillPlaying = bvh.current?.filename === aiActive;
+      if (!stillLoading && !stillPlaying) {
+        state.aiAnimationActive = null;
+      }
+    } else {
+      const emotion = state.emotion || 'neutral';
+      if (emotion !== lastEmotion.current && state.autoAnimate && !state.isTesting) {
+        const prev = lastEmotion.current;
+        lastEmotion.current = emotion;
+        if (emotion === 'neutral' && prev !== 'neutral') {
+          if (bvh.current && EMOTION_BVH[prev] && bvh.current.filename === EMOTION_BVH[prev]) {
+            stopBVH();
+          }
+        } else if (emotion !== 'neutral') {
+          const facialFile = EMOTION_FACIAL[emotion] || `${emotion}.json`;
+          playFacial(facialFile, { blendSpeed: 10 });
+          const bvhFile = EMOTION_BVH[emotion];
+          if (bvhFile) playBVH(bvhFile, { loop: true });
         }
-      } else if (emotion !== 'neutral') {
-        playFacial(`${emotion}.json`, { blendSpeed: 10 });
-        const bvhFile = EMOTION_BVH[emotion];
-        if (bvhFile) playBVH(bvhFile, { loop: true });
       }
     }
 
     // 8. Auto-trigger: talking → neutral idle
-    if (state.isTalking && !auto.current.talking) {
+    if (!aiActive) {
+      if (state.isTalking && !auto.current.talking) {
+        auto.current.talking = true;
+        playBVH('neutral_idle.bvh', { loop: true });
+      } else if (!state.isTalking && auto.current.talking) {
+        auto.current.talking = false;
+      }
+    } else if (state.isTalking && !auto.current.talking) {
       auto.current.talking = true;
-      playBVH('neutral_idle.bvh', { loop: true });
-    } else if (!state.isTalking && auto.current.talking) {
+    } else if (!state.isTalking) {
       auto.current.talking = false;
-      // Don't stop — idle system adopts neutral_idle.bvh since it's in IDLE_FILES
     }
 
     // 9. Auto-trigger: thinking → confusion
-    if (state.isThinking && !auto.current.thinking) {
+    if (!aiActive) {
+      if (state.isThinking && !auto.current.thinking) {
+        auto.current.thinking = true;
+        playBVH('confusion.bvh', { loop: true });
+      } else if (!state.isThinking && auto.current.thinking) {
+        auto.current.thinking = false;
+        if (bvh.current?.filename === 'confusion.bvh') stopBVH();
+      }
+    } else if (state.isThinking && !auto.current.thinking) {
       auto.current.thinking = true;
-      playBVH('confusion.bvh', { loop: true });
-    } else if (!state.isThinking && auto.current.thinking) {
+    } else if (!state.isThinking) {
       auto.current.thinking = false;
-      // confusion isn't in IDLE_FILES, stop so idle can start
-      if (bvh.current?.filename === 'confusion.bvh') stopBVH();
     }
 
     // 10. Auto-idle: play random idle when nothing else is active
     const idlePlaying = bvh.current && IDLE_FILES.includes(bvh.current.filename);
-    const shouldIdle = (!bvh.current || idlePlaying)
+    const shouldIdle = !aiActive
+      && (!bvh.current || idlePlaying)
       && !state.isTalking
       && !state.isThinking
       && (state.emotion === 'neutral' || !state.autoAnimate);

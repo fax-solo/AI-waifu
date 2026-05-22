@@ -85,19 +85,30 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
         const response = await result.response;
         const fullText = response.text();
         
-        // Parse emotion tag: [emotion] message
-        const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised)\]\s*(.*)/i);
-        
+        // Parse emotion tag: [emotion] message and optional [animation:file.bvh] tag
+        const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud)\]\s*(.*)/i);
+        const animMatch = fullText.match(/\[animation:([\w.\-]+?\.bvh)\]/i);
+
+        let text = emotionMatch ? emotionMatch[2].trim() : fullText.trim();
+        let animation = animMatch ? animMatch[1].toLowerCase() : null;
+
+        if (animation) {
+          // Remove the animation tag from the visible text
+          text = text.replace(/\[animation:[\w.\-]+?\.bvh\]/gi, '').trim();
+        }
+
         if (emotionMatch) {
           return {
             emotion: emotionMatch[1].toLowerCase(),
-            text: emotionMatch[2].trim()
+            animation,
+            text,
           };
         }
 
         return {
           emotion: 'neutral',
-          text: fullText.trim()
+          animation,
+          text,
         };
       } catch (error) {
         lastError = error;

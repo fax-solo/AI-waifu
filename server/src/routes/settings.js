@@ -50,6 +50,9 @@ router.get('/', (req, res) => {
         audioOutputDevice: companion?.audio_output_device || 'default',
         ttsDevice: companion?.tts_device || 'cpu',
         ttsEngine: companion?.tts_engine || 'onnx',
+        ttsSpeed: companion?.tts_speed ?? 1.0,
+        ttsPitch: companion?.tts_pitch ?? 1.0,
+        ttsVolume: companion?.tts_volume ?? 1.0,
         llmModel: companion?.llm_model || 'gemini-3.1-flash-lite',
       },
       hasCustomApiKey: hasCustomKey,
@@ -97,6 +100,9 @@ router.put('/', (req, res) => {
               audio_output_device = COALESCE(?, audio_output_device),
               tts_device = COALESCE(?, tts_device),
               tts_engine = COALESCE(?, tts_engine),
+              tts_speed = COALESCE(?, tts_speed),
+              tts_pitch = COALESCE(?, tts_pitch),
+              tts_volume = COALESCE(?, tts_volume),
               llm_model = COALESCE(?, llm_model),
               updated_at = CURRENT_TIMESTAMP
           WHERE user_id = ?
@@ -111,13 +117,16 @@ router.put('/', (req, res) => {
           companion.audioOutputDevice || null,
           companion.ttsDevice || null,
           companion.ttsEngine || null,
+          companion.ttsSpeed !== undefined ? companion.ttsSpeed : null,
+          companion.ttsPitch !== undefined ? companion.ttsPitch : null,
+          companion.ttsVolume !== undefined ? companion.ttsVolume : null,
           companion.llmModel || null,
           userId
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, llm_model)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, tts_speed, tts_pitch, tts_volume, llm_model)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
           companion.name || 'Aria',
@@ -130,6 +139,9 @@ router.put('/', (req, res) => {
           companion.audioOutputDevice || 'default',
           companion.ttsDevice || 'cpu',
           companion.ttsEngine || 'onnx',
+          companion.ttsSpeed ?? 1.0,
+          companion.ttsPitch ?? 1.0,
+          companion.ttsVolume ?? 1.0,
           companion.llmModel || 'gemini-3.1-flash-lite'
         );
       }

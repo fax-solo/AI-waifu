@@ -187,14 +187,24 @@ export default function App() {
 
   const handleSendMessage = async (message) => {
     const result = await sendMessage(message);
-    if (result?.emotion) {
+
+    if (result?.animation && avatarRef.current) {
+      // Direct imperative call — bypasses React state/effects entirely
+      avatarRef.current.triggerAnimation('body', result.animation, { loop: false });
+      // Don't set emotion when animation is specified — prevents auto-trigger from overriding
+      // Emotion facial expressions still work through the animator's pipeline
+    } else if (result?.emotion) {
       setCurrentEmotion(result.emotion);
     }
+
     if (result?.message) {
       if (companionSettings.ttsEnabled) {
         speak(result.message, {
           enabled: companionSettings.ttsEnabled,
           voice: companionSettings.ttsVoice,
+          speed: companionSettings.ttsSpeed ?? 1.0,
+          pitch: companionSettings.ttsPitch ?? 1.0,
+          volume: companionSettings.ttsVolume ?? 1.0,
           outputDeviceId: companionSettings.audioOutputDevice,
           device: companionSettings.ttsDevice || 'cpu',
           engine: companionSettings.ttsEngine || 'onnx'
