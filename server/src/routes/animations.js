@@ -122,11 +122,29 @@ router.post('/upload/:type', upload.single('animation'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
+  
+  const ext = path.extname(req.file.originalname).toLowerCase();
+  const format = ext === '.bvh' ? 'bvh' : 'json';
+  
+  let duration = 1;
+  if (format === 'bvh') {
+    duration = getBvhDuration(req.file.path);
+  } else {
+    try {
+      const raw = fs.readFileSync(req.file.path, 'utf-8');
+      const meta = JSON.parse(raw);
+      if (meta.duration) duration = meta.duration;
+    } catch (e) {
+      console.error('Error parsing JSON animation duration:', e);
+    }
+  }
+
   res.json({
     filename: req.file.filename,
     originalname: req.file.originalname,
     type,
-    format: path.extname(req.file.originalname).toLowerCase() === '.bvh' ? 'bvh' : 'json',
+    format,
+    duration,
     size: req.file.size,
   });
 });

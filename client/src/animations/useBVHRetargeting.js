@@ -11,18 +11,22 @@ const BONE_MAPPING = {
   upperChest: ['Spine2', 'spine2', 'Spine3', 'spine3', 'upperChest', 'UpperChest', 'mixamorig:Spine3'],
   neck: ['Neck', 'neck', 'mixamorig:Neck'],
   head: ['Head', 'head', 'mixamorig:Head'],
-  leftUpperArm: ['LeftArm', 'leftArm', 'Left_arm', 'left_arm', 'l_arm', 'mixamorig:LeftArm', 'LeftArm_', 'Left Arm', 'Left arm'],
-  leftLowerArm: ['LeftForeArm', 'leftForeArm', 'Left_forearm', 'left_forearm', 'l_forearm', 'mixamorig:LeftForeArm', 'Left forearm', 'Left ForeArm'],
+  leftEye: ['LeftEye', 'leftEye', 'Left_eye', 'left_eye', 'l_eye'],
+  rightEye: ['RightEye', 'rightEye', 'Right_eye', 'right_eye', 'r_eye'],
+  leftUpperArm: ['LeftArm', 'leftArm', 'Left_arm', 'left_arm', 'l_arm', 'mixamorig:LeftArm', 'LeftArm_', 'Left Arm', 'Left arm', 'leftupperarm', 'LeftUpperArm'],
+  leftLowerArm: ['LeftForeArm', 'leftForeArm', 'Left_forearm', 'left_forearm', 'l_forearm', 'mixamorig:LeftForeArm', 'Left forearm', 'Left ForeArm', 'leftlowerarm', 'LeftLowerArm'],
   leftHand: ['LeftHand', 'leftHand', 'Left_hand', 'left_hand', 'l_hand', 'mixamorig:LeftHand'],
-  rightUpperArm: ['RightArm', 'rightArm', 'Right_arm', 'right_arm', 'r_arm', 'mixamorig:RightArm', 'RightArm_', 'Right Arm', 'Right arm'],
-  rightLowerArm: ['RightForeArm', 'rightForeArm', 'Right_forearm', 'right_forearm', 'r_forearm', 'mixamorig:RightForeArm', 'Right forearm', 'Right ForeArm'],
+  rightUpperArm: ['RightArm', 'rightArm', 'Right_arm', 'right_arm', 'r_arm', 'mixamorig:RightArm', 'RightArm_', 'Right Arm', 'Right arm', 'rightupperarm', 'RightUpperArm'],
+  rightLowerArm: ['RightForeArm', 'rightForeArm', 'Right_forearm', 'right_forearm', 'r_forearm', 'mixamorig:RightForeArm', 'Right forearm', 'Right ForeArm', 'rightlowerarm', 'RightLowerArm'],
   rightHand: ['RightHand', 'rightHand', 'Right_hand', 'right_hand', 'r_hand', 'mixamorig:RightHand'],
-  leftUpperLeg: ['LeftUpLeg', 'leftUpLeg', 'Left_thigh', 'left_thigh', 'l_thigh', 'mixamorig:LeftUpLeg', 'LeftLeg', 'Left thigh', 'Left Thigh'],
-  leftLowerLeg: ['LeftLeg', 'leftLeg', 'Left_shin', 'left_shin', 'l_shin', 'mixamorig:LeftLeg', 'LeftForeLeg', 'Left shin', 'Left Shin'],
+  leftUpperLeg: ['LeftUpLeg', 'leftUpLeg', 'Left_thigh', 'left_thigh', 'l_thigh', 'mixamorig:LeftUpLeg', 'LeftLeg', 'Left thigh', 'Left Thigh', 'leftupperleg', 'LeftUpperLeg'],
+  leftLowerLeg: ['LeftLeg', 'leftLeg', 'Left_shin', 'left_shin', 'l_shin', 'mixamorig:LeftLeg', 'LeftForeLeg', 'Left shin', 'Left Shin', 'leftlowerleg', 'LeftLowerLeg'],
   leftFoot: ['LeftFoot', 'leftFoot', 'Left_foot', 'left_foot', 'l_foot', 'mixamorig:LeftFoot'],
-  rightUpperLeg: ['RightUpLeg', 'rightUpLeg', 'Right_thigh', 'right_thigh', 'r_thigh', 'mixamorig:RightUpLeg', 'RightLeg', 'Right thigh', 'Right Thigh'],
-  rightLowerLeg: ['RightLeg', 'rightLeg', 'Right_shin', 'right_shin', 'r_shin', 'mixamorig:RightLeg', 'RightForeLeg', 'Right shin', 'Right Shin'],
+  leftToes: ['LeftToes', 'leftToes', 'Left_toes', 'left_toes', 'l_toes', 'LeftFootEnd'],
+  rightUpperLeg: ['RightUpLeg', 'rightUpLeg', 'Right_thigh', 'right_thigh', 'r_thigh', 'mixamorig:RightUpLeg', 'RightLeg', 'Right thigh', 'Right Thigh', 'rightupperleg', 'RightUpperLeg'],
+  rightLowerLeg: ['RightLeg', 'rightLeg', 'Right_shin', 'right_shin', 'r_shin', 'mixamorig:RightLeg', 'RightForeLeg', 'Right shin', 'Right Shin', 'rightlowerleg', 'RightLowerLeg'],
   rightFoot: ['RightFoot', 'rightFoot', 'Right_foot', 'right_foot', 'r_foot', 'mixamorig:RightFoot'],
+  rightToes: ['RightToes', 'rightToes', 'Right_toes', 'right_toes', 'r_toes', 'RightFootEnd'],
   leftShoulder: ['LeftShoulder', 'leftShoulder', 'Left_shoulder', 'left_shoulder', 'l_shoulder', 'mixamorig:LeftShoulder'],
   rightShoulder: ['RightShoulder', 'rightShoulder', 'Right_shoulder', 'right_shoulder', 'r_shoulder', 'mixamorig:RightShoulder'],
 };
@@ -52,6 +56,7 @@ export function useBVHRetargeting() {
 
     const mappedTracks = [];
     const usedBones = new Set();
+    const firstPositions = {};
 
     for (const track of clip.tracks) {
       const dotIdx = track.name.lastIndexOf('.');
@@ -74,7 +79,20 @@ export function useBVHRetargeting() {
       if (property === '.quaternion') {
         values = new Float32Array(track.values);
       } else if (property === '.position') {
-        values = new Float32Array(track.values);
+        // BVHLoader bakes the BVH bone OFFSET into position values, which would
+        // displace the VRM model. Subtract the first frame's position to keep
+        // only the relative motion (walking, bouncing, etc.).
+        const stride = 3;
+        const firstFrame = [];
+        for (let k = 0; k < stride; k++) firstFrame.push(track.values[k]);
+        firstPositions[bvhBoneName] = firstFrame;
+
+        values = new Float32Array(track.values.length);
+        for (let k = 0; k < track.values.length; k += stride) {
+          values[k] = track.values[k] - firstFrame[0];
+          values[k + 1] = track.values[k + 1] - firstFrame[1];
+          values[k + 2] = track.values[k + 2] - firstFrame[2];
+        }
       } else {
         continue;
       }
@@ -107,11 +125,14 @@ export function useBVHRetargeting() {
   }, []);
 
   const loadAndRetarget = useCallback(async (text, vrm) => {
-    const cacheKey = text.length.toString();
+    const cacheKey = text.length.toString() + '_' + text.substring(0, 40);
     if (cacheRef.current[cacheKey]) return cacheRef.current[cacheKey];
 
     const { skeleton, clip } = parseBVH(text);
+    console.log(`[BVH] Parsed clip "${clip.name}" with ${clip.tracks.length} tracks, duration ${clip.duration}s`);
+    clip.tracks.forEach(t => console.log(`  track: ${t.name} (${t.values.length} values)`));
     const result = retargetClip(clip, skeleton, vrm);
+    console.log(`[BVH] Retarget result:`, result.error || `${result.clip?.tracks.length || 0} tracks, bones: ${[...result.usedBones].join(', ')}`);
     cacheRef.current[cacheKey] = result;
     return result;
   }, [parseBVH, retargetClip]);
