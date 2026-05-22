@@ -8,11 +8,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+import * as THREE from 'three';
 
 /**
  * Hook to load and manage a VRM model.
  *
- * @returns {{ vrm, loading, error, loadVRM, loadVRMFromFile, dispose }}
+ * @returns {{ vrm, loading, error, loadVRM, loadVRMFromFile, dispose, restPose }}
  */
 export function useVRM() {
   const [vrm, setVRM] = useState(null);
@@ -20,6 +21,31 @@ export function useVRM() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
   const loaderRef = useRef(null);
+  const restPoseRef = useRef({});
+
+  const captureRestPose = useCallback((vrm) => {
+    if (!vrm?.humanoid) return;
+    const bones = [
+      'hips', 'spine', 'chest', 'upperChest', 'neck', 'head',
+      'leftUpperArm', 'leftLowerArm', 'leftHand',
+      'rightUpperArm', 'rightLowerArm', 'rightHand',
+      'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'leftToes',
+      'rightUpperLeg', 'rightLowerLeg', 'rightFoot', 'rightToes',
+      'leftShoulder', 'rightShoulder',
+    ];
+    const pose = {};
+    for (const b of bones) {
+      const node = vrm.humanoid.getNormalizedBoneNode?.(b);
+      if (node) {
+        pose[b] = {
+          quaternion: node.quaternion.clone(),
+          position: node.position.clone(),
+        };
+      }
+    }
+    restPoseRef.current = pose;
+    console.log('[VRM] Captured rest pose for', Object.keys(pose).length, 'bones');
+  }, []);
 
   // Create the GLTF loader with VRM plugin (once)
   useEffect(() => {
@@ -82,10 +108,20 @@ export function useVRM() {
 
       console.log('[VRM] VRM data found:', loadedVRM.meta?.name || 'Unnamed');
 
+      // Optimize: remove unnecessary vertices and joints before creating skeleton
+      try {
+        VRMUtils.removeUnnecessaryVertices(gltf.scene);
+        VRMUtils.removeUnnecessaryJoints(gltf.scene);
+        console.log('[VRM] Removed unnecessary vertices and joints');
+      } catch (e) {
+        console.warn('[VRM] Optimization skipped:', e.message);
+      }
+
       // Rotate model to face the camera (VRM 0.x faces +Z, needs 180deg flip)
-      // VRMUtils.rotateVRM0 handles this safely for 0.x models.
-      // VRM 1.0 models are already front-facing (-Z) by specification.
       VRMUtils.rotateVRM0(loadedVRM);
+
+      // Capture rest pose after rotation but before any animation
+      captureRestPose(loadedVRM);
 
       setVRM(loadedVRM);
       setLoading(false);
@@ -136,6 +172,7 @@ export function useVRM() {
     loadVRM,
     loadVRMFromFile,
     dispose,
+    restPose: restPoseRef,
   };
 }
 

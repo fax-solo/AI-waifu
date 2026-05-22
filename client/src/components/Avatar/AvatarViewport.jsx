@@ -12,7 +12,8 @@
 import { useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef } from 'react';
 import * as THREE from 'three';
 import { useVRM } from './useVRM.js';
-import { useAnimationManager } from '../../animations/AnimationManager.js';
+import { useAnimator } from '../../animations/useAnimator.js';
+import * as api from '../../utils/api.js';
 
 const DEFAULT_SETTINGS = {
   scale: 1.15,
@@ -56,19 +57,21 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   const vrmRef = useRef(null);
   const updateAnimationsRef = useRef(null);
 
-  const { vrm, loading, progress, error, loadVRM, loadVRMFromFile, dispose } = useVRM();
-  const { updateAnimations, triggerAnimation } = useAnimationManager();
+  const { vrm, loading, progress, error, loadVRM, loadVRMFromFile, dispose, restPose } = useVRM();
+  const animator = useAnimator();
 
   // Keep refs in sync so the render loop always sees current values
-  // without causing the renderer to be destroyed/recreated
   vrmRef.current = vrm;
-  updateAnimationsRef.current = updateAnimations;
+  updateAnimationsRef.current = animator.update;
   
   const [hasModel, setHasModel] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const [avatarSettings, setAvatarSettings] = useState(loadAvatarSettings);
   const avatarSettingsRef = useRef(avatarSettings);
   const [webglError, setWebglError] = useState(null);
+
+  const [animationList, setAnimationList] = useState([]);
+  const [animListLoading, setAnimListLoading] = useState(false);
 
   const currentEmotion = emotion || 'neutral';
 
@@ -87,9 +90,10 @@ const AvatarViewport = forwardRef(function AvatarViewport({
       }
     },
     triggerAnimation: (type, filename, options) => {
-      return triggerAnimation(type, filename, options);
+      if (type === 'facial') return animator.playFacial(filename, options);
+      return animator.playBVH(filename, options);
     },
-  }), [loadVRM, loadVRMFromFile, dispose, triggerAnimation]);
+  }), [loadVRM, loadVRMFromFile, dispose, animator]);
 
   // ─── Animation State Ref ───────────────────────────────────
   // We use a ref for the state passed to updateAnimations to avoid 
@@ -104,6 +108,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     mouseX: 0,
     mouseY: 0,
     mouseMoving: false,
+    restPose,
   });
 
   // Mouse tracking for lookAt and parallax
@@ -138,8 +143,9 @@ const AvatarViewport = forwardRef(function AvatarViewport({
       mouseX: mousePosRef.current.x,
       mouseY: mousePosRef.current.y,
       mouseMoving: mouseMovingRef.current,
+      restPose,
     };
-  }, [isThinking, isTalking, analyser, avatarSettings.autoAnimate, currentEmotion]);
+  }, [isThinking, isTalking, analyser, avatarSettings.autoAnimate, currentEmotion, restPose]);
 
   // ─── Three.js Scene Setup (React StrictMode Safe) ───────────
   // CRITICAL: React StrictMode in dev does mount → unmount → mount.
@@ -367,6 +373,16 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     return () => clearTimeout(timer);
   }, [avatarSettings]);
 
+  // Fetch animation list when VRM loads
+  useEffect(() => {
+    if (!vrm) return;
+    setAnimListLoading(true);
+    api.getAnimations().then(data => {
+      setAnimationList(data.body || []);
+      setAnimListLoading(false);
+    }).catch(() => setAnimListLoading(false));
+  }, [vrm]);
+
   // ─── Load VRM into scene when it changes ────────────────────
   useEffect(() => {
     if (!vrm || !sceneRef.current) return;
@@ -393,9 +409,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     container.add(vrm.scene);
 
     // Helper
-    const getBone = (name) => vrm.humanoid.getNormalizedBoneNode ? 
-                              vrm.humanoid.getNormalizedBoneNode(name) : 
-                              vrm.humanoid.getBoneNode(name);
+    const getBone = (name) => vrm.humanoid.getNormalizedBoneNode?.(name);
 
     // ── Step 1: Get raw bounding box BEFORE any adjustments ──
     const rawBox = new THREE.Box3().setFromObject(vrm.scene);
@@ -667,23 +681,61 @@ const AvatarViewport = forwardRef(function AvatarViewport({
             </button>
           </div>
 
-          <div className="avatar-controls-title">Test Animations</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '12px' }}>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'idle_sway.json', { blendSpeed: 6 })}>Idle Sway</button>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'thinking.json', { blendSpeed: 8 })}>Thinking</button>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'wave.json', { blendSpeed: 10 })}>Wave</button>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'nod.json', { blendSpeed: 12 })}>Nod</button>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'jump.json', { blendSpeed: 10 })}>Jump</button>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('body', 'talking_gestures.json', { blendSpeed: 6 })}>Gestures</button>
+          <div className="avatar-controls-title">Test BVH Animations</div>
+
+          {/* Quick Emotion Buttons */}
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Emotions</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '8px' }}>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('joy.bvh', { loop: true })}>Joy</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('sadness.bvh', { loop: true })}>Sad</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('anger.bvh', { loop: true })}>Anger</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('surprise.bvh', { loop: true })}>Surprise</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('fear.bvh', { loop: true })}>Fear</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('love.bvh', { loop: true })}>Love</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('neutral_idle.bvh', { loop: true })}>Idle</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('confusion.bvh', { loop: true })}>Confused</button>
           </div>
+
+          {/* Quick Action Buttons */}
+          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '4px' }}>Actions</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px', marginBottom: '8px' }}>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('action_greeting.bvh', { loop: false })}>Greeting</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('action_jump.bvh', { loop: false })}>Jump</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('action_walk.bvh', { loop: true })}>Walk</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('dance_1.bvh', { loop: true })}>Dance 1</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('dance_gangnam_style.bvh', { loop: true })}>Gangnam</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playBVH('dance_rumba.bvh', { loop: true })}>Rumba</button>
+          </div>
+
+          {/* Animation Browser */}
+          <details style={{ marginBottom: '12px' }}>
+            <summary style={{ cursor: 'pointer', fontSize: '0.85rem', marginBottom: '6px', color: 'var(--color-text-muted)' }}>
+              All BVH Files {animListLoading ? '(loading...)' : `(${animationList.length})`}
+            </summary>
+            <div style={{ maxHeight: '200px', overflowY: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px' }}>
+              {animationList
+                .filter(a => a.format === 'bvh')
+                .map(anim => (
+                  <button
+                    key={anim.filename}
+                    className="avatar-controls-reset"
+                    style={{ fontSize: '0.7rem', padding: '3px 6px' }}
+                    onClick={() => animator.playBVH(anim.filename, { loop: true })}
+                    title={`${anim.duration?.toFixed(1)}s`}
+                  >
+                    {anim.name.replace(/_/g, ' ')}
+                  </button>
+                ))}
+            </div>
+          </details>
 
           <div className="avatar-controls-title">Test Expressions</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', marginBottom: '12px' }}>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('facial', 'happy.json', { blendSpeed: 10 })}>Happy</button>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('facial', 'sad.json', { blendSpeed: 8 })}>Sad</button>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('facial', 'angry.json', { blendSpeed: 10 })}>Angry</button>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('facial', 'surprised.json', { blendSpeed: 12 })}>Surprised</button>
-            <button className="avatar-controls-reset" onClick={() => triggerAnimation('facial', 'wink.json', { blendSpeed: 12 })}>Wink</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playFacial('happy.json', { blendSpeed: 10 })}>Happy</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playFacial('sad.json', { blendSpeed: 8 })}>Sad</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playFacial('angry.json', { blendSpeed: 10 })}>Angry</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playFacial('surprised.json', { blendSpeed: 12 })}>Surprised</button>
+            <button className="avatar-controls-reset" onClick={() => animator.playFacial('wink.json', { blendSpeed: 12 })}>Wink</button>
           </div>
         </div>
       )}

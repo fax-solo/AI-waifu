@@ -41,8 +41,9 @@ export function useBuiltinAnimations() {
     'leftClavicle', 'rightClavicle',
   ];
 
-  const updateBuiltins = useCallback((vrm, deltaTime, { mouseX = 0, mouseY = 0, mouseMoving = false }) => {
+  const updateBuiltins = useCallback((vrm, deltaTime, { mouseX = 0, mouseY = 0, mouseMoving = false } = {}) => {
     if (!vrm) return;
+    if (isNaN(deltaTime) || deltaTime <= 0 || !isFinite(deltaTime)) return;
 
     updateBlink(vrm, deltaTime);
     updateEyes(vrm, deltaTime, mouseX, mouseY, mouseMoving);
@@ -124,9 +125,7 @@ export function useBuiltinAnimations() {
   }
 
   function updateBreathing(vrm, deltaTime) {
-    const getBone = (name) => vrm.humanoid?.getNormalizedBoneNode
-      ? vrm.humanoid.getNormalizedBoneNode(name)
-      : vrm.humanoid?.getBoneNode(name);
+    const getBone = (name) => vrm.humanoid?.getNormalizedBoneNode?.(name);
 
     const s = breathState.current;
     s.phase += deltaTime * 0.35 * Math.PI * 2;
@@ -174,9 +173,7 @@ export function useBuiltinAnimations() {
   function applyBlendBuffer(vrm, deltaTime) {
     const blendSpeed = 14;
     const lerpFactor = Math.min(1, deltaTime * blendSpeed);
-    const getBone = (name) => vrm.humanoid?.getNormalizedBoneNode
-      ? vrm.humanoid.getNormalizedBoneNode(name)
-      : vrm.humanoid?.getBoneNode(name);
+    const getBone = (name) => vrm.humanoid?.getNormalizedBoneNode?.(name);
 
     for (const boneName of BLEND_BONES) {
       const bone = getBone(boneName);
