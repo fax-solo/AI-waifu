@@ -79,6 +79,15 @@ export function useAnimator() {
   const auto = useRef({ talking: false, thinking: false });
   const lastEmotion = useRef('neutral');
 
+  // Idle animation system
+  const IDLE_FILES = [
+    'neutral_idle.bvh', 'neutral_idle2.bvh',
+    'sit_idle.bvh', 'sit_idle2.bvh', 'sit_idle3.bvh', 'sit_idle4.bvh',
+    'kneel_idle.bvh', 'kneel_idle2.bvh',
+    'laying_idle.bvh', 'laying_idle2.bvh', 'laying_idle3.bvh',
+  ];
+  const idleRef = useRef({ active: false, filename: null, timer: 0 });
+
   // ── Preload all BVH texts ────────────────────────────────
   const preloadAll = useCallback(async () => {
     try {
@@ -225,11 +234,15 @@ export function useAnimator() {
       mouseMoving: state.mouseMoving || false,
     });
 
-    // 4. VRM internal update (propagates normalized → raw, runs spring bones, expressions)
-    vrm.update(dt);
-    if (vrm.springBoneManager) vrm.springBoneManager.update(dt);
+    // 4. Propagate normalized → raw (no spring bones, no expressions — we handle those separately)
+    vrm.humanoid?.update();
 
-    // 5. Apply BVH frames directly to RAW bones (overwrites the normalized→raw copy)
+    // 5. LookAt and expressions (after normalized→raw copy, before spring bones)
+    vrm.lookAt?.update(dt);
+    (vrm.expressionManager || vrm.blendShapeProxy)?.update();
+
+    // 6. Apply BVH frames to RAW bones (overwrites the normalized→raw copy)
+    //    Must happen BEFORE spring bones so parent transforms are correct.
     if (bvh.current) {
       bvh.current.elapsed += dt;
       const { data, elapsed, loop } = bvh.current;
@@ -240,7 +253,19 @@ export function useAnimator() {
       }
     }
 
-    // 6. Process facial queue
+    // 7. Material updates (MToon per-frame shader sync)
+    if (vrm.materials) {
+      vrm.materials.forEach((material) => { if (material.update) material.update(dt); });
+    }
+
+    // 8. Ensure world matrices are current (BVH just changed raw bone quats)
+    vrm.scene.updateMatrixWorld(true);
+
+    // 9. Spring bone physics — runs ONCE with correct post-BVH parent transforms
+    vrm.springBoneManager?.update(dt);
+    vrm.nodeConstraintManager?.update();
+
+    // 10. Process facial queue (blend shape animations from JSON keyframes)
     const em = vrm.expressionManager || vrm.blendShapeProxy;
     const queue = facial.current;
     for (let i = queue.length - 1; i >= 0; i--) {
@@ -271,8 +296,14 @@ export function useAnimator() {
     // 7. Auto-trigger: emotion → BVH
     const emotion = state.emotion || 'neutral';
     if (emotion !== lastEmotion.current && state.autoAnimate && !state.isTesting) {
+      const prev = lastEmotion.current;
       lastEmotion.current = emotion;
-      if (emotion !== 'neutral') {
+      if (emotion === 'neutral' && prev !== 'neutral') {
+        // Back to neutral → stop emotion BVH so idle can take over
+        if (bvh.current && EMOTION_BVH[prev] && bvh.current.filename === EMOTION_BVH[prev]) {
+          stopBVH();
+        }
+      } else if (emotion !== 'neutral') {
         playFacial(`${emotion}.json`, { blendSpeed: 10 });
         const bvhFile = EMOTION_BVH[emotion];
         if (bvhFile) playBVH(bvhFile, { loop: true });
@@ -285,6 +316,7 @@ export function useAnimator() {
       playBVH('neutral_idle.bvh', { loop: true });
     } else if (!state.isTalking && auto.current.talking) {
       auto.current.talking = false;
+      // Don't stop — idle system adopts neutral_idle.bvh since it's in IDLE_FILES
     }
 
     // 9. Auto-trigger: thinking → confusion
@@ -293,9 +325,57 @@ export function useAnimator() {
       playBVH('confusion.bvh', { loop: true });
     } else if (!state.isThinking && auto.current.thinking) {
       auto.current.thinking = false;
+      // confusion isn't in IDLE_FILES, stop so idle can start
+      if (bvh.current?.filename === 'confusion.bvh') stopBVH();
+    }
+
+    // 10. Auto-idle: play random idle when nothing else is active
+    const idlePlaying = bvh.current && IDLE_FILES.includes(bvh.current.filename);
+    const shouldIdle = (!bvh.current || idlePlaying)
+      && !state.isTalking
+      && !state.isThinking
+      && (state.emotion === 'neutral' || !state.autoAnimate);
+
+    if (shouldIdle) {
+      if (!idleRef.current.active) {
+        // Adopt current if it's already an idle, else start one
+        if (bvh.current && IDLE_FILES.includes(bvh.current.filename)) {
+          idleRef.current = { active: true, filename: bvh.current.filename, timer: 0 };
+        } else {
+          const fn = IDLE_FILES[Math.floor(Math.random() * IDLE_FILES.length)];
+          idleRef.current = { active: true, filename: fn, timer: 0 };
+          playBVH(fn, { loop: true });
+          if (bvh.current) applyBVHFrame(vrm, bvh.current.data, 0, true);
+        }
+      } else if (bvh.current && bvh.current.filename !== idleRef.current.filename) {
+        // Something else started playing, deactivate idle
+        idleRef.current = { active: false, filename: null, timer: 0 };
+      } else {
+        // Idle is still running — switch after 25-35 seconds
+        idleRef.current.timer += dt;
+        if (idleRef.current.timer > 25 + Math.random() * 10) {
+          const others = IDLE_FILES.filter(f => f !== idleRef.current.filename);
+          const fn = others[Math.floor(Math.random() * others.length)];
+          idleRef.current = { active: true, filename: fn, timer: 0 };
+          playBVH(fn, { loop: true });
+          if (bvh.current) applyBVHFrame(vrm, bvh.current.data, 0, true);
+        }
+      }
+    } else if (idleRef.current.active) {
+      // Something interrupted the idle
+      idleRef.current = { active: false, filename: null, timer: 0 };
     }
 
   }, [updateBuiltins, preloadAll, playBVH, playFacial, stopBVH]);
 
-  return { update, playBVH, playFacial, stopAll };
+  const currentAnimation = useCallback(() => {
+    if (!bvh.current) return null;
+    return {
+      filename: bvh.current.filename,
+      elapsed: bvh.current.elapsed,
+      duration: bvh.current.data?.duration ?? 0,
+    };
+  }, []);
+
+  return { update, playBVH, playFacial, stopAll, currentAnimation };
 }

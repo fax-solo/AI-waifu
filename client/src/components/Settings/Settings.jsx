@@ -57,6 +57,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
   const [activeTab, setActiveTab] = useState('profile');
   const [animations, setAnimations] = useState({ facial: [], body: [] });
   const [animLoading, setAnimLoading] = useState(false);
+  const [animSearch, setAnimSearch] = useState('');
   const [testStatus, setTestStatus] = useState({});
   const [currentVRMName, setCurrentVRMName] = useState(null);
   
@@ -401,7 +402,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
 
   return (
     <div className="settings-overlay" onClick={onClose}>
-      <div className="settings-panel" onClick={(e) => e.stopPropagation()}>
+      <div className="settings-panel settings-panel--wide" onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
           <h2>⚙️ Settings</h2>
           <button className="settings-close-btn" onClick={onClose}>
@@ -409,43 +410,21 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
           </button>
         </div>
 
-        {/* Tabs */}
-        <div style={{
-          display: 'flex',
-          gap: 4,
-          padding: '12px 24px 0',
-          borderBottom: '1px solid var(--color-border)',
-          overflowX: 'auto',
-        }}>
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                padding: '8px 16px',
-                background: activeTab === tab.id ? 'var(--color-accent-glow)' : 'transparent',
-                border: 'none',
-                borderBottom: activeTab === tab.id ? '2px solid var(--color-accent)' : '2px solid transparent',
-                borderRadius: '8px 8px 0 0',
-                color: activeTab === tab.id ? 'var(--color-accent-light)' : 'var(--color-text-muted)',
-                fontFamily: 'var(--font-sans)',
-                fontSize: '0.82rem',
-                fontWeight: 500,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                transition: 'all 0.15s ease',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <tab.icon size={14} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
+        <div className="settings-layout">
+          <div className="settings-sidebar">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                className={`settings-sidebar-tab ${activeTab === tab.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <tab.icon size={16} />
+                {tab.label}
+              </button>
+            ))}
+          </div>
 
-        <div className="settings-body">
+          <div className="settings-content">
           {/* Profile Tab */}
           {activeTab === 'profile' && (
             <div className="settings-section">
@@ -453,20 +432,11 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 <Globe size={18} className="icon" />
                 {t('settings.system.language')}
               </div>
-              <div className="form-group" style={{ marginBottom: 24 }}>
+              <div className="form-group">
                 <label>{t('settings.system.selectLanguage')}</label>
                 <select 
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'var(--color-surface)',
-                    border: '1px solid var(--color-border)',
-                    color: 'var(--color-text)',
-                    fontSize: '0.85rem'
-                  }}
                 >
                   <option value="en">{t('settings.system.english')}</option>
                   <option value="ar">{t('settings.system.arabic')}</option>
@@ -564,38 +534,18 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
               </div>
 
               {showUploadForm ? (
-                <div className="upload-form" style={{ 
-                  background: 'var(--color-bg-secondary)', 
-                  padding: '16px', 
-                  borderRadius: '12px',
-                  border: '1px solid var(--color-border)',
-                  marginBottom: '20px'
-                }}>
-                  <div style={{ display: 'flex', gap: '20px' }}>
-                    {/* PFP Upload */}
+                <div className="settings-upload-form">
+                  <div className="settings-upload-body">
                     <div 
+                      className="settings-pfp-upload"
                       onClick={() => pfpInputRef.current?.click()}
-                      style={{ 
-                        width: '80px', 
-                        height: '80px', 
-                        borderRadius: '12px', 
-                        background: 'var(--color-surface)',
-                        border: '2px dashed var(--color-border)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        cursor: 'pointer',
-                        overflow: 'hidden',
-                        position: 'relative'
-                      }}
                     >
                       {uploadForm.pfpPreview ? (
-                        <img src={uploadForm.pfpPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <img src={uploadForm.pfpPreview} alt="Preview" />
                       ) : (
                         <>
                           <Camera size={20} style={{ color: 'var(--color-text-muted)', marginBottom: 4 }} />
-                          <span style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)' }}>Icon</span>
+                          <span className="settings-pfp-upload-hint">Icon</span>
                         </>
                       )}
                       <input 
@@ -612,8 +562,8 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                       />
                     </div>
 
-                    <div style={{ flex: 1 }}>
-                      <div className="form-group" style={{ marginBottom: 12 }}>
+                    <div className="settings-upload-fields">
+                      <div className="form-group">
                         <label>Companion Name</label>
                         <input 
                           type="text" 
@@ -655,89 +605,31 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                   </button>
                 </div>
               ) : (
-                <div className="avatar-grid" style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', 
-                  gap: '12px',
-                  marginTop: '12px'
-                }}>
+                <div className="settings-avatar-grid">
                   {avatars.length === 0 ? (
-                    <div style={{ 
-                      gridColumn: '1 / -1', 
-                      padding: '40px 20px', 
-                      textAlign: 'center', 
-                      background: 'var(--color-bg-secondary)', 
-                      borderRadius: '12px',
-                      color: 'var(--color-text-muted)',
-                      fontSize: '0.85rem'
-                    }}>
-                      <Image size={32} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
+                    <div className="settings-empty">
+                      <Image size={32} className="settings-empty-icon" />
                       <p>Your library is empty.<br/>Upload your first VRM model!</p>
                     </div>
                   ) : (
                     avatars.map((avatar) => (
                       <div 
                         key={avatar.id}
-                        className={`avatar-card ${currentVRMName === avatar.name ? 'active' : ''}`}
+                        className={`settings-avatar-card ${currentVRMName === avatar.name ? 'active' : ''}`}
                         onClick={() => handleSelectAvatar(avatar)}
-                        style={{
-                          background: 'var(--color-surface)',
-                          border: `2px solid ${currentVRMName === avatar.name ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                          borderRadius: '16px',
-                          padding: '12px',
-                          cursor: 'pointer',
-                          transition: 'all 0.2s ease',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          position: 'relative'
-                        }}
                       >
-                        <div style={{ 
-                          width: '70px', 
-                          height: '70px', 
-                          borderRadius: '50%', 
-                          background: 'var(--color-bg-secondary)',
-                          marginBottom: '8px',
-                          overflow: 'hidden',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          border: '2px solid var(--color-border)'
-                        }}>
+                        <div className="settings-avatar-pfp">
                           {avatar.pfp_path ? (
-                            <img src={api.getUploadUrl(avatar.pfp_path)} alt={avatar.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={api.getUploadUrl(avatar.pfp_path)} alt={avatar.name} />
                           ) : (
                             <User size={30} style={{ opacity: 0.3 }} />
                           )}
                         </div>
-                        <span style={{ 
-                          fontSize: '0.75rem', 
-                          fontWeight: 600, 
-                          textAlign: 'center',
-                          color: currentVRMName === avatar.name ? 'var(--color-accent-light)' : 'var(--color-text)'
-                        }}>{avatar.name}</span>
+                        <span className="settings-avatar-name">{avatar.name}</span>
                         
                         <button 
+                          className="settings-avatar-delete"
                           onClick={(e) => handleDeleteAvatar(avatar.id, e)}
-                          style={{
-                            position: 'absolute',
-                            top: 6,
-                            right: 6,
-                            background: 'rgba(255,0,0,0.1)',
-                            border: 'none',
-                            borderRadius: '50%',
-                            width: '24px',
-                            height: '24px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: '#ff4d4d',
-                            cursor: 'pointer',
-                            opacity: 0.5
-                          }}
-                          onMouseEnter={(e) => e.target.style.opacity = 1}
-                          onMouseLeave={(e) => e.target.style.opacity = 0.5}
                         >
                           <Trash2 size={12} />
                         </button>
@@ -773,13 +665,12 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
 
               {companion.ttsEnabled && (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>
+                  <div className="settings-voice-grid">
                     <div className="form-group">
                       <label>{t('settings.voice.mic')}</label>
                       <select 
                         value={companion.audioInputDevice} 
                         onChange={(e) => setCompanion({ ...companion, audioInputDevice: e.target.value })}
-                        style={{ width: '100%', padding: '8px', borderRadius: '4px', background: 'var(--color-bg-secondary)', color: 'white', border: '1px solid var(--color-border)' }}
                       >
                         <option value="default">{t('settings.voice.systemDefault')}</option>
                         {audioDevices.inputs.map(d => (
@@ -793,7 +684,6 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                       <select 
                         value={companion.audioOutputDevice} 
                         onChange={(e) => setCompanion({ ...companion, audioOutputDevice: e.target.value })}
-                        style={{ width: '100%', padding: '8px', borderRadius: '4px', background: 'var(--color-bg-secondary)', color: 'white', border: '1px solid var(--color-border)' }}
                       >
                         <option value="default">{t('settings.voice.systemDefault')}</option>
                         {audioDevices.outputs.map(d => (
@@ -807,14 +697,13 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                       <select 
                         value={companion.ttsDevice} 
                         onChange={(e) => setCompanion({ ...companion, ttsDevice: e.target.value })}
-                        style={{ width: '100%', padding: '8px', borderRadius: '4px', background: 'var(--color-bg-secondary)', color: 'white', border: '1px solid var(--color-border)' }}
                       >
                         <option value="cpu">{t('settings.voice.cpuStandard')}</option>
                         <option value="gpu">{t('settings.voice.gpuAccel')}</option>
                       </select>
                       <div className="hint">
                         {ttsStatus.device.includes('gpu') || ttsStatus.device === 'cuda'
-                          ? `✅ GPU {t('settings.voice.hardwareAccel')} ACTIVE (${ttsStatus.device}).`
+                          ? `✅ GPU Acceleration ACTIVE (${ttsStatus.device}).`
                           : ttsStatus.status === 'offline'
                           ? "❌ TTS Server Offline."
                           : "⚠️ GPU NOT FOUND. PyTorch is running on CPU."}
@@ -826,7 +715,6 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                       <select 
                         value={companion.ttsEngine} 
                         onChange={(e) => setCompanion({ ...companion, ttsEngine: e.target.value })}
-                        style={{ width: '100%', padding: '8px', borderRadius: '4px', background: 'var(--color-bg-secondary)', color: 'white', border: '1px solid var(--color-border)' }}
                       >
                         <option value="onnx">{t('settings.voice.onnxStandard')}</option>
                         <option value="torch">{t('settings.voice.torchFull')}</option>
@@ -839,15 +727,14 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                     </div>
                   </div>
 
-                  <div className="form-group" style={{ marginBottom: '24px' }}>
+                  <div className="form-group">
                     <label>{t('settings.voice.testVoice')}</label>
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div className="settings-test-row">
                       <input 
                         type="text" 
                         value={testText}
                         onChange={(e) => setTestText(e.target.value)}
                         placeholder="Type something to test..."
-                        style={{ flex: 1 }}
                       />
                       <button 
                         className="btn btn-primary"
@@ -870,29 +757,22 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                   </div>
 
                   <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem' }}>{t('settings.voice.availableVoices')}</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                  <div className="settings-voice-cards">
                     {VOICES.map((v) => (
                       <div 
                         key={v.id} 
+                        className={`settings-voice-card ${companion.ttsVoice === v.id ? 'active' : ''}`}
                         onClick={() => setCompanion({ ...companion, ttsVoice: v.id })}
-                        style={{
-                          padding: '12px',
-                          background: companion.ttsVoice === v.id ? 'var(--color-accent-glow)' : 'var(--color-surface)',
-                          border: `1px solid ${companion.ttsVoice === v.id ? 'var(--color-accent)' : 'var(--color-border)'}`,
-                          borderRadius: '8px',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s ease'
-                        }}
                       >
-                        <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>{v.name}</div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{v.desc}</div>
+                        <div className="settings-voice-card-name">{v.name}</div>
+                        <div className="settings-voice-card-desc">{v.desc}</div>
                       </div>
                     ))}
                   </div>
                 </>
               )}
               
-              <button className="btn btn-primary btn-save" onClick={handleSave} disabled={saving} style={{ marginTop: '24px' }}>
+              <button className="btn btn-primary btn-save" onClick={handleSave} disabled={saving}>
                 {saving ? 'Saving...' : t('settings.voice.save')}
               </button>
             </div>
@@ -905,19 +785,17 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 <Sparkles size={18} className="icon" />
                 {t('settings.apikey.modelSelectionTitle')}
               </div>
-              <div className="form-group" style={{ marginBottom: 24 }}>
+              <div className="form-group">
                 <label>{t('settings.apikey.aiProvider')}</label>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+                <div className="settings-provider-btns">
                   <button 
                     className={`btn ${companion.llmProvider === 'gemini' ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ flex: 1, fontSize: '0.8rem' }}
                     onClick={() => setCompanion(p => ({ ...p, llmProvider: 'gemini', llmModel: 'gemini-3.1-flash-lite' }))}
                   >
                     Google Gemini
                   </button>
                   <button 
                     className={`btn ${companion.llmProvider === 'groq' ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ flex: 1, fontSize: '0.8rem' }}
                     onClick={() => setCompanion(p => ({ ...p, llmProvider: 'groq', llmModel: 'llama-3.1-70b-versatile' }))}
                   >
                     Groq (Super Fast)
@@ -929,15 +807,6 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                   id="llm-model"
                   value={companion.llmModel}
                   onChange={(e) => setCompanion((p) => ({ ...p, llmModel: e.target.value }))}
-                  style={{
-                    width: '100%',
-                    padding: '10px',
-                    borderRadius: 'var(--radius-md)',
-                    background: 'var(--color-surface)',
-                    border: '1px solid var(--color-border)',
-                    color: 'var(--color-text)',
-                    fontSize: '0.85rem'
-                  }}
                 >
                   {(companion.llmProvider === 'groq' ? GROQ_MODELS : GEMINI_MODELS).map(model => (
                     <option key={model.id} value={model.id}>
@@ -945,11 +814,11 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                     </option>
                   ))}
                 </select>
-                <div className="hint" style={{ marginTop: 8 }}>
+                <div className="hint">
                   {(companion.llmProvider === 'groq' ? GROQ_MODELS : GEMINI_MODELS).find(m => m.id === companion.llmModel)?.desc}
                 </div>
                 <button 
-                  className="btn btn-primary btn-save" 
+                  className="btn btn-primary"
                   style={{ marginTop: 12, width: 'auto', padding: '6px 16px' }}
                   onClick={handleSave} 
                   disabled={saving}
@@ -962,13 +831,13 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 <Key size={18} className="icon" />
                 {t('settings.apikey.bringYourOwnKey')}
               </div>
-              <div className="api-key-section" style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: '24px', marginBottom: '24px' }}>
+              <div className="api-key-section">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                   <img src="https://www.gstatic.com/lamda/images/favicon_v2_16x16.png" alt="Gemini" style={{ width: 16, height: 16 }} />
                   <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t('settings.apikey.geminiKey')}</span>
                 </div>
                 
-                <div className={`api-key-status ${hasCustomKey ? 'active' : 'inactive'}`} style={{ marginBottom: 12 }}>
+                <div className={`api-key-status ${hasCustomKey ? 'active' : 'inactive'}`}>
                   <Shield size={16} />
                   {hasCustomKey
                     ? t('settings.apikey.customGeminiActive')
@@ -977,13 +846,12 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 </div>
 
                 {!hasCustomKey ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div className="settings-api-key-row">
                     <input
                       type="password"
                       value={apiKeyInput}
                       onChange={(e) => setApiKeyInput(e.target.value)}
                       placeholder={t("settings.apikey.pasteGeminiKey")}
-                      style={{ flex: 1 }}
                     />
                     <button className="btn btn-primary" onClick={handleSetApiKey} disabled={saving || !apiKeyInput.trim()}>
                       Save
@@ -999,13 +867,13 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 </div>
               </div>
 
-              <div className="api-key-section">
+              <div className="api-key-section" style={{ marginTop: 24 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                   <div style={{ width: 16, height: 16, background: '#f55036', borderRadius: '4px' }} />
                   <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t('settings.apikey.groqKey')}</span>
                 </div>
 
-                <div className={`api-key-status ${hasGroqKey ? 'active' : 'inactive'}`} style={{ marginBottom: 12 }}>
+                <div className={`api-key-status ${hasGroqKey ? 'active' : 'inactive'}`}>
                   <Shield size={16} />
                   {hasGroqKey
                     ? t('settings.apikey.customGroqActive')
@@ -1014,13 +882,12 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 </div>
 
                 {!hasGroqKey ? (
-                  <div style={{ display: 'flex', gap: '8px' }}>
+                  <div className="settings-api-key-row">
                     <input
                       type="password"
                       value={groqApiKeyInput}
                       onChange={(e) => setGroqApiKeyInput(e.target.value)}
                       placeholder={t("settings.apikey.pasteGroqKey")}
-                      style={{ flex: 1 }}
                     />
                     <button className="btn btn-primary" onClick={handleSetGroqKey} disabled={saving || !groqApiKeyInput.trim()}>
                       Save
@@ -1046,31 +913,17 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 {t('settings.memories.title')}
               </div>
               {memories.length === 0 ? (
-                <div style={{
-                  padding: '24px',
-                  textAlign: 'center',
-                  color: 'var(--color-text-muted)',
-                  fontSize: '0.85rem',
-                }}>
-                  <Brain size={32} style={{ margin: '0 auto 12px', opacity: 0.3 }} />
+                <div className="settings-empty">
+                  <Brain size={32} className="settings-empty-icon" />
                   <p>{t('settings.memories.empty')}</p>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <div className="settings-anim-list">
                   {memories.map((memory) => (
                     <div
                       key={memory.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        padding: '10px 14px',
-                        background: 'var(--color-surface)',
-                        border: '1px solid var(--color-border)',
-                        borderRadius: 'var(--radius-md)',
-                        fontSize: '0.85rem',
-                        color: 'var(--color-text-secondary)',
-                      }}
+                      className="settings-anim-item"
+                      style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}
                     >
                       <span style={{ flex: 1 }}>💭 {memory.content}</span>
                       <button
@@ -1094,7 +947,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 <Film size={18} className="icon" />
                 {t('settings.animations.title')}
               </div>
-              <p style={{ fontSize: '0.82rem', color: 'var(--color-text-muted)', marginBottom: 16 }}>
+              <p className="settings-hint">
                 {t('settings.animations.hint')}
               </p>
 
@@ -1117,31 +970,42 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 />
               </div>
 
+              <input
+                className="avatar-browse-search"
+                type="text"
+                placeholder="Search animations..."
+                value={animSearch}
+                onChange={(e) => setAnimSearch(e.target.value)}
+                style={{ marginBottom: 12 }}
+              />
+
               {/* Facial Expressions */}
               <div style={{ marginBottom: 20 }}>
                 <h4 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
                   {t('settings.animations.facial')}
                 </h4>
-                {animations.facial.length === 0 ? (
-                  <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.82rem', background: 'var(--color-surface)', borderRadius: 'var(--radius-md)' }}>
-                    {t('settings.animations.empty')}
+                {animations.facial.filter(a => !animSearch || a.name.toLowerCase().includes(animSearch.toLowerCase())).length === 0 ? (
+                  <div className="settings-empty">
+                    {animSearch ? 'No matching facial animations.' : t('settings.animations.empty')}
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {animations.facial.map((anim) => (
-                      <div key={anim.filename} className="animation-card">
-                        <div className="animation-card-info">
-                          <span className="animation-card-name">{anim.name}</span>
-                          <span className="animation-card-meta">{anim.duration.toFixed(1)}s {anim.loop ? '(loop)' : ''}</span>
+                  <div className="settings-anim-list">
+                    {animations.facial
+                      .filter(a => !animSearch || a.name.toLowerCase().includes(animSearch.toLowerCase()))
+                      .map((anim) => (
+                      <div key={anim.filename} className="settings-anim-item">
+                        <div className="settings-anim-info">
+                          <span className="settings-anim-name">{anim.name}</span>
+                          <span className="settings-anim-meta">{anim.duration.toFixed(1)}s {anim.loop ? '(loop)' : ''}</span>
                         </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                        <div className="settings-anim-actions">
+                          <button className="btn btn-primary"
                             onClick={() => handleTestAnimation('facial', anim.filename)}
                             disabled={testStatus[`facial/${anim.filename}`] === 'playing'}>
                             <Play size={12} style={{ marginRight: 4 }} />
                             {testStatus[`facial/${anim.filename}`] === 'playing' ? t('common.playing') : t('common.test')}
                           </button>
-                          <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                          <button className="btn btn-danger"
                             onClick={() => handleDeleteAnimation('facial', anim.filename)}>
                             {t('common.delete')}
                           </button>
@@ -1157,31 +1021,33 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 <h4 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
                   {t('settings.animations.body')}
                 </h4>
-                {animations.body.length === 0 ? (
-                  <div style={{ padding: 16, textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.82rem', background: 'var(--color-surface)', borderRadius: 'var(--radius-md)' }}>
-                    {t('settings.animations.empty')}
+                {animations.body.filter(a => !animSearch || a.name.toLowerCase().includes(animSearch.toLowerCase())).length === 0 ? (
+                  <div className="settings-empty">
+                    {animSearch ? 'No matching body animations.' : t('settings.animations.empty')}
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {animations.body.map((anim) => (
-                      <div key={anim.filename} className="animation-card">
-                        <div className="animation-card-info">
-                          <span className="animation-card-name">
+                  <div className="settings-anim-list">
+                    {animations.body
+                      .filter(a => !animSearch || a.name.toLowerCase().includes(animSearch.toLowerCase()))
+                      .map((anim) => (
+                      <div key={anim.filename} className="settings-anim-item">
+                        <div className="settings-anim-info">
+                          <span className="settings-anim-name">
                             {anim.name}
                             {anim.format === 'bvh' && (
-                              <span style={{ marginLeft: 6, fontSize: '0.65rem', fontWeight: 600, color: '#a78bfa', background: 'rgba(167,139,250,0.15)', padding: '1px 6px', borderRadius: 4, verticalAlign: 'middle' }}>BVH</span>
+                              <span className="tag">BVH</span>
                             )}
                           </span>
-                          <span className="animation-card-meta">{anim.duration.toFixed(1)}s {anim.loop ? '(loop)' : ''} {anim.format === 'bvh' ? '| motion capture' : ''}</span>
+                          <span className="settings-anim-meta">{anim.duration.toFixed(1)}s {anim.loop ? '(loop)' : ''} {anim.format === 'bvh' ? '| motion capture' : ''}</span>
                         </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
-                          <button className="btn btn-primary" style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                        <div className="settings-anim-actions">
+                          <button className="btn btn-primary"
                             onClick={() => handleTestAnimation('body', anim.filename)}
                             disabled={testStatus[`body/${anim.filename}`] === 'playing'}>
                             <Play size={12} style={{ marginRight: 4 }} />
                             {testStatus[`body/${anim.filename}`] === 'playing' ? t('common.playing') : t('common.test')}
                           </button>
-                          <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                          <button className="btn btn-danger"
                             onClick={() => handleDeleteAnimation('body', anim.filename)}>
                             {t('common.delete')}
                           </button>
@@ -1192,11 +1058,9 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                 )}
               </div>
 
-              <div style={{ marginTop: 20, padding: 12, background: 'var(--color-surface)', borderRadius: 'var(--radius-md)', border: '1px dashed var(--color-border)', textAlign: 'center' }}>
-                <FolderOpen size={20} style={{ opacity: 0.4, marginBottom: 4 }} />
-                <p style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', margin: 0 }}>
-                  {t('settings.animations.folderHint')}
-                </p>
+              <div className="settings-folder-hint">
+                <FolderOpen size={20} />
+                <p>{t('settings.animations.folderHint')}</p>
               </div>
             </div>
           )}
@@ -1206,5 +1070,6 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
         </div>
       </div>
     </div>
+  </div>
   );
 }

@@ -11,6 +11,70 @@ import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import * as THREE from 'three';
 
 /**
+ * Tune spring bone parameters for better physics (anti-clipping, natural motion).
+ */
+function tuneSpringBones(vrm) {
+  if (!vrm?.springBoneManager?.joints) return;
+  let tuned = 0;
+  for (const joint of vrm.springBoneManager.joints) {
+    const s = joint.settings;
+    if (!s) continue;
+    const name = joint.bone?.name || '?';
+    let changed = false;
+
+    // Per-group defaults
+    let stiffness = 0.55, drag = 0.6, gravity = 0.15, radius = 0.1;
+
+    if (name.includes('Hair') || name.includes('Skirt') || name.includes('Coat')) {
+      // Skip — use model's original settings
+      continue;
+    } else if (name.includes('Bust')) {
+      // Bust: softer, natural bounce
+      stiffness = 0.45;
+      drag = 0.55;
+      gravity = 0.12;
+    } else if (name.includes('Skirt') && !name.includes('Coat')) {
+      // Skirt: stiffer, larger collision to prevent leg clipping & flipping up
+      stiffness = 0.6;
+      drag = 0.65;
+      gravity = 0.12;
+      radius = 0.14;
+    } else if (name.includes('CoatSkirt') || name.includes('Coat')) {
+      // Coat / coat-skirt: firm, large collision
+      stiffness = 0.65;
+      drag = 0.65;
+      gravity = 0.1;
+      radius = 0.12;
+    }
+
+    if (s.stiffness == null || Math.abs(s.stiffness - stiffness) > 0.15) {
+      s.stiffness = stiffness; changed = true;
+    }
+    if (s.dragForce == null || Math.abs(s.dragForce - drag) > 0.15) {
+      s.dragForce = drag; changed = true;
+    }
+    if (s.gravityPower == null || Math.abs(s.gravityPower - gravity) > 0.1) {
+      s.gravityPower = gravity; changed = true;
+    }
+    if (s.hitRadius == null || s.hitRadius < 0.06 || s.hitRadius > 0.2) {
+      s.hitRadius = radius; changed = true;
+    }
+
+    if (changed) {
+      tuned++;
+      console.log(`[VRM] Spring bone "${name}" → stiffness=${s.stiffness.toFixed(2)} drag=${s.dragForce.toFixed(2)} gravity=${s.gravityPower.toFixed(2)} radius=${s.hitRadius.toFixed(3)}`);
+    }
+  }
+  const colliderGroups = vrm.springBoneManager?.colliderGroups;
+  if (!colliderGroups || colliderGroups.length === 0) {
+    console.warn('[VRM] Model has NO spring bone colliders — hair/skirt will clip through body');
+  } else {
+    console.log(`[VRM] Model has ${colliderGroups.length} collider group(s)`);
+  }
+  if (tuned > 0) console.log(`[VRM] Tuned ${tuned} spring bone joints`);
+}
+
+/**
  * Hook to load and manage a VRM model.
  *
  * @returns {{ vrm, loading, error, loadVRM, loadVRMFromFile, dispose, restPose }}
@@ -122,6 +186,9 @@ export function useVRM() {
 
       // Capture rest pose after rotation but before any animation
       captureRestPose(loadedVRM);
+
+      // Tune spring bones for better physics (hair/skirt)
+      tuneSpringBones(loadedVRM);
 
       setVRM(loadedVRM);
       setLoading(false);
