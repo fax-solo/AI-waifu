@@ -1,0 +1,12 @@
+{
+  "duration": 1.8,
+  "loop": true,
+  "blendSpeed": 10,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "happy": 0.9, "Fun": 0.7, "Joy": 0.9 } },
+    { "time": 0.3, "expressions": { "happy": 1.0, "Fun": 0.9, "Joy": 1.0 } },
+    { "time": 0.9, "expressions": { "happy": 0.85, "Fun": 0.6, "Joy": 0.85 } },
+    { "time": 1.4, "expressions": { "happy": 1.0, "Fun": 0.8, "Joy": 1.0 } },
+    { "time": 1.8, "expressions": { "happy": 0.9, "Fun": 0.7, "Joy": 0.9 } }
+  ]
+}

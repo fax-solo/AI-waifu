@@ -1,0 +1,12 @@
+{
+  "duration": 2.5,
+  "loop": true,
+  "blendSpeed": 5,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "sad": 0.15, "surprised": 0.15, "Surprised": 0.15 } },
+    { "time": 0.8, "expressions": { "sad": 0.2, "surprised": 0.2, "Surprised": 0.2 } },
+    { "time": 1.5, "expressions": { "sad": 0.1, "surprised": 0.1, "Surprised": 0.1 } },
+    { "time": 2.0, "expressions": { "sad": 0.2, "surprised": 0.2, "Surprised": 0.2 } },
+    { "time": 2.5, "expressions": { "sad": 0.15, "surprised": 0.15, "Surprised": 0.15 } }
+  ]
+}

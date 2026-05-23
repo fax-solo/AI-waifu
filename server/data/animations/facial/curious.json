@@ -1,0 +1,12 @@
+{
+  "duration": 2.0,
+  "loop": true,
+  "blendSpeed": 7,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "surprised": 0.4, "Surprised": 0.4 } },
+    { "time": 0.5, "expressions": { "surprised": 0.5, "Surprised": 0.5 } },
+    { "time": 1.0, "expressions": { "surprised": 0.35, "Surprised": 0.35 } },
+    { "time": 1.5, "expressions": { "surprised": 0.45, "Surprised": 0.45 } },
+    { "time": 2.0, "expressions": { "surprised": 0.4, "Surprised": 0.4 } }
+  ]
+}

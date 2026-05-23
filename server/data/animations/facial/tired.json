@@ -1,0 +1,11 @@
+{
+  "duration": 3.0,
+  "loop": true,
+  "blendSpeed": 5,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "sad": 0.25, "relaxed": 0.5, "Sorrow": 0.2 } },
+    { "time": 1.0, "expressions": { "sad": 0.3, "relaxed": 0.6, "Sorrow": 0.25 } },
+    { "time": 2.0, "expressions": { "sad": 0.2, "relaxed": 0.45, "Sorrow": 0.15 } },
+    { "time": 3.0, "expressions": { "sad": 0.25, "relaxed": 0.5, "Sorrow": 0.2 } }
+  ]
+}

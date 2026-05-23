@@ -4,15 +4,26 @@ import { parseBVH, applyBVHFrame } from './useBVH.js';
 import { useBuiltinAnimations } from './useBuiltinAnimations.js';
 
 const EMOTION_FACIAL = {
+  neutral: 'relaxed.json',
   happy: 'happy.json',
   sad: 'sad.json',
   angry: 'angry.json',
+  relaxed: 'relaxed.json',
   surprised: 'surprised.json',
-  fearful: 'fear.json',
-  disgusted: 'disgust.json',
-  loving: 'happy.json',
-  playful: 'happy.json',
-  embarrassed: 'surprised.json',
+  excited: 'excited.json',
+  embarrassed: 'embarrassed.json',
+  nervous: 'nervous.json',
+  affectionate: 'affectionate.json',
+  playful: 'playful.json',
+  tired: 'tired.json',
+  thoughtful: 'thoughtful.json',
+  smug: 'smug.json',
+  loving: 'loving.json',
+  grateful: 'grateful.json',
+  annoyed: 'annoyed.json',
+  curious: 'curious.json',
+  worried: 'worried.json',
+  proud: 'proud.json',
 };
 
 const SKELETON_BONES = [
@@ -69,7 +80,9 @@ export function useAnimator() {
   const preloaded = useRef(false);
 
   // BVH playback state — manually applied, no AnimationMixer
-  const bvh = useRef(null);  // { filename, data, elapsed, loop } or null
+  // { filename, data, elapsed, loop, done } or null
+  // done=true means non-looping animation finished — last frame is held until replaced
+  const bvh = useRef(null);
   const pending = useRef(null);
 
   // Captured rest pose (synced from state.restPose each frame)
@@ -77,17 +90,29 @@ export function useAnimator() {
 
   // Facial animation queue
   const facial = useRef([]);
+  // Smoothed expression values for blend transitions
+  const facialBlend = useRef({});
+  // Lip sync state (smoothed mouth shape values)
+  const lipSync = useRef({ open: 0, aa: 0, ih: 0, ou: 0, ee: 0, oh: 0 });
+  const lipWave = useRef(null); // reusable Uint8Array for waveform
+  const lipFreq = useRef(null); // reusable Uint8Array for frequency
+  const EXPRESSION_NAMES = [
+    'happy', 'sad', 'angry', 'surprised', 'relaxed', 'neutral',
+    'Joy', 'Sorrow', 'Angry', 'Fun', 'Surprised', 'Oh',
+    'aa', 'ih', 'ou', 'ee', 'oh',
+    'Aa', 'Ih', 'Ou', 'Ee', 'Oh',
+  ];
 
   // Auto-trigger tracking
   const auto = useRef({ talking: false, thinking: false });
-  const lastEmotion = useRef('neutral');
+  const lastEmotion = useRef(null);
 
   // Idle animation system categorized by stance
   const IDLE_FILES = {
     neutral: ['neutral_idle.bvh', 'neutral_idle2.bvh'],
-    sit: ['sit_idle.bvh', 'sit_idle2.bvh', 'sit_idle3.bvh', 'sit_idle4.bvh'],
-    kneel: ['kneel_idle.bvh', 'kneel_idle2.bvh'],
-    laying: ['laying_idle.bvh', 'laying_idle2.bvh', 'laying_idle3.bvh'],
+    sit: ['sit_idle.bvh', 'sit_idle2.bvh', 'sit_idle3.bvh'],
+    kneel: ['neutral_idle.bvh'],
+    laying: ['neutral_idle.bvh'],
   };
   const idleRef = useRef({ active: false, filename: null, timer: 0 });
   const currentStance = useRef('neutral'); // Tracks posture so we don't randomly stand/sit
@@ -126,7 +151,7 @@ export function useAnimator() {
   const playBVH = useCallback((filename, options = {}) => {
     const loop = options.loop !== false;
 
-    if (bvh.current?.filename === filename) return;
+    if (bvh.current?.filename === filename && !bvh.current?.done) return;
 
     let data = parsedCache.current[filename];
 
@@ -160,7 +185,7 @@ export function useAnimator() {
       const text = await api.getAnimationText('body', filename);
       textCache.current[filename] = text;
       const data = parseBVH(text, vrmRef.current);
-      if (!data) { console.warn(`[Anim] Parse failed: ${filename}`); return; }
+      if (!data) { console.warn(`[Anim] Parse failed: ${filename}`); pending.current = null; return; }
       parsedCache.current[filename] = data;
       if (pending.current?.filename === filename) {
         startBVH(filename, data, pending.current.loop);
@@ -269,12 +294,15 @@ export function useAnimator() {
     // 6. Apply BVH frames to RAW bones (overwrites the normalized→raw copy)
     //    Must happen BEFORE spring bones so parent transforms are correct.
     if (bvh.current) {
-      bvh.current.elapsed += dt;
-      const { data, elapsed, loop } = bvh.current;
-      applyBVHFrame(vrm, data, elapsed, loop);
+      const { data, loop, done } = bvh.current;
+      if (!done) {
+        bvh.current.elapsed += dt;
+      }
+      const currentTime = done ? data.duration : bvh.current.elapsed;
+      applyBVHFrame(vrm, data, currentTime, loop);
 
-      if (!loop && elapsed >= data.duration) {
-        stopBVH();
+      if (!loop && !done && bvh.current.elapsed >= data.duration) {
+        bvh.current.done = true;
       }
     }
 
@@ -292,16 +320,12 @@ export function useAnimator() {
 
     // 10. Process facial queue (blend shape animations from JSON keyframes)
     const em = vrm.expressionManager || vrm.blendShapeProxy;
-    
-    // Zero out standard emotion expressions before applying new ones to prevent them getting stuck
-    if (em && em.setValue) {
-      const standardEmotions = ['happy', 'sad', 'angry', 'surprised', 'relaxed', 'neutral', 'Joy', 'Sorrow', 'Angry', 'Fun', 'Surprised', 'Oh'];
-      for (const exp of standardEmotions) {
-        em.setValue(exp, 0);
-      }
-    }
 
+    // Compute target expression values from the active facial animation queue
+    const targetExpressions = {};
     const queue = facial.current;
+    let hasActiveFacial = false;
+    let queueBlendSpeed = 8;
     for (let i = queue.length - 1; i >= 0; i--) {
       const anim = queue[i];
       if (!anim.playing) { queue.splice(i, 1); continue; }
@@ -322,8 +346,131 @@ export function useAnimator() {
           if (name === 'hips' && axes.y !== undefined) node.position.y += axes.y;
         }
       }
-      if (frame.expressions && em?.setValue) {
-        for (const [expr, val] of Object.entries(frame.expressions)) em.setValue(expr, val);
+      if (frame.expressions) {
+        hasActiveFacial = true;
+        for (const [expr, val] of Object.entries(frame.expressions)) {
+          targetExpressions[expr] = Math.max(targetExpressions[expr] || 0, val);
+        }
+        queueBlendSpeed = anim.blendSpeed ?? queueBlendSpeed;
+      }
+    }
+
+    // 10b. Lip sync from audio analyser — drives mouth shapes when talking
+    if (state.isTalking && state.analyser) {
+      const bins = state.analyser.frequencyBinCount;
+      if (!lipWave.current || lipWave.current.length !== bins) {
+        lipWave.current = new Uint8Array(bins);
+      }
+      if (!lipFreq.current || lipFreq.current.length !== bins) {
+        lipFreq.current = new Uint8Array(bins);
+      }
+
+      // Read both domains — they share the same underlying FFT
+      state.analyser.getByteTimeDomainData(lipWave.current);
+      state.analyser.getByteFrequencyData(lipFreq.current);
+
+      const wave = lipWave.current;
+      const freq = lipFreq.current;
+      const lips = lipSync.current;
+
+      // -- RMS volume from waveform (more reliable for loudness) --
+      let sumSq = 0;
+      for (let i = 0; i < bins; i++) {
+        const v = (wave[i] - 128) / 128;
+        sumSq += v * v;
+      }
+      const rms = Math.sqrt(sumSq / bins);
+
+      // -- Frequency band energy for shape --
+      let low = 0, mid = 0, high = 0;
+      const lowEnd = Math.floor(bins * 0.12);
+      const midEnd = Math.floor(bins * 0.45);
+      for (let i = 0; i < bins; i++) {
+        const v = freq[i] / 255;
+        if (i < lowEnd) low += v;
+        else if (i < midEnd) mid += v;
+        else high += v;
+      }
+      low = Math.min(1, low / lowEnd * 1.5);
+      mid = Math.min(1, mid / (midEnd - lowEnd) * 1.5);
+      high = Math.min(1, high / (bins - midEnd) * 1.5);
+
+      // Noise gate — skip silence
+      if (rms > 0.015) {
+        // Map RMS to mouth openness with compression
+        // Typical speech RMS: 0.02 (quiet) … 0.25 (loud)
+        const rawOpen = Math.max(0, (rms - 0.015) * 5);
+        const targetOpen = Math.min(0.65, rawOpen);
+
+        // Envelope follower: fast attack (~40ms), slower decay (~120ms)
+        const attackRate = Math.min(1, dt * 22);
+        const releaseRate = Math.min(1, dt * 8);
+        const envRate = targetOpen > lips.open ? attackRate : releaseRate;
+        lips.open += (targetOpen - lips.open) * envRate;
+
+        // Only deform mouth shapes when above noise floor
+        if (lips.open > 0.03) {
+          const totalFreq = low + mid + high + 0.001;
+          const lowR = low / totalFreq;
+          const midR = mid / totalFreq;
+          const highR = high / totalFreq;
+
+          // Shape weights vary by dominant frequency band
+          const aaW = midR * 0.7 + highR * 0.2;
+          const ohW = lowR * 0.6 + midR * 0.2;
+          const ihW = highR * 0.5 + midR * 0.3;
+          const eeW = highR * 0.7 + midR * 0.2;
+          const ouW = lowR * 0.4 + highR * 0.3;
+
+          const shapeRate = Math.min(1, dt * 12);
+          lips.aa += (aaW * lips.open * 0.9 - lips.aa) * shapeRate;
+          lips.oh += (ohW * lips.open * 0.7 - lips.oh) * shapeRate;
+          lips.ih += (ihW * lips.open * 0.5 - lips.ih) * shapeRate;
+          lips.ee += (eeW * lips.open * 0.5 - lips.ee) * shapeRate;
+          lips.ou += (ouW * lips.open * 0.6 - lips.ou) * shapeRate;
+        }
+      } else {
+        // Silence — smoothly close mouth
+        const decay = Math.min(1, dt * 12);
+        for (const k of ['open', 'aa', 'ih', 'ou', 'ee', 'oh']) {
+          lips[k] -= lips[k] * decay;
+        }
+      }
+
+      // Push mouth shapes onto target expressions
+      for (const [name, val] of Object.entries(lips)) {
+        if (name === 'open') continue;
+        if (val > 0.015) {
+          targetExpressions[name] = Math.max(targetExpressions[name] || 0, val);
+          const upper = name.charAt(0).toUpperCase() + name.slice(1);
+          targetExpressions[upper] = Math.max(targetExpressions[upper] || 0, val);
+        }
+      }
+      hasActiveFacial = true;
+      queueBlendSpeed = Math.max(queueBlendSpeed, 14);
+    }
+
+    // Smoothly blend facial expression values toward targets
+    if (em && em.setValue) {
+      const blendFactor = Math.min(1, dt * (hasActiveFacial ? queueBlendSpeed : 12));
+
+      // Update the blend buffer toward targets
+      const allExpr = new Set([
+        ...EXPRESSION_NAMES,
+        ...Object.keys(targetExpressions),
+        ...Object.keys(facialBlend.current),
+      ]);
+      for (const expr of allExpr) {
+        const target = targetExpressions[expr] ?? 0;
+        const current = facialBlend.current[expr] ?? 0;
+        const smoothed = current + (target - current) * blendFactor;
+        if (smoothed > 0.01) {
+          facialBlend.current[expr] = smoothed;
+          em.setValue(expr, smoothed);
+        } else {
+          delete facialBlend.current[expr];
+          em.setValue(expr, 0);
+        }
       }
     }
 
@@ -335,19 +482,14 @@ export function useAnimator() {
     const emotion = state.emotion || 'neutral';
     if (emotion !== lastEmotion.current && state.autoAnimate && !state.isTesting) {
       lastEmotion.current = emotion;
-      if (emotion !== 'neutral') {
-        const facialFile = EMOTION_FACIAL[emotion] || `${emotion}.json`;
-        playFacial(facialFile, { blendSpeed: 10 });
-      } else {
-        facial.current = [];
-      }
+      const facialFile = EMOTION_FACIAL[emotion] || `${emotion}.json`;
+      playFacial(facialFile, { blendSpeed: 10 });
     }
 
     if (aiActive) {
-      // Keep aiActive alive while the file is still loading (pending) or playing
-      // Only clear when neither pending nor active animation matches
+      // Keep aiActive alive while loading or actively playing (not done)
       const stillLoading = pending.current?.filename === aiActive;
-      const stillPlaying = bvh.current?.filename === aiActive;
+      const stillPlaying = bvh.current?.filename === aiActive && !bvh.current?.done;
       if (!stillLoading && !stillPlaying) {
         state.aiAnimationActive = null;
       }
@@ -355,7 +497,7 @@ export function useAnimator() {
 
     // 8. Auto-trigger: talking → neutral idle
     if (!aiActive) {
-      const isFrozen = !bvh.current && !pending.current;
+      const isFrozen = (!bvh.current || bvh.current?.done) && !pending.current;
       if (state.isTalking && (!auto.current.talking || isFrozen)) {
         auto.current.talking = true;
         playBVH('neutral_idle.bvh', { loop: true });
@@ -370,7 +512,7 @@ export function useAnimator() {
 
     // 9. Auto-trigger: thinking → confusion
     if (!aiActive) {
-      const isFrozen = !bvh.current && !pending.current;
+      const isFrozen = (!bvh.current || bvh.current?.done) && !pending.current;
       if (state.isThinking && (!auto.current.thinking || isFrozen)) {
         auto.current.thinking = true;
         playBVH('confusion.bvh', { loop: true });
@@ -385,12 +527,12 @@ export function useAnimator() {
     }
 
     // 10. Auto-idle: play random idle when nothing else is active
-    // Determine the valid idle files for the current stance
     const currentIdleList = IDLE_FILES[currentStance.current] || IDLE_FILES['neutral'];
-    const idlePlaying = bvh.current && currentIdleList.includes(bvh.current.filename);
+    const isAnimDone = bvh.current?.done;
+    const idlePlaying = bvh.current && !isAnimDone && currentIdleList.includes(bvh.current.filename);
     
     const shouldIdle = !aiActive
-      && (!bvh.current || idlePlaying)
+      && (!bvh.current || isAnimDone || idlePlaying)
       && !state.isTalking
       && !state.isThinking
       && (state.emotion === 'neutral' || !state.autoAnimate);

@@ -1,0 +1,14 @@
+{
+  "duration": 1.6,
+  "loop": true,
+  "blendSpeed": 12,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "happy": 1.0, "Fun": 0.8, "Joy": 1.0 } },
+    { "time": 0.2, "expressions": { "happy": 0.7, "Fun": 0.5, "Joy": 0.7 } },
+    { "time": 0.4, "expressions": { "happy": 1.0, "Fun": 0.9, "Joy": 1.0 } },
+    { "time": 0.6, "expressions": { "happy": 0.75, "Fun": 0.5, "Joy": 0.75 } },
+    { "time": 0.8, "expressions": { "happy": 1.0, "Fun": 0.9, "Joy": 1.0 } },
+    { "time": 1.2, "expressions": { "happy": 0.9, "Fun": 0.7, "Joy": 0.9 } },
+    { "time": 1.6, "expressions": { "happy": 1.0, "Fun": 0.8, "Joy": 1.0 } }
+  ]
+}

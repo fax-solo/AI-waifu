@@ -1,15 +1,12 @@
 {
-  "duration": 1.0,
+  "duration": 1.8,
   "loop": true,
-  "blendSpeed": 10,
+  "blendSpeed": 9,
   "keyframes": [
-    {
-      "time": 0.0,
-      "expressions": { "angry": 1.0, "Angry": 1.0 }
-    },
-    {
-      "time": 1.0,
-      "expressions": { "angry": 1.0, "Angry": 1.0 }
-    }
+    { "time": 0.0, "expressions": { "angry": 0.9, "Angry": 0.9 } },
+    { "time": 0.3, "expressions": { "angry": 1.0, "Angry": 1.0 } },
+    { "time": 0.9, "expressions": { "angry": 0.85, "Angry": 0.85 } },
+    { "time": 1.4, "expressions": { "angry": 1.0, "Angry": 1.0 } },
+    { "time": 1.8, "expressions": { "angry": 0.9, "Angry": 0.9 } }
   ]
 }

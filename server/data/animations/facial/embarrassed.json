@@ -1,0 +1,12 @@
+{
+  "duration": 2.2,
+  "loop": true,
+  "blendSpeed": 6,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "happy": 0.5, "surprised": 0.3, "relaxed": 0.2, "Joy": 0.5, "Surprised": 0.3 } },
+    { "time": 0.5, "expressions": { "happy": 0.6, "surprised": 0.4, "relaxed": 0.1, "Joy": 0.6, "Surprised": 0.4 } },
+    { "time": 1.1, "expressions": { "happy": 0.4, "surprised": 0.2, "relaxed": 0.3, "Joy": 0.4, "Surprised": 0.2 } },
+    { "time": 1.7, "expressions": { "happy": 0.55, "surprised": 0.35, "relaxed": 0.15, "Joy": 0.55, "Surprised": 0.35 } },
+    { "time": 2.2, "expressions": { "happy": 0.5, "surprised": 0.3, "relaxed": 0.2, "Joy": 0.5, "Surprised": 0.3 } }
+  ]
+}

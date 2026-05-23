@@ -1,0 +1,12 @@
+{
+  "duration": 2.0,
+  "loop": true,
+  "blendSpeed": 8,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "angry": 0.55, "sad": 0.2, "Angry": 0.55 } },
+    { "time": 0.4, "expressions": { "angry": 0.65, "sad": 0.25, "Angry": 0.65 } },
+    { "time": 1.0, "expressions": { "angry": 0.5, "sad": 0.15, "Angry": 0.5 } },
+    { "time": 1.5, "expressions": { "angry": 0.6, "sad": 0.2, "Angry": 0.6 } },
+    { "time": 2.0, "expressions": { "angry": 0.55, "sad": 0.2, "Angry": 0.55 } }
+  ]
+}

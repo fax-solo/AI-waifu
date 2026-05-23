@@ -1,15 +1,12 @@
 {
-  "duration": 1.0,
+  "duration": 2.0,
   "loop": true,
-  "blendSpeed": 10,
+  "blendSpeed": 8,
   "keyframes": [
-    {
-      "time": 0.0,
-      "expressions": { "happy": 1.0, "Joy": 1.0 }
-    },
-    {
-      "time": 1.0,
-      "expressions": { "happy": 1.0, "Joy": 1.0 }
-    }
+    { "time": 0.0, "expressions": { "happy": 0.95, "Joy": 0.95 } },
+    { "time": 0.4, "expressions": { "happy": 1.0, "Joy": 1.0 } },
+    { "time": 1.0, "expressions": { "happy": 0.92, "Joy": 0.92 } },
+    { "time": 1.5, "expressions": { "happy": 1.0, "Joy": 1.0 } },
+    { "time": 2.0, "expressions": { "happy": 0.95, "Joy": 0.95 } }
   ]
 }

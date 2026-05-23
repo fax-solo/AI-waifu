@@ -1,15 +1,12 @@
 {
-  "duration": 1.0,
+  "duration": 2.0,
   "loop": true,
-  "blendSpeed": 10,
+  "blendSpeed": 8,
   "keyframes": [
-    {
-      "time": 0.0,
-      "expressions": { "sad": 0.5, "surprised": 0.5, "Sorrow": 0.5 }
-    },
-    {
-      "time": 1.0,
-      "expressions": { "sad": 0.5, "surprised": 0.5, "Sorrow": 0.5 }
-    }
+    { "time": 0.0, "expressions": { "sad": 0.5, "surprised": 0.5, "Sorrow": 0.5 } },
+    { "time": 0.4, "expressions": { "sad": 0.6, "surprised": 0.6, "Sorrow": 0.6 } },
+    { "time": 1.0, "expressions": { "sad": 0.4, "surprised": 0.4, "Sorrow": 0.4 } },
+    { "time": 1.5, "expressions": { "sad": 0.55, "surprised": 0.55, "Sorrow": 0.55 } },
+    { "time": 2.0, "expressions": { "sad": 0.5, "surprised": 0.5, "Sorrow": 0.5 } }
   ]
 }

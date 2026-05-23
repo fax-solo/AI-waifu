@@ -157,7 +157,9 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   }, []);
 
   useEffect(() => {
+    const prev = animStateRef.current;
     animStateRef.current = { 
+      ...prev,
       isThinking: avatarSettings.autoAnimate ? isThinking : false, 
       isTalking: avatarSettings.autoAnimate ? isTalking : false, 
       analyser,

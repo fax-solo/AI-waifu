@@ -1,0 +1,12 @@
+{
+  "duration": 2.5,
+  "loop": true,
+  "blendSpeed": 6,
+  "keyframes": [
+    { "time": 0.0, "expressions": { "relaxed": 0.8, "happy": 0.2 } },
+    { "time": 0.8, "expressions": { "relaxed": 0.9, "happy": 0.25 } },
+    { "time": 1.5, "expressions": { "relaxed": 0.75, "happy": 0.15 } },
+    { "time": 2.0, "expressions": { "relaxed": 0.85, "happy": 0.2 } },
+    { "time": 2.5, "expressions": { "relaxed": 0.8, "happy": 0.2 } }
+  ]
+}
