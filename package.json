@@ -58,7 +58,6 @@
       "get-pip.py"
     ],
     "removePackageScripts": true,
-    "removePackageJson": false,
     "asar": true,
     "win": {
       "target": [
