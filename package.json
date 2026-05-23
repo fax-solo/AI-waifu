@@ -22,6 +22,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "electron-is-dev": "^3.0.1",
+    "electron-updater": "^6.8.3",
     "express": "^4.21.2",
     "sql.js": "^1.12.0",
     "uuid": "^11.1.0"
@@ -55,8 +56,14 @@
       "!python/tts_cache/**/*",
       "package.json",
       "models.json",
-      "get-pip.py"
+      "get-pip.py",
+      "electron/preload.cjs"
     ],
+    "publish": {
+      "provider": "github",
+      "owner": "fax-solo",
+      "repo": "AI-waifu"
+    },
     "removePackageScripts": true,
     "asar": true,
     "win": {

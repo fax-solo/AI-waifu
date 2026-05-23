@@ -8,7 +8,7 @@
 // For desktop apps running via file://, we need to point to the local Express server explicitly.
 // In development/web mode, Vite proxies '/api' correctly.
 const API_BASE = window.location.protocol === 'file:' 
-  ? 'http://localhost:3001/api' 
+  ? 'http://127.0.0.1:3005/api' 
   : '/api';
 
 /**
@@ -95,8 +95,8 @@ export function getUploadUrl(path) {
   if (path.startsWith('http') || path.startsWith('blob:') || path.startsWith('data:')) return path;
 
   const serverBase = window.location.protocol === 'file:'
-    ? 'http://localhost:3001'
-    : 'http://localhost:3001';
+    ? 'http://127.0.0.1:3005'
+    : 'http://127.0.0.1:3005';
 
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   const encoded = cleanPath.split('/').map(p => encodeURIComponent(p)).join('/');

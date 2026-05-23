@@ -2,7 +2,7 @@ import { Download, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { version as APP_VERSION } from '../../../package.json';
 
-export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, updateError, checkForUpdates, onTriggerSetup }) {
+export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, updateError, updateProgress, checkForUpdates, downloadUpdate, installUpdate, onTriggerSetup }) {
   const { t } = useLanguage();
 
   return (
@@ -45,10 +45,39 @@ export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, upd
             <Download size={24} className="update-icon" />
             <p className="update-text">{t('settings.updates.available')}</p>
             <p>{t('settings.updates.latestVersion')}: {latestVersion}</p>
-            <a href={updateUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
-              <Download size={14} />
-              {t('settings.updates.install')}
-            </a>
+            {window.electronAPI ? (
+              <button className="btn btn-primary" onClick={downloadUpdate}>
+                <Download size={14} />
+                Download Update
+              </button>
+            ) : (
+              <a href={updateUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+                <Download size={14} />
+                {t('settings.updates.install')}
+              </a>
+            )}
+          </div>
+        )}
+
+        {updateStatus === 'downloading' && (
+          <div className="settings-empty">
+            <Download size={24} className="update-icon" />
+            <p>Downloading Update...</p>
+            <div className="progress-bar-container" style={{ width: '100%', marginTop: '1rem' }}>
+              <div className="progress-bar-fill" style={{ width: `${updateProgress}%` }}></div>
+            </div>
+            <p className="text-muted" style={{ marginTop: '0.5rem' }}>{Math.floor(updateProgress)}%</p>
+          </div>
+        )}
+
+        {updateStatus === 'downloaded' && (
+          <div className="settings-empty update-available">
+            <Download size={24} className="update-icon" />
+            <p className="update-text">Update Ready</p>
+            <p>The update has been downloaded and is ready to install.</p>
+            <button className="btn btn-primary" onClick={installUpdate}>
+              Install and Restart
+            </button>
           </div>
         )}
 

@@ -9,6 +9,7 @@ export default function InstallProgress({ packages, onComplete }) {
   const [progresses, setProgresses] = useState({});
   const [isFinished, setIsFinished] = useState(false);
   const [hasStarted, setHasStarted] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   
   const logEndRef = useRef(null);
   const eventSourceRef = useRef(null);
@@ -87,8 +88,39 @@ export default function InstallProgress({ packages, onComplete }) {
   const currentWeight = packages.reduce((acc, pkg) => acc + (progresses[pkg.id] || 0), 0);
   const overallProgress = packages.length === 0 ? 0 : Math.floor((currentWeight / totalWeight) * 100);
 
+  const handleCancelClick = () => {
+    setShowCancelConfirm(true);
+  };
+
+  const handleConfirmCancel = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+    onComplete();
+  };
+
+  const handleResume = () => {
+    setShowCancelConfirm(false);
+  };
+
   return (
     <div className="setup-screen">
+      {showCancelConfirm && (
+        <div className="confirmation-overlay" style={{ zIndex: 100 }}>
+          <div className="confirmation-card">
+            <h2 style={{ color: '#ef4444' }}>Abort Installation?</h2>
+            <p>Are you sure you want to cancel the installation? The application may not function correctly without these components.</p>
+            <div style={{ display: 'flex', gap: '12px', marginTop: '1.5rem' }}>
+              <button className="btn-secondary" onClick={handleResume} style={{ flex: 1 }}>
+                Resume
+              </button>
+              <button className="btn-primary" onClick={handleConfirmCancel} style={{ flex: 1, backgroundColor: '#ef4444', borderColor: '#ef4444' }}>
+                Yes, Abort
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {!isFinished ? (
         <div className="install-container">
           {!hasStarted ? (
@@ -182,8 +214,13 @@ export default function InstallProgress({ packages, onComplete }) {
         </div>
       )}
 
-      <div className="setup-footer">
-        <button className="btn-secondary" onClick={() => setLogOpen(!logOpen)} aria-label={logOpen ? 'Hide installation log' : 'Show installation log'}>
+      <div className="setup-footer" style={{ display: 'flex', justifyContent: 'space-between' }}>
+        {hasStarted && !isFinished && (
+          <button className="btn-secondary" onClick={handleCancelClick} style={{ color: '#ef4444', borderColor: '#ef4444', marginRight: 'auto' }}>
+            Cancel Installation
+          </button>
+        )}
+        <button className="btn-secondary" onClick={() => setLogOpen(!logOpen)} aria-label={logOpen ? 'Hide installation log' : 'Show installation log'} style={{ marginLeft: (!hasStarted || isFinished) ? 'auto' : '0' }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="4 14 10 14 10 20"></polyline>
             <polyline points="20 10 14 10 14 4"></polyline>

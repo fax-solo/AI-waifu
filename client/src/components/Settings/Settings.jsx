@@ -49,7 +49,8 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
     audioDevices, testText, setTestText, micTestStatus, ttsStatus, isTestingVoice, speak, handleTestMic,
     hasCustomKey, hasGroqKey, apiKeyInput, setApiKeyInput, groqApiKeyInput, setGroqApiKeyInput,
     handleSetApiKey, handleSetGroqKey, handleRemoveApiKey, handleRemoveGroqKey,
-    updateStatus, latestVersion, updateUrl, updateError, checkForUpdates,
+    updateStatus, latestVersion, updateUrl, updateError, updateProgress, checkForUpdates,
+    downloadUpdate, installUpdate,
     VOICES, GEMINI_MODELS, GROQ_MODELS,
     settingsLoading, requestClose,
     showUnsavedDialog, handleUnsavedConfirm, handleUnsavedCancel,
@@ -144,7 +145,8 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
           fileInputRef={fileInputRef} pfpInputRef={pfpInputRef} />;
       case 'updates':
         return <UpdatesTab updateStatus={updateStatus} latestVersion={latestVersion}
-          updateUrl={updateUrl} updateError={updateError} checkForUpdates={checkForUpdates}
+          updateUrl={updateUrl} updateError={updateError} updateProgress={updateProgress}
+          checkForUpdates={checkForUpdates} downloadUpdate={downloadUpdate} installUpdate={installUpdate}
           onTriggerSetup={onTriggerSetup} />;
       case 'about':
         return <AboutTab />;

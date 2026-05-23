@@ -140,7 +140,7 @@ db.seedGallery(GALLERY_DIR);
 
 // ─── Start Server ───────────────────────────────────────────────────
 
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
   console.log(`\n  ✨ Waifu AI Companion Server`);
   console.log(`  📡 Running on http://localhost:${PORT}`);
   console.log(`  🔑 API Key: ${process.env.GEMINI_API_KEY ? 'Configured' : '⚠️  Not set!'}`);

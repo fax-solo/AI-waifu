@@ -1,10 +1,15 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import path from 'path';
 import os from 'os';
 import isDev from 'electron-is-dev';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
 import fs from 'fs';
+import { autoUpdater } from 'electron-updater';
+
+// Configure autoUpdater
+autoUpdater.autoDownload = false; // We want to trigger it manually
+autoUpdater.autoInstallOnAppQuit = false;
 
 // Only import the server if we are NOT in dev mode
 // In dev, the 'concurrently' command handles the server
@@ -132,6 +137,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.cjs'),
     },
     autoHideMenuBar: true,
   });
@@ -142,7 +148,54 @@ function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, '../client/dist/index.html'));
   }
+
+  // Set up auto-updater IPC events
+  autoUpdater.on('checking-for-update', () => {
+    win.webContents.send('update-event', { type: 'checking' });
+  });
+  
+  autoUpdater.on('update-available', (info) => {
+    win.webContents.send('update-event', { type: 'available', info });
+  });
+  
+  autoUpdater.on('update-not-available', (info) => {
+    win.webContents.send('update-event', { type: 'not-available', info });
+  });
+  
+  autoUpdater.on('error', (err) => {
+    win.webContents.send('update-event', { type: 'error', error: err.message });
+  });
+  
+  autoUpdater.on('download-progress', (progressObj) => {
+    win.webContents.send('update-event', { type: 'progress', progressObj });
+  });
+  
+  autoUpdater.on('update-downloaded', (info) => {
+    win.webContents.send('update-event', { type: 'downloaded', info });
+  });
 }
+
+ipcMain.handle('check-for-updates', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { success: true, result };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('download-update', async () => {
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall();
+});
 
 // ─── GPU Fix: NVIDIA + Wayland/Hyprland + Electron ──────────────────────────
 // Root cause: Chromium's Ozone layer uses DMA-BUF to share GPU textures between

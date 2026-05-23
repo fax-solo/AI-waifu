@@ -93,7 +93,7 @@ function formatBytes(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-export default function PackageSelection({ onNext, onPackagesSelected, systemInfo }) {
+export default function PackageSelection({ onNext, onPackagesSelected, systemInfo, onCancel }) {
   const gpuName = systemInfo?.gpuInfo?.hasNvidia ? systemInfo.gpuInfo.name : null;
   const isAmd = systemInfo?.gpuInfo?.name?.toLowerCase().includes('amd') || systemInfo?.gpuInfo?.name?.toLowerCase().includes('radeon');
   
@@ -197,6 +197,15 @@ export default function PackageSelection({ onNext, onPackagesSelected, systemInf
           Total Installation Size: <strong>{formatBytes(totalBytes)}</strong>
         </div>
         <div style={{ display: 'flex', gap: '12px' }}>
+          {onCancel && (
+            <button 
+              className="btn-secondary" 
+              onClick={onCancel}
+              style={{ padding: '0.75rem 1.5rem', marginRight: 'auto' }}
+            >
+              Cancel
+            </button>
+          )}
           <button 
             className="btn-secondary" 
             onClick={handleSelectAllRequired}

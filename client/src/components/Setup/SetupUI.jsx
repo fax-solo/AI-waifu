@@ -56,6 +56,7 @@ export default function SetupUI({ onComplete, systemInfo }) {
             onPackagesSelected={handlePackagesSelected} 
             onNext={goToInstall} 
             systemInfo={systemInfo}
+            onCancel={onComplete}
           />
         )}
         {screen === 2 && (

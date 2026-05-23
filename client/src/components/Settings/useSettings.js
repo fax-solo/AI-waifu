@@ -78,6 +78,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
   const [latestVersion, setLatestVersion] = useState('');
   const [updateUrl, setUpdateUrl] = useState('');
   const [updateError, setUpdateError] = useState('');
+  const [updateProgress, setUpdateProgress] = useState(0);
 
   const originalRef = useRef(null);
   const [dirty, setDirty] = useState(false);
@@ -223,12 +224,44 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
 
     navigator.mediaDevices.ondevicechange = loadAudioDevices;
 
+    // Listen for electron updater events
+    if (window.electronAPI) {
+      window.electronAPI.onUpdateEvent((event) => {
+        switch (event.type) {
+          case 'checking':
+            setUpdateStatus('checking');
+            break;
+          case 'available':
+            setLatestVersion(event.info.version || 'New Version');
+            setUpdateStatus('available');
+            break;
+          case 'not-available':
+            setUpdateStatus('uptodate');
+            break;
+          case 'error':
+            setUpdateError(event.error);
+            setUpdateStatus('error');
+            break;
+          case 'progress':
+            setUpdateStatus('downloading');
+            setUpdateProgress(event.progressObj.percent || 0);
+            break;
+          case 'downloaded':
+            setUpdateStatus('downloaded');
+            break;
+        }
+      });
+    }
+
     return () => {
       cancelled = true;
       abortController.abort();
       navigator.mediaDevices.ondevicechange = null;
       if (JSON.stringify(shortcutsRef.current) !== JSON.stringify(DEFAULT_SHORTCUTS)) {
         onShortcutsChange?.(shortcutsRef.current);
+      }
+      if (window.electronAPI) {
+        window.electronAPI.removeUpdateListeners();
       }
     };
   }, []);
@@ -480,19 +513,39 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     setUpdateStatus('checking');
     setUpdateError('');
     try {
-      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
-        headers: { 'Accept': 'application/vnd.github.v3+json' }
-      });
-      if (res.status === 404) { setUpdateStatus('uptodate'); return; }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const latest = data.tag_name.replace(/^v/, '');
-      setLatestVersion(latest);
-      setUpdateUrl(data.html_url);
-      setUpdateStatus(compareVersions(latest, APP_VERSION) > 0 ? 'available' : 'uptodate');
+      if (window.electronAPI) {
+        const res = await window.electronAPI.checkForUpdates();
+        if (!res.success) throw new Error(res.error);
+      } else {
+        // Fallback for web mode
+        const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
+          headers: { 'Accept': 'application/vnd.github.v3+json' }
+        });
+        if (res.status === 404) { setUpdateStatus('uptodate'); return; }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const latest = data.tag_name.replace(/^v/, '');
+        setLatestVersion(latest);
+        setUpdateUrl(data.html_url);
+        setUpdateStatus(compareVersions(latest, APP_VERSION) > 0 ? 'available' : 'uptodate');
+      }
     } catch (err) {
       setUpdateStatus('error');
       setUpdateError(err.message);
+    }
+  };
+
+  const downloadUpdate = async () => {
+    if (window.electronAPI) {
+      setUpdateStatus('downloading');
+      setUpdateProgress(0);
+      await window.electronAPI.downloadUpdate();
+    }
+  };
+
+  const installUpdate = () => {
+    if (window.electronAPI) {
+      window.electronAPI.installUpdate();
     }
   };
 
@@ -629,7 +682,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     settings, settingsLoading, displayName, companion,
     apiKeyInput, groqApiKeyInput, hasCustomKey, hasGroqKey,
     saving, toast, memories, shortcuts, recordingAction,
-    updateStatus, latestVersion, updateUrl, updateError,
+    updateStatus, latestVersion, updateUrl, updateError, updateProgress,
     animations, animLoading, animSearch, testStatus,
     currentVRMName, avatars, isUploading, showUploadForm, uploadForm,
     showGallery, galleryAvatars, downloadingGalleryId,
@@ -657,7 +710,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     loadAnimations, handleTestAnimation, handleDeleteAnimation, handleUploadAnimation,
     loadAvatars, handleUploadAvatar, handleSelectAvatar, handleDeleteAvatar,
     loadGalleryAvatars, handleDownloadGalleryAvatar,
-    handleRemoveVRM, checkForUpdates, handleTestMic, loadAudioDevices,
+    handleRemoveVRM, checkForUpdates, downloadUpdate, installUpdate, handleTestMic, loadAudioDevices,
     handleExport, handleImport,
     handleClearMemories, handleClearConversations,
     requestClose, handleUnsavedConfirm, handleUnsavedCancel,
