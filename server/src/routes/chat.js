@@ -19,66 +19,11 @@ import {
 import { rateLimitMiddleware } from '../middleware/rateLimit.js';
 import { decrypt } from '../utils/crypto.js';
 import db from '../config/database.js';
+import { resolveAnimation } from '../services/animationResolver.js';
 
 const router = Router();
 
-/**
- * Detect animation intent from user message.
- * Maps keywords to animation filenames so animations play
- * regardless of whether the AI model uses the animation tag.
- */
-const ANIMATION_KEYWORDS = [
-  { words: ['run', 'running', 'sprint'], file: 'action_run.bvh' },
-  { words: ['walk', 'walking', 'stroll'], file: 'action_walk.bvh' },
-  { words: ['jump', 'jumping', 'leap', 'hop'], file: 'action_jump.bvh' },
-  { words: ['wave', 'waving', 'greet', 'greeting', 'hello', 'hi'], file: 'action_greeting.bvh' },
-  { words: ['dance', 'dancing', 'boogie'], file: 'dance_1.bvh' },
-  { words: ['lay down', 'lie down', 'sleep', 'laying'], file: 'action_laydown.bvh' },
-  { words: ['stand up', 'stand', 'standing'], file: 'action_standup.bvh' },
-  { words: ['crawl', 'crawling'], file: 'action_crawling.bvh' },
-  { words: ['crouch', 'crouching', 'squat'], file: 'action_crouch.bvh' },
-  { words: ['jog', 'jogging'], file: 'action_jog.bvh' },
-  { words: ['exercise', 'workout', 'jumping jack', 'jumping jack'], file: 'exercise_jumping_jacks.bvh' },
-  { words: ['crunches', 'crunch', 'situp', 'sit up'], file: 'exercise_crunch.bvh' },
-  { words: ['sad', 'sadness', 'cry', 'crying'], file: 'sadness.bvh' },
-  { words: ['happy', 'joy', 'joyful', 'glad', 'celebrate'], file: 'joy.bvh' },
-  { words: ['angry', 'anger', 'mad', 'furious'], file: 'anger.bvh' },
-  { words: ['confused', 'confusion', 'confuse', 'puzzled'], file: 'confusion.bvh' },
-  { words: ['surprised', 'surprise', 'shock', 'shocked', 'amazed'], file: 'surprise.bvh' },
-  { words: ['love', 'hug', 'cuddle', 'affection'], file: 'love.bvh' },
-  { words: ['fear', 'fearful', 'scared', 'afraid', 'frightened'], file: 'fear.bvh' },
-  { words: ['disgust', 'disgusted', 'gross'], file: 'disgust.bvh' },
-  { words: ['excited', 'excitement', 'exciting', 'thrilled', 'hyped'], file: 'excitement.bvh' },
-  { words: ['embarrassed', 'embarrassment', 'blush', 'shy'], file: 'embarrassment.bvh' },
-  { words: ['nervous', 'nervousness', 'anxious', 'anxiety'], file: 'nervousness.bvh' },
-  { words: ['curious', 'curiosity', 'wonder'], file: 'curiosity.bvh' },
-  { words: ['proud', 'pride'], file: 'pride.bvh' },
-  { words: ['grateful', 'gratitude', 'thankful', 'thanks'], file: 'gratitude.bvh' },
-  { words: ['amused', 'amusement', 'funny', 'laugh'], file: 'amusement.bvh' },
-  { words: ['bored', 'boring', 'tired', 'sleepy'], file: 'neutral_idle2.bvh' },
-  { words: ['sit', 'sitting', 'take a seat'], file: 'sit_idle.bvh' },
-  { words: ['kneel', 'kneeling', 'pray'], file: 'kneel_idle.bvh' },
-  { words: ['gangnam', 'funny dance'], file: 'dance_gangnam_style.bvh' },
-  { words: ['rumba'], file: 'dance_rumba.bvh' },
-  { words: ['dab'], file: 'dance_dab.bvh' },
-  { words: ['test animation', 'test the animation', 'test my animation', 'show animation', 'play animation'], file: 'neutral_idle.bvh' },
-];
-
-function detectAnimationIntent(userMessage) {
-  const lower = userMessage.toLowerCase();
-  for (const entry of ANIMATION_KEYWORDS) {
-    for (const word of entry.words) {
-      const pattern = word.length <= 3
-        ? new RegExp(`\\b${word}\\b`, 'i')
-        : new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-      if (pattern.test(lower)) {
-        console.log(`[Anim] Keyword "${word}" matched → ${entry.file}`);
-        return entry.file;
-      }
-    }
-  }
-  return null;
-}
+// Animation intent is now handled by animationResolver.js
 
 /**
  * POST /api/chat
@@ -220,20 +165,19 @@ User Query: ${finalUserMessage}`;
     // Save AI response (just the text, not the tag)
     saveMessage(conversationId, 'assistant', text);
 
-    // Server-side animation detection: if the AI didn't provide an animation 
-    // but the user asked for one, inject it here (bypasses AI's refusal to use tags)
-    const detectedAnimation = detectAnimationIntent(message);
-    const finalAnimation = animation || detectedAnimation || null;
+    // Resolve the best animation based on the user's message, AI's response text, and the AI's emotion/animation tags
+    const resolvedAnim = resolveAnimation(message, text, emotion, animation);
 
-    if (detectedAnimation && !animation) {
-      console.log(`[Anim] Server injected animation "${detectedAnimation}" (AI didn't provide one)`);
+    if (resolvedAnim.animation && resolvedAnim.source !== 'ai_tag') {
+      console.log(`[AnimResolver] Overrode/injected animation: ${resolvedAnim.animation} (Source: ${resolvedAnim.source})`);
     }
 
     // Send response with rate limit info and optional animation
     res.json({
       message: text,
       emotion: emotion,
-      animation: finalAnimation,
+      animation: resolvedAnim.animation,
+      loopAnimation: resolvedAnim.loop,
       isSearching: isSearching && !!searchResults,
       conversationId,
       rateLimit: req.rateLimit || null,

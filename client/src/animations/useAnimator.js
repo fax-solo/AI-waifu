@@ -3,31 +3,6 @@ import * as api from '../utils/api.js';
 import { parseBVH, applyBVHFrame } from './useBVH.js';
 import { useBuiltinAnimations } from './useBuiltinAnimations.js';
 
-const EMOTION_BVH = {
-  happy: 'joy.bvh',
-  surprised: 'surprise.bvh',
-  sad: 'sadness.bvh',
-  angry: 'anger.bvh',
-  fearful: 'fear.bvh',
-  disgusted: 'disgust.bvh',
-  excited: 'excitement.bvh',
-  embarrassed: 'embarrassment.bvh',
-  nervous: 'nervousness.bvh',
-  affectionate: 'love.bvh',
-  playful: 'amusement.bvh',
-  tired: 'neutral_idle2.bvh',
-  thoughtful: 'confusion.bvh',
-  smug: 'pride.bvh',
-  loving: 'love.bvh',
-  grateful: 'admiration.bvh',
-  annoyed: 'annoyance.bvh',
-  curious: 'curiosity.bvh',
-  worried: 'fear.bvh',
-  proud: 'pride.bvh',
-  neutral: 'neutral_idle.bvh',
-  relaxed: 'neutral_idle.bvh',
-};
-
 const EMOTION_FACIAL = {
   happy: 'happy.json',
   sad: 'sad.json',
@@ -107,14 +82,15 @@ export function useAnimator() {
   const auto = useRef({ talking: false, thinking: false });
   const lastEmotion = useRef('neutral');
 
-  // Idle animation system
-  const IDLE_FILES = [
-    'neutral_idle.bvh', 'neutral_idle2.bvh',
-    'sit_idle.bvh', 'sit_idle2.bvh', 'sit_idle3.bvh', 'sit_idle4.bvh',
-    'kneel_idle.bvh', 'kneel_idle2.bvh',
-    'laying_idle.bvh', 'laying_idle2.bvh', 'laying_idle3.bvh',
-  ];
+  // Idle animation system categorized by stance
+  const IDLE_FILES = {
+    neutral: ['neutral_idle.bvh', 'neutral_idle2.bvh'],
+    sit: ['sit_idle.bvh', 'sit_idle2.bvh', 'sit_idle3.bvh', 'sit_idle4.bvh'],
+    kneel: ['kneel_idle.bvh', 'kneel_idle2.bvh'],
+    laying: ['laying_idle.bvh', 'laying_idle2.bvh', 'laying_idle3.bvh'],
+  };
   const idleRef = useRef({ active: false, filename: null, timer: 0 });
+  const currentStance = useRef('neutral'); // Tracks posture so we don't randomly stand/sit
 
   // ── Preload all BVH texts ────────────────────────────────
   const preloadAll = useCallback(async () => {
@@ -161,6 +137,16 @@ export function useAnimator() {
 
     if (data) {
       startBVH(filename, data, loop);
+      
+      // Update stance based on the filename being played
+      const name = filename.toLowerCase();
+      if (name.includes('sit')) currentStance.current = 'sit';
+      else if (name.includes('kneel')) currentStance.current = 'kneel';
+      else if (name.includes('lay')) currentStance.current = 'laying';
+      else if (name.includes('stand') || name.includes('walk') || name.includes('run') || name.includes('dance')) {
+        currentStance.current = 'neutral';
+      }
+      
       return;
     }
 
@@ -178,6 +164,15 @@ export function useAnimator() {
       parsedCache.current[filename] = data;
       if (pending.current?.filename === filename) {
         startBVH(filename, data, pending.current.loop);
+        
+        // Update stance based on the filename being played
+        const name = filename.toLowerCase();
+        if (name.includes('sit')) currentStance.current = 'sit';
+        else if (name.includes('kneel')) currentStance.current = 'kneel';
+        else if (name.includes('lay')) currentStance.current = 'laying';
+        else if (name.includes('stand') || name.includes('walk') || name.includes('run') || name.includes('dance')) {
+          currentStance.current = 'neutral';
+        }
       }
     } catch (e) {
       console.error(`[Anim] Load failed: ${filename}`, e);
@@ -189,6 +184,8 @@ export function useAnimator() {
   const playFacial = useCallback((filename, options = {}) => {
     api.getAnimation('facial', filename).then(data => {
       if (!data) return;
+      // Clear queue so old looping expressions don't override the new one
+      facial.current = [];
       facial.current.push({
         filename,
         data,
@@ -295,6 +292,15 @@ export function useAnimator() {
 
     // 10. Process facial queue (blend shape animations from JSON keyframes)
     const em = vrm.expressionManager || vrm.blendShapeProxy;
+    
+    // Zero out standard emotion expressions before applying new ones to prevent them getting stuck
+    if (em && em.setValue) {
+      const standardEmotions = ['happy', 'sad', 'angry', 'surprised', 'relaxed', 'neutral', 'Joy', 'Sorrow', 'Angry', 'Fun', 'Surprised', 'Oh'];
+      for (const exp of standardEmotions) {
+        em.setValue(exp, 0);
+      }
+    }
+
     const queue = facial.current;
     for (let i = queue.length - 1; i >= 0; i--) {
       const anim = queue[i];
@@ -321,14 +327,23 @@ export function useAnimator() {
       }
     }
 
-    // 7. Auto-trigger: emotion → BVH + facial expression
-    // Skip BVH override when an AI-triggered animation is active
+    // 7. Auto-trigger: emotion → facial expression + animation lifecycle
+    // The server now handles deciding which BVH to play via aiAnimationActive
     const aiActive = state.aiAnimationActive;
-    if (aiActive) {
-      // Still update lastEmotion, but don't map to BVH
-      if (state.emotion && state.emotion !== lastEmotion.current) {
-        lastEmotion.current = state.emotion;
+    
+    // Always trigger facial expressions for the current emotion
+    const emotion = state.emotion || 'neutral';
+    if (emotion !== lastEmotion.current && state.autoAnimate && !state.isTesting) {
+      lastEmotion.current = emotion;
+      if (emotion !== 'neutral') {
+        const facialFile = EMOTION_FACIAL[emotion] || `${emotion}.json`;
+        playFacial(facialFile, { blendSpeed: 10 });
+      } else {
+        facial.current = [];
       }
+    }
+
+    if (aiActive) {
       // Keep aiActive alive while the file is still loading (pending) or playing
       // Only clear when neither pending nor active animation matches
       const stillLoading = pending.current?.filename === aiActive;
@@ -336,27 +351,12 @@ export function useAnimator() {
       if (!stillLoading && !stillPlaying) {
         state.aiAnimationActive = null;
       }
-    } else {
-      const emotion = state.emotion || 'neutral';
-      if (emotion !== lastEmotion.current && state.autoAnimate && !state.isTesting) {
-        const prev = lastEmotion.current;
-        lastEmotion.current = emotion;
-        if (emotion === 'neutral' && prev !== 'neutral') {
-          if (bvh.current && EMOTION_BVH[prev] && bvh.current.filename === EMOTION_BVH[prev]) {
-            stopBVH();
-          }
-        } else if (emotion !== 'neutral') {
-          const facialFile = EMOTION_FACIAL[emotion] || `${emotion}.json`;
-          playFacial(facialFile, { blendSpeed: 10 });
-          const bvhFile = EMOTION_BVH[emotion];
-          if (bvhFile) playBVH(bvhFile, { loop: true });
-        }
-      }
     }
 
     // 8. Auto-trigger: talking → neutral idle
     if (!aiActive) {
-      if (state.isTalking && !auto.current.talking) {
+      const isFrozen = !bvh.current && !pending.current;
+      if (state.isTalking && (!auto.current.talking || isFrozen)) {
         auto.current.talking = true;
         playBVH('neutral_idle.bvh', { loop: true });
       } else if (!state.isTalking && auto.current.talking) {
@@ -370,7 +370,8 @@ export function useAnimator() {
 
     // 9. Auto-trigger: thinking → confusion
     if (!aiActive) {
-      if (state.isThinking && !auto.current.thinking) {
+      const isFrozen = !bvh.current && !pending.current;
+      if (state.isThinking && (!auto.current.thinking || isFrozen)) {
         auto.current.thinking = true;
         playBVH('confusion.bvh', { loop: true });
       } else if (!state.isThinking && auto.current.thinking) {
@@ -384,7 +385,10 @@ export function useAnimator() {
     }
 
     // 10. Auto-idle: play random idle when nothing else is active
-    const idlePlaying = bvh.current && IDLE_FILES.includes(bvh.current.filename);
+    // Determine the valid idle files for the current stance
+    const currentIdleList = IDLE_FILES[currentStance.current] || IDLE_FILES['neutral'];
+    const idlePlaying = bvh.current && currentIdleList.includes(bvh.current.filename);
+    
     const shouldIdle = !aiActive
       && (!bvh.current || idlePlaying)
       && !state.isTalking
@@ -393,11 +397,11 @@ export function useAnimator() {
 
     if (shouldIdle) {
       if (!idleRef.current.active) {
-        // Adopt current if it's already an idle, else start one
-        if (bvh.current && IDLE_FILES.includes(bvh.current.filename)) {
+        // Adopt current if it's already an idle in the correct stance, else start one
+        if (bvh.current && currentIdleList.includes(bvh.current.filename)) {
           idleRef.current = { active: true, filename: bvh.current.filename, timer: 0 };
         } else {
-          const fn = IDLE_FILES[Math.floor(Math.random() * IDLE_FILES.length)];
+          const fn = currentIdleList[Math.floor(Math.random() * currentIdleList.length)];
           idleRef.current = { active: true, filename: fn, timer: 0 };
           playBVH(fn, { loop: true });
           if (bvh.current) applyBVHFrame(vrm, bvh.current.data, 0, true);
@@ -409,11 +413,16 @@ export function useAnimator() {
         // Idle is still running — switch after 25-35 seconds
         idleRef.current.timer += dt;
         if (idleRef.current.timer > 25 + Math.random() * 10) {
-          const others = IDLE_FILES.filter(f => f !== idleRef.current.filename);
-          const fn = others[Math.floor(Math.random() * others.length)];
-          idleRef.current = { active: true, filename: fn, timer: 0 };
-          playBVH(fn, { loop: true });
-          if (bvh.current) applyBVHFrame(vrm, bvh.current.data, 0, true);
+          const others = currentIdleList.filter(f => f !== idleRef.current.filename);
+          // If only 1 idle file in category, just keep playing it
+          if (others.length > 0) {
+            const fn = others[Math.floor(Math.random() * others.length)];
+            idleRef.current = { active: true, filename: fn, timer: 0 };
+            playBVH(fn, { loop: true });
+            if (bvh.current) applyBVHFrame(vrm, bvh.current.data, 0, true);
+          } else {
+            idleRef.current.timer = 0;
+          }
         }
       }
     } else if (idleRef.current.active) {

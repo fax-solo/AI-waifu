@@ -189,11 +189,10 @@ export default function App() {
     const result = await sendMessage(message);
 
     if (result?.animation && avatarRef.current) {
-      // Direct imperative call — bypasses React state/effects entirely
-      avatarRef.current.triggerAnimation('body', result.animation, { loop: false });
-      // Don't set emotion when animation is specified — prevents auto-trigger from overriding
-      // Emotion facial expressions still work through the animator's pipeline
-    } else if (result?.emotion) {
+      avatarRef.current.triggerAnimation('body', result.animation, { loop: result.loopAnimation ?? false });
+    }
+    
+    if (result?.emotion) {
       setCurrentEmotion(result.emotion);
     }
 

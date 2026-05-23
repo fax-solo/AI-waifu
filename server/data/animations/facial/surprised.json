@@ -1,0 +1,15 @@
+{
+  "duration": 1.0,
+  "loop": true,
+  "blendSpeed": 10,
+  "keyframes": [
+    {
+      "time": 0.0,
+      "expressions": { "surprised": 1.0, "Surprised": 1.0, "Oh": 0.5 }
+    },
+    {
+      "time": 1.0,
+      "expressions": { "surprised": 1.0, "Surprised": 1.0, "Oh": 0.5 }
+    }
+  ]
+}

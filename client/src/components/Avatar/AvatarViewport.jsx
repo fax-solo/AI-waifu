@@ -112,6 +112,9 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     },
     triggerAnimation: (type, filename, options) => {
       if (type === 'facial') return animator.playFacial(filename, options);
+      if (animStateRef.current) {
+        animStateRef.current.aiAnimationActive = filename;
+      }
       return animator.playBVH(filename, options);
     },
   }), [loadVRM, loadVRMFromFile, dispose, animator]);

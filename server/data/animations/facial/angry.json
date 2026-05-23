@@ -1,0 +1,15 @@
+{
+  "duration": 1.0,
+  "loop": true,
+  "blendSpeed": 10,
+  "keyframes": [
+    {
+      "time": 0.0,
+      "expressions": { "angry": 1.0, "Angry": 1.0 }
+    },
+    {
+      "time": 1.0,
+      "expressions": { "angry": 1.0, "Angry": 1.0 }
+    }
+  ]
+}
