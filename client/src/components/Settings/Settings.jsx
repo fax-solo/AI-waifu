@@ -29,7 +29,7 @@ const TAB_CONFIG = [
   { id: 'data', icon: Database, labelKey: 'Data' },
 ];
 
-export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShortcutsChange }) {
+export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShortcutsChange, onTriggerSetup }) {
   const { t } = useLanguage();
   const settings = useSettings({ onShortcutsChange, onVRMFileSelected, avatarRef });
   const {
@@ -144,7 +144,8 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
           fileInputRef={fileInputRef} pfpInputRef={pfpInputRef} />;
       case 'updates':
         return <UpdatesTab updateStatus={updateStatus} latestVersion={latestVersion}
-          updateUrl={updateUrl} updateError={updateError} checkForUpdates={checkForUpdates} />;
+          updateUrl={updateUrl} updateError={updateError} checkForUpdates={checkForUpdates}
+          onTriggerSetup={onTriggerSetup} />;
       case 'about':
         return <AboutTab />;
       case 'data':

@@ -87,7 +87,7 @@ export default function App() {
       }
     }
 
-    async function checkSetup() {
+    async function checkSetup(retries = 10, delay = 500) {
       try {
         // Use the centralized API client which correctly handles port 3001
         const data = await api.fetchApi('/setup/status');
@@ -95,10 +95,15 @@ export default function App() {
         if (data.setupRequired) {
           setShowSetup(true);
         }
-      } catch (err) {
-        console.error('Failed to check setup status:', err);
-      } finally {
         setCheckingSetup(false);
+      } catch (err) {
+        if (retries > 0) {
+          console.log(`Setup check failed, retrying in ${delay}ms... (${retries} left)`);
+          setTimeout(() => checkSetup(retries - 1, delay), delay);
+        } else {
+          console.error('Failed to check setup status after retries:', err);
+          setCheckingSetup(false);
+        }
       }
     }
 

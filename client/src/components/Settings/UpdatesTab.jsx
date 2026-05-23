@@ -2,7 +2,7 @@ import { Download, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import { version as APP_VERSION } from '../../../package.json';
 
-export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, updateError, checkForUpdates }) {
+export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, updateError, checkForUpdates, onTriggerSetup }) {
   const { t } = useLanguage();
 
   return (
@@ -59,6 +59,19 @@ export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, upd
             <p className="text-muted">{updateError}</p>
           </div>
         )}
+      </div>
+
+      <div className="settings-section" style={{ marginTop: '2rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+        <div className="settings-section-title">
+          <Download size={18} className="icon" />
+          Component Setup Wizard
+        </div>
+        <p className="text-muted" style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
+          Open the setup wizard to download missing components like the Text-to-Speech models, Python environment, or hardware accelerators.
+        </p>
+        <button className="btn btn-secondary btn-full" onClick={onTriggerSetup}>
+          Open Setup Wizard
+        </button>
       </div>
     </div>
   );
