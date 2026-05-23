@@ -118,5 +118,81 @@ router.delete('/:id', (req, res) => {
   }
 });
 
+// ─── Gallery Endpoints ──────────────────────────────────────────────
+
+// List gallery models (auto-discovers new files in gallery directory)
+router.get('/gallery', (req, res) => {
+  try {
+    // Check for any new .vrm files in gallery dir not yet in database
+    const GALLERY_DIR = path.resolve(__dirname, '..', '..', 'data', 'gallery');
+    if (fs.existsSync(GALLERY_DIR)) {
+      const files = fs.readdirSync(GALLERY_DIR).filter(f => f.toLowerCase().endsWith('.vrm'));
+      for (const file of files) {
+        const name = path.parse(file).name;
+        const existing = db.prepare('SELECT id FROM gallery_vrm_models WHERE name = ?').get(name);
+        if (!existing) {
+          const id = uuidv4();
+          db.prepare(`
+            INSERT INTO gallery_vrm_models (id, name, file_path, pfp_path, description)
+            VALUES (?, ?, ?, ?, ?)
+          `).run(id, name, file, null, '');
+          console.log(`[Gallery] Auto-discovered: ${name}`);
+        }
+      }
+    }
+
+    const models = db.prepare('SELECT * FROM gallery_vrm_models ORDER BY name ASC').all();
+    res.json(models);
+  } catch (error) {
+    console.error('Error fetching gallery models:', error);
+    res.status(500).json({ error: 'Failed to fetch gallery models' });
+  }
+});
+
+// Download a gallery model to the user's library
+router.post('/gallery/:id/download', (req, res) => {
+  const userId = req.headers['x-user-id'];
+  const { id } = req.params;
+
+  try {
+    const galleryModel = db.prepare('SELECT * FROM gallery_vrm_models WHERE id = ?').get(id);
+    if (!galleryModel) return res.status(404).json({ error: 'Gallery model not found' });
+
+    // Resolve gallery file path (same logic as in index.js)
+    const GALLERY_DIR = path.resolve(__dirname, '..', '..', 'data', 'gallery');
+    const srcPath = path.join(GALLERY_DIR, galleryModel.file_path);
+
+    if (!fs.existsSync(srcPath)) {
+      return res.status(404).json({ error: 'Gallery model file not found on disk' });
+    }
+
+    // Copy the gallery file to user's avatars directory
+    const filename = `${uuidv4()}.vrm`;
+    const destPath = path.join(AVATARS_DIR, filename);
+    fs.copyFileSync(srcPath, destPath);
+
+    const avatarId = uuidv4();
+    const file_path = `/uploads/avatars/${filename}`;
+
+    db.prepare(`
+      INSERT INTO vrm_models (id, user_id, name, file_path, pfp_path)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(avatarId, userId, galleryModel.name, file_path, null);
+
+    const newAvatar = {
+      id: avatarId,
+      user_id: userId,
+      name: galleryModel.name,
+      file_path,
+      pfp_path: null,
+    };
+
+    res.status(201).json(newAvatar);
+  } catch (error) {
+    console.error('Error downloading gallery model:', error);
+    res.status(500).json({ error: 'Failed to download gallery model' });
+  }
+});
+
 export default router;
 export { UPLOADS_BASE };

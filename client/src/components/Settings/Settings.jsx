@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, User, Sparkles, Key, Brain, Shield, Image, Volume2, Camera, Plus, Trash2, Cpu, Globe, Film, RefreshCw, Play, Upload, FolderOpen } from 'lucide-react';
+import { X, User, Sparkles, Key, Brain, Shield, Image, Volume2, Camera, Plus, Trash2, Cpu, Globe, Film, RefreshCw, Play, Upload, FolderOpen, Keyboard, Download } from 'lucide-react';
 import * as api from '../../utils/api.js';
 import { useTTS } from '../../hooks/useTTS.js';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
+import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from '../../hooks/useShortcuts.js';
 
 const VOICES = [
   { id: 'af_bella', name: 'Bella (US Female)', desc: 'Friendly & clear' },
@@ -34,7 +35,7 @@ const GROQ_MODELS = [
   { id: 'gemma2-9b-it', name: 'Gemma 2 9B', desc: 'Google lightweight model', free: true },
 ];
 
-export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
+export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShortcutsChange }) {
   const { t, language, setLanguage } = useLanguage();
   const [settings, setSettings] = useState(null);
   const [displayName, setDisplayName] = useState('');
@@ -50,7 +51,8 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
     ttsDevice: 'cpu',
     ttsEngine: 'onnx',
     llmModel: 'gemini-3.1-flash-lite',
-    llmProvider: 'gemini'
+    llmProvider: 'gemini',
+    shortcuts: DEFAULT_SHORTCUTS
   });
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [groqApiKeyInput, setGroqApiKeyInput] = useState('');
@@ -60,6 +62,36 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
   const [saveMessage, setSaveMessage] = useState('');
   const [memories, setMemories] = useState([]);
   const [activeTab, setActiveTab] = useState('profile');
+  const [shortcuts, setShortcuts] = useState(DEFAULT_SHORTCUTS);
+  const shortcutsRef = useRef(shortcuts);
+  shortcutsRef.current = shortcuts;
+  const [recordingAction, setRecordingAction] = useState(null);
+
+  useEffect(() => {
+    if (!recordingAction) return;
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        setRecordingAction(null);
+        return;
+      }
+      const parts = [];
+      if (e.ctrlKey) parts.push('Ctrl');
+      if (e.metaKey) parts.push('Meta');
+      if (e.altKey) parts.push('Alt');
+      if (e.shiftKey) parts.push('Shift');
+      const key = e.key;
+      if (!['Control', 'Meta', 'Alt', 'Shift'].includes(key)) {
+        e.preventDefault();
+        e.stopPropagation();
+        parts.push(key.length === 1 ? key.toUpperCase() : key);
+        setShortcuts(prev => ({ ...prev, [recordingAction]: parts.join('+') }));
+        setRecordingAction(null);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [recordingAction]);
+
   const [animations, setAnimations] = useState({ facial: [], body: [] });
   const [animLoading, setAnimLoading] = useState(false);
   const [animSearch, setAnimSearch] = useState('');
@@ -77,6 +109,10 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
     pfpPreview: null
   });
 
+  const [showGallery, setShowGallery] = useState(false);
+  const [galleryAvatars, setGalleryAvatars] = useState([]);
+  const [downloadingGalleryId, setDownloadingGalleryId] = useState(null);
+
   const fileInputRef = useRef(null);
   const pfpInputRef = useRef(null);
   const animFileInputRef = useRef(null);
@@ -90,6 +126,41 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
   // Voice Tester State
   const [testText, setTestText] = useState("Hello! How do I sound?");
   const { speak, isPlaying: isTestingVoice } = useTTS();
+
+  // Mic Tester State
+  const [micTestStatus, setMicTestStatus] = useState('idle'); // 'idle' | 'recording' | 'playing'
+
+  const handleTestMic = useCallback(async () => {
+    if (micTestStatus !== 'idle') return;
+    setMicTestStatus('recording');
+    try {
+      const constraints = {
+        audio: companion.audioInputDevice !== 'default'
+          ? { deviceId: { exact: companion.audioInputDevice } }
+          : true
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const mediaRecorder = new MediaRecorder(stream);
+      const chunks = [];
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => { URL.revokeObjectURL(url); setMicTestStatus('idle'); };
+        audio.play().then(() => setMicTestStatus('playing')).catch(() => setMicTestStatus('idle'));
+      };
+      mediaRecorder.start();
+      setTimeout(() => { if (mediaRecorder.state === 'recording') mediaRecorder.stop(); }, 3000);
+    } catch (err) {
+      console.error('Mic test failed:', err);
+      setMicTestStatus('idle');
+      alert('Microphone access failed. Check permissions.');
+    }
+  }, [companion.audioInputDevice, micTestStatus]);
 
   const loadAudioDevices = async () => {
     try {
@@ -111,11 +182,16 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
 
   // Load settings
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       try {
         const data = await api.getSettings();
+        if (cancelled) return;
         setSettings(data);
         setDisplayName(data.user.displayName || '');
+        const loadedShortcuts = data.companion.shortcuts;
+        const hasCustomShortcuts = loadedShortcuts && Object.keys(loadedShortcuts).length > 0;
         setCompanion({
           name: data.companion.name,
           tone: data.companion.tone,
@@ -128,29 +204,29 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
           ttsDevice: data.companion.ttsDevice ?? 'cpu',
           ttsEngine: data.companion.ttsEngine ?? 'onnx',
           llmModel: data.companion.llmModel ?? 'gemini-3.1-flash-lite',
-          llmProvider: data.companion.llmProvider ?? 'gemini'
+          llmProvider: data.companion.llmProvider ?? 'gemini',
+          shortcuts: hasCustomShortcuts ? loadedShortcuts : DEFAULT_SHORTCUTS
         });
+        if (hasCustomShortcuts) {
+          setShortcuts(loadedShortcuts);
+        }
         setHasCustomKey(data.hasCustomApiKey);
         setHasGroqKey(data.hasGroqApiKey);
       } catch (err) {
+        if (cancelled) return;
         console.error('Failed to load settings:', err);
       }
     }
-
-    async function checkTTS(retries = 5) {
-      for (let i = 0; i < retries; i++) {
+    async function checkTTS() {
+      while (!cancelled) {
         try {
           const res = await fetch(`http://127.0.0.1:5000/health?t=${Date.now()}`, { cache: 'no-store' });
           const data = await res.json();
-          setTtsStatus(data);
-          return; // Success, stop retrying
+          if (!cancelled) setTtsStatus(data);
+          return;
         } catch (err) {
-          if (i < retries - 1) {
-            // TTS server still booting, wait before retrying
-            await new Promise(r => setTimeout(r, 3000));
-          } else {
-            setTtsStatus({ status: 'offline', device: 'none' });
-          }
+          if (!cancelled) setTtsStatus({ status: 'offline', device: 'none' });
+          await new Promise(r => setTimeout(r, 3000));
         }
       }
     }
@@ -170,7 +246,11 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
     }
     
     return () => {
+      cancelled = true;
       navigator.mediaDevices.ondevicechange = null;
+      if (JSON.stringify(shortcutsRef.current) !== JSON.stringify(DEFAULT_SHORTCUTS)) {
+        onShortcutsChange?.(shortcutsRef.current);
+      }
     };
   }, []);
 
@@ -317,10 +397,41 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
     }
   };
 
+  const loadGalleryAvatars = async () => {
+    try {
+      const data = await api.getGalleryAvatars();
+      setGalleryAvatars(data);
+    } catch (err) {
+      console.error('Failed to load gallery avatars:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'avatar' && showGallery) {
+      loadGalleryAvatars();
+    }
+  }, [activeTab, showGallery]);
+
+  const handleDownloadGalleryAvatar = async (galleryModel) => {
+    setDownloadingGalleryId(galleryModel.id);
+    try {
+      const newAvatar = await api.downloadGalleryAvatar(galleryModel.id);
+      setAvatars([newAvatar, ...avatars]);
+      setSaveMessage(`"${galleryModel.name}" added to your library!`);
+      setTimeout(() => setSaveMessage(''), 3000);
+    } catch (err) {
+      setSaveMessage('Failed to download model.');
+      setTimeout(() => setSaveMessage(''), 3000);
+    } finally {
+      setDownloadingGalleryId(null);
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.updateSettings({ displayName, companion });
+      await api.updateSettings({ displayName, companion: { ...companion, shortcuts } });
+      onShortcutsChange?.(shortcuts);
       setSaveMessage('Settings saved! ✨');
       setTimeout(() => setSaveMessage(''), 3000);
     } catch (err) {
@@ -401,6 +512,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
     { id: 'avatar', label: t('settings.tabs.avatar'), icon: Image },
     { id: 'voice', label: t('settings.tabs.voice'), icon: Volume2 },
     { id: 'apikey', label: t('settings.tabs.apikey'), icon: Key },
+    { id: 'shortcuts', label: t('settings.shortcuts.title'), icon: Keyboard },
     { id: 'memories', label: t('settings.tabs.memories'), icon: Brain },
     { id: 'animations', label: t('settings.tabs.animations'), icon: Film },
   ];
@@ -529,13 +641,22 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
               <div className="settings-section-title">
                 <Image size={18} className="icon" />
                 {t('settings.avatar.title')}
-                <button 
-                  className="btn btn-secondary" 
-                  style={{ marginLeft: 'auto', padding: '4px 10px', fontSize: '0.75rem' }}
-                  onClick={() => setShowUploadForm(!showUploadForm)}
-                >
-                  {showUploadForm ? 'Cancel' : <><Plus size={14} style={{ marginRight: 4 }} /> Add New</>}
-                </button>
+                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                    onClick={() => { setShowGallery(false); setShowUploadForm(!showUploadForm); }}
+                  >
+                    {showUploadForm ? 'Cancel' : <><Plus size={14} style={{ marginRight: 4 }} /> Add New</>}
+                  </button>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                    onClick={() => { setShowUploadForm(false); setShowGallery(!showGallery); }}
+                  >
+                    {showGallery ? 'Cancel' : <><Download size={14} style={{ marginRight: 4 }} /> Gallery</>}
+                  </button>
+                </div>
               </div>
 
               {showUploadForm ? (
@@ -609,6 +730,42 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                     {isUploading ? 'Uploading...' : 'Save to Library'}
                   </button>
                 </div>
+              ) : showGallery ? (
+                <div className="settings-avatar-grid">
+                  {galleryAvatars.length === 0 ? (
+                    <div className="settings-empty">
+                      <Download size={32} className="settings-empty-icon" />
+                      <p>No gallery models available.<br/>Check back later for new additions!</p>
+                    </div>
+                  ) : (
+                    galleryAvatars.map((model) => {
+                      const alreadyOwned = avatars.some(a => a.name === model.name);
+                      const isDownloading = downloadingGalleryId === model.id;
+                      return (
+                        <div key={model.id} className="settings-avatar-card">
+                          <div className="settings-avatar-pfp">
+                            <Download size={24} style={{ opacity: 0.3 }} />
+                          </div>
+                          <span className="settings-avatar-name">{model.name}</span>
+                          {alreadyOwned ? (
+                            <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', padding: '2px 6px' }}>
+                              Owned ✓
+                            </span>
+                          ) : (
+                            <button
+                              className="btn btn-secondary"
+                              style={{ padding: '3px 8px', fontSize: '0.7rem', width: '100%' }}
+                              onClick={() => handleDownloadGalleryAvatar(model)}
+                              disabled={isDownloading}
+                            >
+                              {isDownloading ? 'Downloading...' : 'Download'}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               ) : (
                 <div className="settings-avatar-grid">
                   {avatars.length === 0 ? (
@@ -645,7 +802,11 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
               )}
 
               <div className="hint" style={{ marginTop: 16 }}>
-                Once saved, your models stay in the app library. Click a card to switch companions.
+                {showGallery
+                  ? 'Browse and download models from the gallery. Downloaded models appear in your library.'
+                  : showUploadForm
+                    ? 'Upload your own VRM model files to build a personal library.'
+                    : 'Once saved, your models stay in the app library. Click a card to switch companions.'}
               </div>
             </div>
           )}
@@ -682,6 +843,14 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                           <option key={d.id} value={d.id}>{d.label}</option>
                         ))}
                       </select>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={handleTestMic}
+                        disabled={micTestStatus !== 'idle'}
+                        style={{ marginTop: 8, width: '100%', fontSize: '0.8rem', padding: '6px 14px' }}
+                      >
+                        {micTestStatus === 'recording' ? '🔴 Recording... (3s)' : micTestStatus === 'playing' ? '▶ Playing back...' : '🎤 Test Microphone'}
+                      </button>
                     </div>
 
                     <div className="form-group">
@@ -952,6 +1121,75 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef }) {
                   {t('settings.apikey.getFreeKeyAt')} <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">Groq Console</a>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Shortcuts Tab */}
+          {activeTab === 'shortcuts' && (
+            <div className="settings-section">
+              <div className="settings-section-title">
+                <Keyboard size={18} className="icon" />
+                {t('settings.shortcuts.title')}
+              </div>
+              <p className="settings-hint">{t('settings.shortcuts.hint')}</p>
+
+              <div className="settings-shortcuts-list">
+                {Object.entries(SHORTCUT_LABELS).map(([action, label]) => (
+                  <div key={action} className="settings-shortcut-item">
+                    <span className="settings-shortcut-label">{label}</span>
+                    <div className="settings-shortcut-actions">
+                      <button
+                        className={`settings-shortcut-key ${recordingAction === action ? 'recording' : ''}`}
+                        onClick={() => {
+                          setRecordingAction(recordingAction === action ? null : action);
+                        }}
+                      >
+                        {recordingAction === action ? t('settings.shortcuts.recording') : (shortcuts[action] || '—')}
+                      </button>
+                      {shortcuts[action] !== DEFAULT_SHORTCUTS[action] && (
+                        <button
+                          className="btn btn-secondary"
+                          style={{ padding: '4px 8px', fontSize: '0.75rem' }}
+                          onClick={() => setShortcuts(prev => ({ ...prev, [action]: DEFAULT_SHORTCUTS[action] }))}
+                        >
+                          {t('settings.shortcuts.reset')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {JSON.stringify(shortcuts) !== JSON.stringify(DEFAULT_SHORTCUTS) && (
+                <button
+                  className="btn btn-secondary"
+                  style={{ width: '100%', marginTop: 8, fontSize: '0.8rem', padding: '6px 14px' }}
+                  onClick={() => setShortcuts(DEFAULT_SHORTCUTS)}
+                >
+                  {t('settings.shortcuts.resetAll')}
+                </button>
+              )}
+
+              <button
+                className="btn btn-primary btn-save"
+                  onClick={async () => {
+                  setCompanion(p => ({ ...p, shortcuts }));
+                  setSaving(true);
+                  try {
+                    await api.updateSettings({ companion: { shortcuts } });
+                    onShortcutsChange?.(shortcuts);
+                    setSaveMessage(t('settings.shortcuts.saved'));
+                    setTimeout(() => setSaveMessage(''), 3000);
+                  } catch (err) {
+                    setSaveMessage('Failed to save shortcuts.');
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={saving}
+              >
+                {saving ? t('common.saving') : t('common.saveChanges')}
+              </button>
             </div>
           )}
 

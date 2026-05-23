@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 
 # Inject NVIDIA CUDA libraries into LD_LIBRARY_PATH before importing onnxruntime
 def ensure_nvidia_libs():
@@ -41,6 +42,7 @@ import hashlib
 import time
 import re
 import contextlib
+import base64
 
 # Fix Windows console encoding for emojis
 def safe_print(msg):
@@ -106,7 +108,8 @@ def init_engine():
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_engine()
+    import threading
+    threading.Thread(target=init_engine, daemon=True).start()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -235,6 +238,43 @@ async def text_to_speech(request: TTSRequest):
 @app.get("/health")
 async def health():
     return {"status": "ok", "device": current_device, "engine": "torch"}
+
+class STTRequest(BaseModel):
+    audio: str
+
+@app.post("/stt")
+async def speech_to_text(req: STTRequest):
+    if not req.audio:
+        raise HTTPException(status_code=400, detail="No audio data provided")
+    try:
+        data = base64.b64decode(req.audio)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 audio data")
+
+    import speech_recognition as sr
+    from pydub import AudioSegment
+    tmp_in = tempfile.NamedTemporaryFile(suffix=".webm", delete=False)
+    tmp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+    try:
+        tmp_in.write(data)
+        tmp_in.close()
+        audio_seg = AudioSegment.from_file(tmp_in.name)
+        audio_seg.export(tmp_wav.name, format="wav")
+        tmp_wav.close()
+
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(tmp_wav.name) as source:
+            audio = recognizer.record(source)
+        text = recognizer.recognize_google(audio)
+        return {"text": text}
+    except sr.UnknownValueError:
+        return {"text": ""}
+    except sr.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Speech recognition service error: {e}")
+    finally:
+        os.unlink(tmp_in.name)
+        if os.path.exists(tmp_wav.name):
+            os.unlink(tmp_wav.name)
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=5000)

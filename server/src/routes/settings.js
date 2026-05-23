@@ -34,6 +34,11 @@ router.get('/', (req, res) => {
     // Don't send the actual encrypted key, just whether one exists
     const hasCustomKey = !!companion?.custom_api_key_encrypted;
 
+    let shortcuts = {};
+    try {
+      shortcuts = companion?.shortcuts ? JSON.parse(companion.shortcuts) : {};
+    } catch { shortcuts = {}; }
+
     res.json({
       user: {
         id: user?.id,
@@ -54,6 +59,7 @@ router.get('/', (req, res) => {
         ttsPitch: companion?.tts_pitch ?? 1.0,
         ttsVolume: companion?.tts_volume ?? 1.0,
         llmModel: companion?.llm_model || 'gemini-3.1-flash-lite',
+        shortcuts,
       },
       hasCustomApiKey: hasCustomKey,
     });
@@ -104,6 +110,7 @@ router.put('/', (req, res) => {
               tts_pitch = COALESCE(?, tts_pitch),
               tts_volume = COALESCE(?, tts_volume),
               llm_model = COALESCE(?, llm_model),
+              shortcuts = COALESCE(?, shortcuts),
               updated_at = CURRENT_TIMESTAMP
           WHERE user_id = ?
         `).run(
@@ -121,12 +128,13 @@ router.put('/', (req, res) => {
           companion.ttsPitch !== undefined ? companion.ttsPitch : null,
           companion.ttsVolume !== undefined ? companion.ttsVolume : null,
           companion.llmModel || null,
+          companion.shortcuts ? JSON.stringify(companion.shortcuts) : null,
           userId
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, tts_speed, tts_pitch, tts_volume, llm_model)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, tts_speed, tts_pitch, tts_volume, llm_model, shortcuts)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
           companion.name || 'Aria',
@@ -142,7 +150,8 @@ router.put('/', (req, res) => {
           companion.ttsSpeed ?? 1.0,
           companion.ttsPitch ?? 1.0,
           companion.ttsVolume ?? 1.0,
-          companion.llmModel || 'gemini-3.1-flash-lite'
+          companion.llmModel || 'gemini-3.1-flash-lite',
+          companion.shortcuts ? JSON.stringify(companion.shortcuts) : null
         );
       }
     }

@@ -82,6 +82,14 @@ export async function deleteAvatar(id) {
   return request(`/avatars/${id}`, { method: 'DELETE' });
 }
 
+export async function getGalleryAvatars() {
+  return request('/avatars/gallery');
+}
+
+export async function downloadGalleryAvatar(id) {
+  return request(`/avatars/gallery/${id}/download`, { method: 'POST' });
+}
+
 export function getUploadUrl(path) {
   if (!path) return null;
   if (path.startsWith('http') || path.startsWith('blob:') || path.startsWith('data:')) return path;
@@ -204,6 +212,26 @@ export async function uploadAnimation(type, file) {
 }
 
 // ─── TTS API ──────────────────────────────────────────────────
+
+// ─── STT API ──────────────────────────────────────────────────
+
+export async function sendSTT(audioBlob) {
+  const reader = new FileReader();
+  const base64Promise = new Promise((resolve, reject) => {
+    reader.onload = () => {
+      const base64 = reader.result.split(',')[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+  });
+  reader.readAsDataURL(audioBlob);
+  const audio = await base64Promise;
+
+  return fetchApi('/stt', {
+    method: 'POST',
+    body: JSON.stringify({ audio }),
+  });
+}
 
 export async function getTTS(text, voice = 'af_bella', speed = 1.0) {
   const userId = getUserId();

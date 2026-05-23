@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, forwardRef } from 'react';
 import { Menu, Volume2, VolumeX } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import MessageBubble from './MessageBubble.jsx';
@@ -12,7 +12,7 @@ const SUGGESTIONS = [
   "I need some motivation today...",
 ];
 
-export default function ChatWindow({
+const ChatWindow = forwardRef(function ChatWindow({
   messages,
   isLoading,
   isSending,
@@ -26,7 +26,8 @@ export default function ChatWindow({
   onToggleSidebar,
   ttsEnabled,
   onToggleTTS,
-}) {
+  audioInputDevice,
+}, ref) {
   const { t } = useLanguage();
   const [showError, setShowError] = useState(false);
 
@@ -143,10 +144,15 @@ export default function ChatWindow({
 
       {/* Input */}
       <MessageInput
+        ref={ref}
         onSend={onSend}
         disabled={isSending || (rateLimit && rateLimit.remaining <= 0 && !rateLimit.bypassed)}
         placeholder={t('chat.typeMessage')}
+        audioInputDevice={audioInputDevice}
       />
     </div>
   );
-}
+});
+
+ChatWindow.displayName = 'ChatWindow';
+export default ChatWindow;

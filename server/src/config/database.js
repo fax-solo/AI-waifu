@@ -2,6 +2,7 @@ import initSqlJs from 'sql.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { v4 as uuidv4 } from 'uuid';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -111,6 +112,15 @@ async function initDb() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
+
+    CREATE TABLE IF NOT EXISTS gallery_vrm_models (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      pfp_path TEXT,
+      description TEXT DEFAULT '',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Migration: Add missing columns for existing databases
@@ -142,6 +152,7 @@ async function initDb() {
     { table: 'companion_settings', name: 'llm_model', type: 'TEXT DEFAULT "gemini-3.1-flash-lite"' },
     { table: 'companion_settings', name: 'llm_provider', type: 'TEXT DEFAULT "gemini"' },
     { table: 'companion_settings', name: 'groq_api_key_encrypted', type: 'TEXT' },
+    { table: 'companion_settings', name: 'shortcuts', type: 'TEXT' },
     { table: 'rate_limits', name: 'search_count', type: 'INTEGER DEFAULT 0' }
   ];
 
@@ -245,6 +256,30 @@ const dbWrapper = {
   exec(sql) {
     this._db.run(sql);
     saveDb();
+  },
+
+  /**
+   * Seed gallery VRM models from the gallery directory.
+   */
+  seedGallery(galleryDir) {
+    if (!fs.existsSync(galleryDir)) {
+      fs.mkdirSync(galleryDir, { recursive: true });
+      return;
+    }
+
+    const files = fs.readdirSync(galleryDir).filter(f => f.toLowerCase().endsWith('.vrm'));
+    for (const file of files) {
+      const name = path.parse(file).name;
+      const existing = this.prepare('SELECT id FROM gallery_vrm_models WHERE name = ?').get(name);
+      if (existing) continue;
+
+      const id = uuidv4();
+      this.prepare(`
+        INSERT INTO gallery_vrm_models (id, name, file_path, pfp_path, description)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(id, name, file, null, '');
+      console.log(`[Gallery] Seeded gallery model: ${name}`);
+    }
   },
 };
 

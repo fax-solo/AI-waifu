@@ -7,6 +7,7 @@ import Settings from './components/Settings/Settings.jsx';
 import AvatarViewport from './components/Avatar/AvatarViewport.jsx';
 import SetupUI from './components/Setup/SetupUI.jsx';
 import { useTTS } from './hooks/useTTS.js';
+import useShortcuts, { DEFAULT_SHORTCUTS } from './hooks/useShortcuts.js';
 import * as api from './utils/api.js';
 
 const MIN_PANEL_WIDTH = 250;
@@ -44,11 +45,13 @@ export default function App() {
     ttsEnabled: true,
     ttsVoice: 'af_bella',
     audioInputDevice: 'default',
-    audioOutputDevice: 'default'
+    audioOutputDevice: 'default',
+    shortcuts: DEFAULT_SHORTCUTS
   });
   const [currentEmotion, setCurrentEmotion] = useState('neutral');
   const [avatarCollapsed, setAvatarCollapsed] = useState(false);
   const { speak, isPlaying, analyser } = useTTS();
+  const messageInputRef = useRef(null);
   
   // Resizing state
   const [panelWidth, setPanelWidth] = useState(() => {
@@ -58,16 +61,27 @@ export default function App() {
   const [isResizing, setIsResizing] = useState(false);
   
   const avatarRef = useRef(null);
+  const settingsReqId = useRef(0);
+  const shortcutsOverridden = useRef(false);
 
   // Sidebar controls
   const handleToggleSidebar = () => setSidebarOpen(prev => !prev);
   const resizerRef = useRef(null);
 
   useEffect(() => {
+    const reqId = ++settingsReqId.current;
+
     async function loadSettings() {
       try {
         const data = await api.getSettings();
-        setCompanionSettings(data.companion);
+        if (reqId !== settingsReqId.current) return; // stale response
+        setCompanionSettings(prev => {
+          if (shortcutsOverridden.current) {
+            shortcutsOverridden.current = false;
+            return { ...data.companion, shortcuts: prev.shortcuts };
+          }
+          return data.companion;
+        });
       } catch (err) {
         // Ignore
       }
@@ -179,6 +193,11 @@ export default function App() {
     loadRateLimit();
   };
 
+  const handleShortcutsChange = (shortcuts) => {
+    shortcutsOverridden.current = true;
+    setCompanionSettings(prev => ({ ...prev, shortcuts }));
+  };
+
   const handleVRMFileSelected = (file) => {
     if (avatarRef.current) {
       avatarRef.current.loadFile(file);
@@ -223,6 +242,17 @@ export default function App() {
       console.error('Failed to save TTS setting:', err);
     }
   };
+
+  useShortcuts(
+    Object.keys(companionSettings.shortcuts || {}).length > 0 ? companionSettings.shortcuts : DEFAULT_SHORTCUTS,
+    {
+      toggleMic: () => messageInputRef.current?.toggleMic?.(),
+      toggleSidebar: handleToggleSidebar,
+      newChat: handleNewChat,
+      toggleSettings: () => setShowSettings(prev => !prev),
+      toggleTTS: handleToggleTTS,
+    }
+  );
 
   if (checkingSetup) {
     return (
@@ -284,6 +314,7 @@ export default function App() {
 
         {/* Chat Panel */}
         <ChatWindow
+          ref={messageInputRef}
           messages={messages}
           isLoading={isLoading}
           isSending={isSending}
@@ -297,6 +328,7 @@ export default function App() {
           onToggleSidebar={() => setSidebarOpen((p) => !p)}
           ttsEnabled={companionSettings.ttsEnabled}
           onToggleTTS={handleToggleTTS}
+          audioInputDevice={companionSettings.audioInputDevice}
         />
       </div>
 
@@ -305,6 +337,7 @@ export default function App() {
           onClose={handleSettingsClose}
           onVRMFileSelected={handleVRMFileSelected}
           avatarRef={avatarRef}
+          onShortcutsChange={handleShortcutsChange}
           onTriggerSetup={() => {
             setShowSettings(false);
             setShowSetup(true);

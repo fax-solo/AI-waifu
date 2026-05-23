@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Send, Mic, MicOff } from 'lucide-react';
+import { sendSTT } from '../../utils/api.js';
 
-export default function MessageInput({ onSend, disabled, placeholder = "Type a message..." }) {
+const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a message...", audioInputDevice }, ref) => {
   const [text, setText] = useState('');
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const textareaRef = useRef(null);
 
   // Auto-resize textarea
@@ -27,58 +29,134 @@ export default function MessageInput({ onSend, disabled, placeholder = "Type a m
     }
   };
 
-  // ─── Voice Recognition ──────────────────────────────
+  // ─── Voice Recording ──────────────────────────────
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef(null);
+  const isListeningRef = useRef(false);
+  const onSendRef = useRef(onSend);
+  const streamRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const animFrameRef = useRef(null);
+  const micIconRef = useRef(null);
+  const chunksRef = useRef([]);
 
-  useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'en-US';
+  useEffect(() => { onSendRef.current = onSend; }, [onSend]);
 
-      recognition.onresult = (event) => {
-        let finalTranscript = '';
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            finalTranscript += event.results[i][0].transcript + ' ';
-          }
-        }
-        if (finalTranscript) {
-          setText((prev) => prev + finalTranscript);
-        }
-      };
+  const cleanupAudio = () => {
+    if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    if (audioContextRef.current) audioContextRef.current.close();
+    streamRef.current = null;
+    audioContextRef.current = null;
+    analyserRef.current = null;
+    animFrameRef.current = null;
+    mediaRecorderRef.current = null;
+    chunksRef.current = [];
+    if (micIconRef.current) micIconRef.current.style.transform = 'scale(1)';
+  };
 
-      recognition.onerror = (err) => {
-        console.error('Speech recognition error', err);
-        setIsListening(false);
-      };
+  const startVolumeMonitor = (stream) => {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 256;
+    const source = audioCtx.createMediaStreamSource(stream);
+    source.connect(analyser);
+    audioContextRef.current = audioCtx;
+    analyserRef.current = analyser;
+    streamRef.current = stream;
 
-      recognition.onend = () => {
-        setIsListening(false);
-      };
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const checkVolume = () => {
+      if (!isListeningRef.current) return;
+      analyser.getByteTimeDomainData(dataArray);
+      let sum = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        const val = dataArray[i] / 128 - 1;
+        sum += val * val;
+      }
+      const rms = Math.sqrt(sum / dataArray.length);
+      const scale = 1 + Math.min(rms * 3, 0.8);
+      if (micIconRef.current) {
+        micIconRef.current.style.transform = `scale(${scale})`;
+      }
+      animFrameRef.current = requestAnimationFrame(checkVolume);
+    };
+    checkVolume();
+  };
 
-      recognitionRef.current = recognition;
+  const startListening = useCallback(async () => {
+    isListeningRef.current = true;
+    let stream = null;
+    if (audioInputDevice && audioInputDevice !== 'default') {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { deviceId: { exact: audioInputDevice } }
+        });
+      } catch { }
     }
-  }, []);
-
-  const toggleVoiceMode = () => {
-    if (!recognitionRef.current) {
-      alert("Voice recognition isn't supported in this environment yet.");
+    if (!stream) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch { }
+    }
+    if (!stream) {
+      isListeningRef.current = false;
       return;
     }
-    
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+
+    chunksRef.current = [];
+    const recorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4' });
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
+    recorder.onstop = () => {
+      const chunks = chunksRef.current;
+      if (isListeningRef.current) {
+        isListeningRef.current = false;
+        setIsListening(false);
+      }
+      cleanupAudio();
+      if (chunks.length > 0) {
+        setIsTranscribing(true);
+        const blob = new Blob(chunks, { type: 'audio/webm' });
+        sendSTT(blob).then(result => {
+          if (result?.text) onSendRef.current(result.text);
+        }).catch(err => {
+          console.error('STT failed:', err);
+        }).finally(() => {
+          setIsTranscribing(false);
+        });
+      }
+    };
+    recorder.start();
+    mediaRecorderRef.current = recorder;
+    startVolumeMonitor(stream);
+    setIsListening(true);
+  }, [audioInputDevice]);
+
+  const stopListening = () => {
+    isListeningRef.current = false;
+    setIsListening(false);
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
     } else {
-      // Small visual feedback
-      recognitionRef.current.start();
-      setIsListening(true);
+      cleanupAudio();
     }
   };
+
+  const toggleVoiceMode = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
+
+  useImperativeHandle(ref, () => ({
+    toggleMic: toggleVoiceMode,
+    isListening,
+  }), [isListening, toggleVoiceMode]);
 
   return (
     <div className="message-input-container">
@@ -94,12 +172,18 @@ export default function MessageInput({ onSend, disabled, placeholder = "Type a m
           rows={1}
         />
         <button
-          className={`mic-btn ${isListening ? 'listening' : ''}`}
+          className={`mic-btn ${isListening ? 'listening' : ''} ${isTranscribing ? 'transcribing' : ''}`}
           onClick={toggleVoiceMode}
-          title={isListening ? "Stop listening" : "Start Voice Mode"}
-          disabled={disabled && !isListening}
+          title={isListening ? "Stop recording" : isTranscribing ? "Transcribing..." : "Start recording"}
+          disabled={(disabled && !isListening) || isTranscribing}
         >
-          {isListening ? <Mic className="pulse-icon" size={20} color="#ff4a4a" /> : <MicOff size={20} />}
+          {isTranscribing ? (
+            <Mic size={20} color="#ffaa00" />
+          ) : isListening ? (
+            <span ref={micIconRef} style={{ display: 'inline-flex', transition: 'transform 0.08s ease' }}>
+              <Mic className="pulse-icon" size={20} color="#ff4a4a" />
+            </span>
+          ) : <MicOff size={20} />}
         </button>
         <button
           id="send-button"
@@ -113,4 +197,7 @@ export default function MessageInput({ onSend, disabled, placeholder = "Type a m
       </div>
     </div>
   );
-}
+});
+
+MessageInput.displayName = 'MessageInput';
+export default MessageInput;
