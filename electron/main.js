@@ -5,7 +5,8 @@ import isDev from 'electron-is-dev';
 import { fileURLToPath } from 'url';
 import { spawn, execSync } from 'child_process';
 import fs from 'fs';
-import { autoUpdater } from 'electron-updater';
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 
 // Configure autoUpdater
 autoUpdater.autoDownload = false; // We want to trigger it manually
