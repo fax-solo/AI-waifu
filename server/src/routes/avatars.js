@@ -120,23 +120,62 @@ router.delete('/:id', (req, res) => {
 
 // ─── Gallery Endpoints ──────────────────────────────────────────────
 
+// Helper: find companion image for a gallery VRM file
+function findGalleryPfp(galleryDir, baseName) {
+  const exts = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+  if (!fs.existsSync(galleryDir)) return null;
+  const entries = fs.readdirSync(galleryDir);
+  for (const f of entries) {
+    const low = f.toLowerCase();
+    if (path.parse(f).name === baseName && exts.some(e => low.endsWith(e))) {
+      return `/gallery/${f}`;
+    }
+  }
+  return null;
+}
+
 // List gallery models (auto-discovers new files in gallery directory)
 router.get('/gallery', (req, res) => {
   try {
     // Check for any new .vrm files in gallery dir not yet in database
     const GALLERY_DIR = path.resolve(__dirname, '..', '..', 'data', 'gallery');
     if (fs.existsSync(GALLERY_DIR)) {
-      const files = fs.readdirSync(GALLERY_DIR).filter(f => f.toLowerCase().endsWith('.vrm'));
+      const files = fs.readdirSync(GALLERY_DIR).filter(f => { const l = f.toLowerCase(); return l.endsWith('.vrm') || l.endsWith('.glb'); });
+      const currentFiles = new Set(files);
+
+      // Remove stale DB entries whose file is no longer on disk
+      const allDb = db.prepare('SELECT id, file_path FROM gallery_vrm_models').all();
+      for (const entry of allDb) {
+        if (!currentFiles.has(entry.file_path)) {
+          db.prepare('DELETE FROM gallery_vrm_models WHERE id = ?').run(entry.id);
+          console.log(`[Gallery] Removed stale entry: ${entry.file_path}`);
+        }
+      }
+
+      // Sync new/changed files
       for (const file of files) {
         const name = path.parse(file).name;
-        const existing = db.prepare('SELECT id FROM gallery_vrm_models WHERE name = ?').get(name);
+        const existing = db.prepare('SELECT id, pfp_path, file_path FROM gallery_vrm_models WHERE file_path = ?').get(file);
         if (!existing) {
           const id = uuidv4();
+          const pfp_path = findGalleryPfp(GALLERY_DIR, name);
           db.prepare(`
             INSERT INTO gallery_vrm_models (id, name, file_path, pfp_path, description)
             VALUES (?, ?, ?, ?, ?)
-          `).run(id, name, file, null, '');
+          `).run(id, name, file, pfp_path, '');
           console.log(`[Gallery] Auto-discovered: ${name}`);
+        } else {
+          // Update name if file was renamed
+          if (existing.name !== name) {
+            db.prepare('UPDATE gallery_vrm_models SET name = ? WHERE id = ?').run(name, existing.id);
+            console.log(`[Gallery] Renamed: ${existing.name} -> ${name}`);
+          }
+          // Verify pfp
+          const currentPfp = findGalleryPfp(GALLERY_DIR, name);
+          if (currentPfp !== existing.pfp_path) {
+            db.prepare('UPDATE gallery_vrm_models SET pfp_path = ? WHERE id = ?').run(currentPfp, existing.id);
+            if (currentPfp) console.log(`[Gallery] Updated pfp for: ${name}`);
+          }
         }
       }
     }
@@ -171,20 +210,34 @@ router.post('/gallery/:id/download', (req, res) => {
     const destPath = path.join(AVATARS_DIR, filename);
     fs.copyFileSync(srcPath, destPath);
 
+    // Copy gallery pfp if it exists
+    let pfp_path = null;
+    if (galleryModel.pfp_path) {
+      const pfpFilename = path.basename(galleryModel.pfp_path);
+      const srcPfp = path.join(GALLERY_DIR, pfpFilename);
+      if (fs.existsSync(srcPfp)) {
+        const pfpExt = path.extname(pfpFilename);
+        const newPfpName = `${uuidv4()}${pfpExt}`;
+        const destPfp = path.join(PFPS_DIR, newPfpName);
+        fs.copyFileSync(srcPfp, destPfp);
+        pfp_path = `/uploads/pfps/${newPfpName}`;
+      }
+    }
+
     const avatarId = uuidv4();
     const file_path = `/uploads/avatars/${filename}`;
 
     db.prepare(`
       INSERT INTO vrm_models (id, user_id, name, file_path, pfp_path)
       VALUES (?, ?, ?, ?, ?)
-    `).run(avatarId, userId, galleryModel.name, file_path, null);
+    `).run(avatarId, userId, galleryModel.name, file_path, pfp_path);
 
     const newAvatar = {
       id: avatarId,
       user_id: userId,
       name: galleryModel.name,
       file_path,
-      pfp_path: null,
+      pfp_path,
     };
 
     res.status(201).json(newAvatar);

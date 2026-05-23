@@ -3,6 +3,21 @@ import { BVHLoader } from 'three/examples/jsm/loaders/BVHLoader.js';
 
 const loader = new BVHLoader();
 
+// Generic bone lookup: tries VRM raw bone node, then boneMap, then scene traversal
+function getBoneNode(vrm, vrmBone) {
+  if (vrm.humanoid) return vrm.humanoid.getRawBoneNode?.(vrmBone) ?? null;
+  if (vrm.boneMap?.[vrmBone]) return vrm.boneMap[vrmBone];
+  const lower = vrmBone.toLowerCase().replace(/[^a-z0-9]/g, '');
+  let found = null;
+  vrm.scene?.traverse?.((child) => {
+    if (!found && child.isBone) {
+      const n = child.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (n === lower || n.endsWith(lower)) found = child;
+    }
+  });
+  return found;
+}
+
 function fingerAliases(name) {
   const sides = ['left', 'right'];
   const digits = ['Thumb', 'Index', 'Middle', 'Ring', 'Little'];
@@ -22,28 +37,34 @@ function fingerAliases(name) {
 }
 
 const BONE_MAPPING = [
-  ['hips', ['Hips', 'hips', 'pelvis', 'Pelvis', 'mixamorig:Hips', 'hip', 'HIP', 'root']],
-  ['spine', ['Spine', 'spine', 'mixamorig:Spine']],
-  ['chest', ['Spine1', 'spine1', 'Spine2', 'spine2', 'chest', 'Chest', 'mixamorig:Spine1', 'mixamorig:Spine2']],
-  ['upperChest', ['Spine2', 'spine2', 'Spine3', 'spine3', 'upperChest', 'UpperChest', 'mixamorig:Spine3']],
+  // Order matters: more specific entries first so they take priority.
+  // Aliases must NOT overlap between entries to avoid double-matching.
+  ['upperChest', ['Spine3', 'spine3', 'Spine2', 'spine2', 'upperChest', 'UpperChest', 'mixamorig:Spine2', 'mixamorig:Spine3', 'spine03']],
+  ['chest', ['Spine1', 'spine1', 'chest', 'Chest', 'mixamorig:Spine1', 'spine02']],
+  // No bare 'Spine'/'spine' or 'mixamorig:Spine' — they would prefix-match
+  // numbered siblings (Spine2) and VRoid segments (spine_01_03). Instead
+  // use spine01 (for numbered bones); the fallback getBone uses endsWith
+  // to catch 'Spine' and 'mixamorig:Spine' uniquely.
+  ['spine', ['spine01']],
+  ['hips', ['Hips', 'hips', 'pelvis', 'Pelvis', 'mixamorig:Hips', 'hip', 'HIP', 'root', 'Root']],
   ['neck', ['Neck', 'neck', 'mixamorig:Neck']],
   ['head', ['Head', 'head', 'mixamorig:Head']],
-  ['leftShoulder', ['LeftShoulder', 'leftShoulder', 'Left_shoulder', 'left_shoulder', 'l_shoulder', 'mixamorig:LeftShoulder']],
-  ['rightShoulder', ['RightShoulder', 'rightShoulder', 'Right_shoulder', 'right_shoulder', 'r_shoulder', 'mixamorig:RightShoulder']],
-  ['leftUpperArm', ['leftUpperArm', 'LeftArm', 'leftArm', 'Left_arm', 'left_arm', 'l_arm', 'mixamorig:LeftArm']],
-  ['leftLowerArm', ['leftLowerArm', 'LeftForeArm', 'leftForeArm', 'Left_forearm', 'left_forearm', 'l_forearm', 'mixamorig:LeftForeArm']],
-  ['leftHand', ['leftHand', 'LeftHand', 'leftHand', 'Left_hand', 'left_hand', 'l_hand', 'mixamorig:LeftHand']],
-  ['rightUpperArm', ['rightUpperArm', 'RightArm', 'rightArm', 'Right_arm', 'right_arm', 'mixamorig:RightArm']],
-  ['rightLowerArm', ['rightLowerArm', 'RightForeArm', 'rightForeArm', 'Right_forearm', 'right_forearm', 'l_forearm', 'mixamorig:RightForeArm']],
-  ['rightHand', ['rightHand', 'RightHand', 'rightHand', 'Right_hand', 'right_hand', 'r_hand', 'mixamorig:RightHand']],
-  ['leftUpperLeg', ['leftUpperLeg', 'LeftUpLeg', 'leftUpLeg', 'Left_thigh', 'left_thigh', 'l_thigh', 'mixamorig:LeftUpLeg']],
-  ['leftLowerLeg', ['leftLowerLeg', 'LeftLeg', 'leftLeg', 'Left_shin', 'left_shin', 'l_shin', 'mixamorig:LeftLeg']],
-  ['leftFoot', ['leftFoot', 'LeftFoot', 'leftFoot', 'Left_foot', 'left_foot', 'l_foot', 'mixamorig:LeftFoot']],
-  ['leftToes', ['leftToes', 'LeftToes', 'leftToes', 'Left_toes', 'left_toes', 'l_toes', 'LeftFootEnd']],
-  ['rightUpperLeg', ['rightUpperLeg', 'RightUpLeg', 'rightUpLeg', 'Right_thigh', 'right_thigh', 'r_thigh', 'mixamorig:RightUpLeg']],
-  ['rightLowerLeg', ['rightLowerLeg', 'RightLeg', 'rightLeg', 'Right_shin', 'right_shin', 'r_shin', 'mixamorig:RightLeg']],
-  ['rightFoot', ['rightFoot', 'RightFoot', 'rightFoot', 'Right_foot', 'right_foot', 'r_foot', 'mixamorig:RightFoot']],
-  ['rightToes', ['rightToes', 'RightToes', 'rightToes', 'Right_toes', 'right_toes', 'r_toes', 'RightFootEnd']],
+  ['leftShoulder', ['LeftShoulder', 'leftShoulder', 'Left_shoulder', 'left_shoulder', 'l_shoulder', 'mixamorig:LeftShoulder', 'claviclel']],
+  ['rightShoulder', ['RightShoulder', 'rightShoulder', 'Right_shoulder', 'right_shoulder', 'r_shoulder', 'mixamorig:RightShoulder', 'clavicler']],
+  ['leftUpperArm', ['leftUpperArm', 'LeftArm', 'leftArm', 'Left_arm', 'left_arm', 'l_arm', 'mixamorig:LeftArm', 'upperarml']],
+  ['leftLowerArm', ['leftLowerArm', 'LeftForeArm', 'leftForeArm', 'Left_forearm', 'left_forearm', 'l_forearm', 'mixamorig:LeftForeArm', 'lowerarml']],
+  ['leftHand', ['leftHand', 'LeftHand', 'leftHand', 'Left_hand', 'left_hand', 'l_hand', 'mixamorig:LeftHand', 'handl']],
+  ['rightUpperArm', ['rightUpperArm', 'RightArm', 'rightArm', 'Right_arm', 'right_arm', 'mixamorig:RightArm', 'upperarmr']],
+  ['rightLowerArm', ['rightLowerArm', 'RightForeArm', 'rightForeArm', 'Right_forearm', 'right_forearm', 'l_forearm', 'mixamorig:RightForeArm', 'lowerarmr']],
+  ['rightHand', ['rightHand', 'RightHand', 'rightHand', 'Right_hand', 'right_hand', 'r_hand', 'mixamorig:RightHand', 'handr']],
+  ['leftUpperLeg', ['leftUpperLeg', 'LeftUpLeg', 'leftUpLeg', 'Left_thigh', 'left_thigh', 'l_thigh', 'mixamorig:LeftUpLeg', 'thighl']],
+  ['leftLowerLeg', ['leftLowerLeg', 'LeftLeg', 'leftLeg', 'Left_shin', 'left_shin', 'l_shin', 'mixamorig:LeftLeg', 'calfl', 'shinl']],
+  ['leftFoot', ['leftFoot', 'LeftFoot', 'leftFoot', 'Left_foot', 'left_foot', 'l_foot', 'mixamorig:LeftFoot', 'footl']],
+  ['leftToes', ['leftToes', 'LeftToes', 'leftToes', 'Left_toes', 'left_toes', 'l_toes', 'LeftFootEnd', 'balll']],
+  ['rightUpperLeg', ['rightUpperLeg', 'RightUpLeg', 'rightUpLeg', 'Right_thigh', 'right_thigh', 'r_thigh', 'mixamorig:RightUpLeg', 'thighr']],
+  ['rightLowerLeg', ['rightLowerLeg', 'RightLeg', 'rightLeg', 'Right_shin', 'right_shin', 'r_shin', 'mixamorig:RightLeg', 'calfr', 'shinr']],
+  ['rightFoot', ['rightFoot', 'RightFoot', 'rightFoot', 'Right_foot', 'right_foot', 'r_foot', 'mixamorig:RightFoot', 'footr']],
+  ['rightToes', ['rightToes', 'RightToes', 'rightToes', 'Right_toes', 'right_toes', 'r_toes', 'RightFootEnd', 'ballr']],
   // Finger bones
   ['leftThumbProximal', fingerAliases('leftThumbProximal')],
   ['leftThumbIntermediate', fingerAliases('leftThumbIntermediate')],
@@ -94,6 +115,8 @@ function matchBoneKey(bvhName) {
 const _q = new THREE.Quaternion();
 const _q1 = new THREE.Quaternion();
 
+export { BONE_MAPPING };
+
 export function parseBVH(text, vrm) {
   const { clip } = loader.parse(text);
   const times = clip.tracks.length > 0 ? clip.tracks[0].times : new Float32Array();
@@ -118,9 +141,9 @@ export function parseBVH(text, vrm) {
     bones[vrmBone] = new Float32Array(track.values);
   }
 
-  // Debug: compare BVH frame0 to raw bone rest rotation
-  if (vrm?.humanoid?._normalizedHumanBones?._boneRotations) {
-    const restRots = vrm.humanoid._normalizedHumanBones._boneRotations;
+  // Debug: compare BVH frame0 to raw bone rest rotation (VRM only)
+  const restRots = vrm?.humanoid?._normalizedHumanBones?._boneRotations;
+  if (restRots) {
     for (const [vrmBone, values] of Object.entries(bones)) {
       const rest = restRots[vrmBone];
       if (rest) {
@@ -146,7 +169,7 @@ export function parseBVH(text, vrm) {
 }
 
 export function applyBVHFrame(vrm, data, elapsed, loop) {
-  if (!vrm?.humanoid) return;
+  if (!vrm?.scene) return;
 
   const { times, duration, bones } = data;
   let t = elapsed;
@@ -189,10 +212,10 @@ export function applyBVHFrame(vrm, data, elapsed, loop) {
     _q.x *= -1;
     _q.z *= -1;
 
-    const rawNode = vrm.humanoid.getRawBoneNode?.(vrmBone);
+    const rawNode = getBoneNode(vrm, vrmBone);
     if (rawNode) {
       rawNode.quaternion.copy(_q);
-    } else {
+    } else if (vrm.humanoid) {
       if (!window._missingRaws) window._missingRaws = new Set();
       if (!window._missingRaws.has(vrmBone)) {
         window._missingRaws.add(vrmBone);

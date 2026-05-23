@@ -259,6 +259,22 @@ const dbWrapper = {
   },
 
   /**
+   * Find a companion image for a VRM file in the same directory.
+   */
+  _findGalleryPfp(dir, baseName) {
+    const exts = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+    if (!fs.existsSync(dir)) return null;
+    const entries = fs.readdirSync(dir);
+    for (const f of entries) {
+      const low = f.toLowerCase();
+      if (path.parse(f).name === baseName && exts.some(e => low.endsWith(e))) {
+        return `/gallery/${f}`;
+      }
+    }
+    return null;
+  },
+
+  /**
    * Seed gallery VRM models from the gallery directory.
    */
   seedGallery(galleryDir) {
@@ -267,18 +283,43 @@ const dbWrapper = {
       return;
     }
 
-    const files = fs.readdirSync(galleryDir).filter(f => f.toLowerCase().endsWith('.vrm'));
+    const files = fs.readdirSync(galleryDir).filter(f => { const l = f.toLowerCase(); return l.endsWith('.vrm') || l.endsWith('.glb'); });
+    const currentFiles = new Set(files);
+
+    // Remove stale DB entries whose file is no longer on disk
+    const allDb = this.prepare('SELECT id, file_path FROM gallery_vrm_models').all();
+    for (const entry of allDb) {
+      if (!currentFiles.has(entry.file_path)) {
+        this.prepare('DELETE FROM gallery_vrm_models WHERE id = ?').run(entry.id);
+        console.log(`[Gallery] Removed stale entry: ${entry.file_path}`);
+      }
+    }
+
+    // Sync new/changed files
     for (const file of files) {
       const name = path.parse(file).name;
-      const existing = this.prepare('SELECT id FROM gallery_vrm_models WHERE name = ?').get(name);
-      if (existing) continue;
-
-      const id = uuidv4();
-      this.prepare(`
-        INSERT INTO gallery_vrm_models (id, name, file_path, pfp_path, description)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(id, name, file, null, '');
-      console.log(`[Gallery] Seeded gallery model: ${name}`);
+      const existing = this.prepare('SELECT id, pfp_path, file_path FROM gallery_vrm_models WHERE file_path = ?').get(file);
+      if (!existing) {
+        const id = uuidv4();
+        const pfp_path = this._findGalleryPfp(galleryDir, name);
+        this.prepare(`
+          INSERT INTO gallery_vrm_models (id, name, file_path, pfp_path, description)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(id, name, file, pfp_path, '');
+        console.log(`[Gallery] Seeded gallery model: ${name}`);
+      } else {
+        // Update name if file was renamed
+        if (existing.name !== name) {
+          this.prepare('UPDATE gallery_vrm_models SET name = ? WHERE id = ?').run(name, existing.id);
+          console.log(`[Gallery] Renamed: ${existing.name} -> ${name}`);
+        }
+        // Verify pfp
+        const currentPfp = this._findGalleryPfp(galleryDir, name);
+        if (currentPfp !== existing.pfp_path) {
+          this.prepare('UPDATE gallery_vrm_models SET pfp_path = ? WHERE id = ?').run(currentPfp, existing.id);
+          if (currentPfp) console.log(`[Gallery] Updated pfp for: ${name}`);
+        }
+      }
     }
   },
 };

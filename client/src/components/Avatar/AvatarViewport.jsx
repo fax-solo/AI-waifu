@@ -434,8 +434,8 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     // Don't reset rotation here! useVRM handles the 180-degree flip.
     container.add(vrm.scene);
 
-    // Helper
-    const getBone = (name) => vrm.humanoid.getNormalizedBoneNode?.(name);
+    // Helper (null-safe for GLB models without VRM humanoid)
+    const getBone = (name) => vrm.humanoid?.getNormalizedBoneNode?.(name);
 
     // ── Step 1: Get raw bounding box BEFORE any adjustments ──
     const rawBox = new THREE.Box3().setFromObject(vrm.scene);
@@ -561,7 +561,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
 
   return (
     <div className="avatar-viewport">
-      <canvas ref={canvasRef} className="avatar-canvas" />
+      <canvas ref={canvasRef} className="avatar-canvas" aria-label="3D avatar viewport" role="img" />
 
       {/* Loading Overlay with Progress Circle */}
       {loading && (
@@ -598,56 +598,72 @@ const AvatarViewport = forwardRef(function AvatarViewport({
         </div>
       )}
 
-      {/* Controls Toggle Button */}
+      {/* Controls Drawer Toggle */}
       {hasModel && (
         <button
-          className="avatar-controls-toggle"
+          className={`avatar-drawer-toggle ${showControls ? 'open' : ''}`}
           onClick={() => setShowControls(!showControls)}
-          title="Adjust avatar"
+          title={showControls ? 'Close controls' : 'Open controls'}
+          aria-label={showControls ? 'Close avatar controls' : 'Open avatar controls'}
+          aria-expanded={showControls}
         >
-          {showControls ? '✕' : '⚙️'}
+          <span className="avatar-drawer-toggle-arrow">{showControls ? '▼' : '▲'}</span>
+          <span className="avatar-drawer-toggle-label">Controls</span>
         </button>
       )}
 
-      {/* Adjustment Controls Panel */}
+      {/* Bottom Drawer */}
       {hasModel && showControls && (
-        <div className="avatar-controls">
+        <div className="avatar-drawer">
           {/* Now-Playing Bar */}
           {(() => {
             const cur = animator.currentAnimation?.();
             return cur ? (
-              <div className="avatar-nowplaying">
-                <span className="avatar-nowplaying-label">Now:</span>
-                <span className="avatar-nowplaying-name">{cur.filename.replace(/\.bvh$/, '').replace(/_/g, ' ')}</span>
+              <div className="avatar-drawer-nowplaying">
+                <span className="avatar-drawer-nowplaying-dot" />
+                <span className="avatar-drawer-nowplaying-label">Now:</span>
+                <span className="avatar-drawer-nowplaying-name">{cur.filename.replace(/\.bvh$/, '').replace(/_/g, ' ')}</span>
+                <div className="avatar-drawer-nowplaying-bar">
+                  <div className="avatar-drawer-nowplaying-bar-fill" />
+                </div>
                 <button className="avatar-nowplaying-stop" onClick={() => animator.stopAll()} title="Stop">■</button>
+                <button className="avatar-drawer-close" onClick={() => setShowControls(false)} title="Close controls">✕</button>
               </div>
-            ) : null;
+            ) : (
+              <div className="avatar-drawer-nowplaying idle">
+                <span className="avatar-drawer-nowplaying-dot mute" />
+                <span className="avatar-drawer-nowplaying-label">Idle</span>
+                <span className="avatar-drawer-nowplaying-name">No animation playing</span>
+                <div style={{ flex: 1 }} />
+                <button className="avatar-drawer-close" onClick={() => setShowControls(false)} title="Close controls">✕</button>
+              </div>
+            );
           })()}
 
           {/* Tab Navigation */}
-          <div className="avatar-tabs">
+          <div className="avatar-drawer-tabs">
             {[
-              { key: 'avatar', label: 'Avatar' },
-              { key: 'animate', label: 'Animate' },
-              { key: 'about', label: 'About' },
+              { key: 'avatar', label: 'Adjust', icon: '⚙️' },
+              { key: 'animate', label: 'Animate', icon: '🎭' },
+              { key: 'about', label: 'About', icon: 'ℹ️' },
             ].map(tab => (
               <button
                 key={tab.key}
-                className={`avatar-tab${activeTab === tab.key ? ' active' : ''}`}
+                className={`avatar-drawer-tab${activeTab === tab.key ? ' active' : ''}`}
                 onClick={() => setActiveTab(tab.key)}
               >
-                {tab.label}
+                <span className="avatar-drawer-tab-icon">{tab.icon}</span>
+                <span className="avatar-drawer-tab-label">{tab.label}</span>
               </button>
             ))}
           </div>
 
           {/* Tab Content */}
-          <div className="avatar-tab-content">
-            {/* ─── Avatar Tab ─── */}
+          <div className="avatar-drawer-content">
+            {/* ─── Adjust Tab ─── */}
             {activeTab === 'avatar' && (
-              <>
+              <div className="avatar-drawer-scroll">
                 <div className="avatar-section-title">Transform</div>
-
                 <div className="avatar-control-row">
                   <label>Scale</label>
                   <input type="range" min="0.3" max="3.0" step="0.05"
@@ -655,7 +671,6 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                     onChange={(e) => updateSetting('scale', parseFloat(e.target.value))} />
                   <span className="avatar-control-value">{avatarSettings.scale.toFixed(2)}</span>
                 </div>
-
                 <div className="avatar-control-row">
                   <label>Height</label>
                   <input type="range" min="-2.0" max="2.0" step="0.05"
@@ -663,7 +678,6 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                     onChange={(e) => updateSetting('positionY', parseFloat(e.target.value))} />
                   <span className="avatar-control-value">{avatarSettings.positionY.toFixed(2)}</span>
                 </div>
-
                 <div className="avatar-control-row">
                   <label>Rotate</label>
                   <input type="range" min={-Math.PI} max={Math.PI} step="0.01"
@@ -671,7 +685,6 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                     onChange={(e) => updateSetting('rotationY', parseFloat(e.target.value))} />
                   <span className="avatar-control-value">{Math.round((avatarSettings.rotationY ?? 0) * (180/Math.PI))}°</span>
                 </div>
-
                 <div className="avatar-control-row">
                   <label>Pos X</label>
                   <input type="range" min="-1.0" max="1.0" step="0.01"
@@ -679,7 +692,6 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                     onChange={(e) => updateSetting('positionX', parseFloat(e.target.value))} />
                   <span className="avatar-control-value">{(avatarSettings.positionX ?? 0).toFixed(2)}</span>
                 </div>
-
                 <div className="avatar-control-row">
                   <label>Pos Z</label>
                   <input type="range" min="-1.0" max="1.0" step="0.01"
@@ -689,7 +701,6 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                 </div>
 
                 <div className="avatar-section-title">Camera</div>
-
                 <div className="avatar-control-row">
                   <label>Height</label>
                   <input type="range" min="0" max="3.0" step="0.05"
@@ -697,7 +708,6 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                     onChange={(e) => updateSetting('cameraHeight', parseFloat(e.target.value))} />
                   <span className="avatar-control-value">{avatarSettings.cameraHeight.toFixed(2)}</span>
                 </div>
-
                 <div className="avatar-control-row">
                   <label>Zoom</label>
                   <input type="range" min="0.5" max="5.0" step="0.1"
@@ -710,18 +720,17 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                   <button className="avatar-btn" onClick={resetSettings}>Reset All</button>
                   <button className="avatar-btn" onClick={() => updateSetting('rotationY', (avatarSettings.rotationY ?? 0) + Math.PI)}>Flip 180°</button>
                 </div>
-
                 <div className="avatar-toggle-row">
                   <span>Auto Animate</span>
                   <input type="checkbox" checked={avatarSettings.autoAnimate}
                     onChange={(e) => updateSetting('autoAnimate', e.target.checked)} />
                 </div>
-              </>
+              </div>
             )}
 
             {/* ─── Animate Tab ─── */}
             {activeTab === 'animate' && (
-              <>
+              <div className="avatar-drawer-scroll">
                 <div className="avatar-section-title">Emotions</div>
                 <div className="avatar-btn-grid cols-4">
                   <button className="avatar-btn" onClick={() => animator.playBVH('joy.bvh', { loop: true })}>😊 Joy</button>
@@ -735,7 +744,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                 </div>
 
                 <div className="avatar-section-title">Actions</div>
-                <div className="avatar-btn-grid cols-3">
+                <div className="avatar-btn-grid cols-4">
                   <button className="avatar-btn" onClick={() => animator.playBVH('action_greeting.bvh', { loop: false })}>Greeting</button>
                   <button className="avatar-btn" onClick={() => animator.playBVH('action_jump.bvh', { loop: false })}>Jump</button>
                   <button className="avatar-btn" onClick={() => animator.playBVH('action_walk.bvh', { loop: true })}>Walk</button>
@@ -745,7 +754,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                 </div>
 
                 <div className="avatar-section-title">Expressions</div>
-                <div className="avatar-btn-grid cols-3">
+                <div className="avatar-btn-grid cols-4">
                   <button className="avatar-btn" onClick={() => animator.playFacial('happy.json', { blendSpeed: 10 })}>Happy</button>
                   <button className="avatar-btn" onClick={() => animator.playFacial('sad.json', { blendSpeed: 8 })}>Sad</button>
                   <button className="avatar-btn" onClick={() => animator.playFacial('angry.json', { blendSpeed: 10 })}>Angry</button>
@@ -792,30 +801,32 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                       </button>
                     ))}
                 </div>
-              </>
+              </div>
             )}
 
             {/* ─── About Tab ─── */}
             {activeTab === 'about' && (
-              <div className="avatar-about">
-                <div className="avatar-about-row">
-                  <span className="avatar-about-label">Model</span>
-                  <span className="avatar-about-value">{vrm?.meta?.name ?? vrm?.scene?.userData?.title ?? 'Unknown'}</span>
-                </div>
-                <div className="avatar-about-row">
-                  <span className="avatar-about-label">Format</span>
-                  <span className="avatar-about-value">VRM {vrm?.meta?.version ?? '0.x'}</span>
-                </div>
-                <div className="avatar-about-row">
-                  <span className="avatar-about-label">Animations</span>
-                  <span className="avatar-about-value">{animationList.filter(a => a.format === 'bvh').length} BVH</span>
-                </div>
-                {vrm?.meta?.author && (
+              <div className="avatar-drawer-scroll">
+                <div className="avatar-about">
                   <div className="avatar-about-row">
-                    <span className="avatar-about-label">Author</span>
-                    <span className="avatar-about-value">{vrm.meta.author}</span>
+                    <span className="avatar-about-label">Model</span>
+                    <span className="avatar-about-value">{vrm?.meta?.name ?? vrm?.scene?.userData?.title ?? 'Unknown'}</span>
                   </div>
-                )}
+                  <div className="avatar-about-row">
+                    <span className="avatar-about-label">Format</span>
+                    <span className="avatar-about-value">VRM {vrm?.meta?.version ?? '0.x'}</span>
+                  </div>
+                  <div className="avatar-about-row">
+                    <span className="avatar-about-label">Animations</span>
+                    <span className="avatar-about-value">{animationList.filter(a => a.format === 'bvh').length} BVH</span>
+                  </div>
+                  {vrm?.meta?.author && (
+                    <div className="avatar-about-row">
+                      <span className="avatar-about-label">Author</span>
+                      <span className="avatar-about-value">{vrm.meta.author}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

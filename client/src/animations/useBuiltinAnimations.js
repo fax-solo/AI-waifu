@@ -124,15 +124,27 @@ export function useBuiltinAnimations() {
     }
   }
 
-  function updateBreathing(vrm, deltaTime) {
-    const getBone = (name) => vrm.humanoid?.getNormalizedBoneNode?.(name);
+  function getBone(vrm, name) {
+    if (vrm.humanoid) return vrm.humanoid.getNormalizedBoneNode?.(name) ?? null;
+    if (vrm.boneMap?.[name]) return vrm.boneMap[name];
+    const lower = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    let found = null;
+    vrm.scene?.traverse?.((child) => {
+      if (!found && child.isBone) {
+        const n = child.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (n === lower || n.endsWith(lower)) found = child;
+      }
+    });
+    return found;
+  }
 
+  function updateBreathing(vrm, deltaTime) {
     const s = breathState.current;
     s.phase += deltaTime * 0.35 * Math.PI * 2;
     const inhale = (Math.sin(s.phase) * 0.5 + 0.5);
 
-    const chest = getBone('chest');
-    const upperChest = getBone('upperChest') || chest;
+    const chest = getBone(vrm, 'chest');
+    const upperChest = getBone(vrm, 'upperChest') || chest;
     if (upperChest && upperChest !== chest) {
       upperChest.position.z += -inhale * 0.004;
       upperChest.position.y += inhale * 0.003;
@@ -142,15 +154,15 @@ export function useBuiltinAnimations() {
       chest.position.y += inhale * 0.002;
     }
 
-    const leftClavicle = getBone('leftClavicle');
-    const rightClavicle = getBone('rightClavicle');
+    const leftClavicle = getBone(vrm, 'leftClavicle');
+    const rightClavicle = getBone(vrm, 'rightClavicle');
     if (leftClavicle && rightClavicle) {
       leftClavicle.rotation.x += -inhale * 0.035;
       rightClavicle.rotation.x += -inhale * 0.035;
     }
 
-    const leftShoulder = getBone('leftShoulder');
-    const rightShoulder = getBone('rightShoulder');
+    const leftShoulder = getBone(vrm, 'leftShoulder');
+    const rightShoulder = getBone(vrm, 'rightShoulder');
     if (leftShoulder && rightShoulder) {
       const shrug = inhale * 0.02;
       leftShoulder.rotation.z += shrug;
@@ -159,12 +171,12 @@ export function useBuiltinAnimations() {
       rightShoulder.rotation.x += (inhale - 0.5) * 0.01;
     }
 
-    const spine = getBone('spine');
+    const spine = getBone(vrm, 'spine');
     if (spine) {
       spine.rotation.x += (inhale - 0.5) * 0.005;
     }
 
-    const hips = getBone('hips');
+    const hips = getBone(vrm, 'hips');
     if (hips) {
       hips.position.y += (inhale - 0.5) * 0.001;
     }
@@ -173,10 +185,9 @@ export function useBuiltinAnimations() {
   function applyBlendBuffer(vrm, deltaTime) {
     const blendSpeed = 14;
     const lerpFactor = Math.min(1, deltaTime * blendSpeed);
-    const getBone = (name) => vrm.humanoid?.getNormalizedBoneNode?.(name);
 
     for (const boneName of BLEND_BONES) {
-      const bone = getBone(boneName);
+      const bone = getBone(vrm, boneName);
       if (!bone) continue;
       const prev = blendMapRef.current.get(boneName);
       if (prev) {

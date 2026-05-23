@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Send, Mic, MicOff } from 'lucide-react';
+import { Send, Mic, MicOff, Loader2 } from 'lucide-react';
 import { sendSTT } from '../../utils/api.js';
 
 const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a message...", audioInputDevice }, ref) => {
   const [text, setText] = useState('');
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [sttError, setSttError] = useState('');
+  const sttErrorTimer = useRef(null);
   const textareaRef = useRef(null);
 
   // Auto-resize textarea
@@ -16,10 +19,12 @@ const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a messa
     }
   }, [text]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!text.trim() || disabled) return;
-    onSend(text);
+    setIsSending(true);
+    await onSend(text);
     setText('');
+    setIsSending(false);
   };
 
   const handleKeyDown = (e) => {
@@ -40,20 +45,57 @@ const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a messa
   const animFrameRef = useRef(null);
   const micIconRef = useRef(null);
   const chunksRef = useRef([]);
+  const waveformCanvasRef = useRef(null);
+  const waveformAnimRef = useRef(null);
 
   useEffect(() => { onSendRef.current = onSend; }, [onSend]);
 
   const cleanupAudio = () => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+    if (waveformAnimRef.current) cancelAnimationFrame(waveformAnimRef.current);
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     if (audioContextRef.current) audioContextRef.current.close();
     streamRef.current = null;
     audioContextRef.current = null;
     analyserRef.current = null;
     animFrameRef.current = null;
+    waveformAnimRef.current = null;
     mediaRecorderRef.current = null;
     chunksRef.current = [];
     if (micIconRef.current) micIconRef.current.style.transform = 'scale(1)';
+  };
+
+  const drawWaveform = (analyser) => {
+    if (!isListeningRef.current) return;
+    const canvas = waveformCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    const draw = () => {
+      if (!isListeningRef.current || !ctx) return;
+      waveformAnimRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(dataArray);
+      const width = canvas.width;
+      const height = canvas.height;
+      ctx.clearRect(0, 0, width, height);
+      const barCount = 48;
+      const step = Math.floor(bufferLength / barCount);
+      const barWidth = (width / barCount) * 0.7;
+      const gap = (width / barCount) * 0.3;
+      for (let i = 0; i < barCount; i++) {
+        const sum = dataArray.slice(i * step, (i + 1) * step).reduce((a, b) => a + b, 0);
+        const avg = sum / step;
+        const barHeight = (avg / 255) * height;
+        const x = i * (barWidth + gap);
+        const gradient = ctx.createLinearGradient(0, height, 0, height - barHeight);
+        gradient.addColorStop(0, '#a882ff');
+        gradient.addColorStop(1, '#ff82b8');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x, height - barHeight, barWidth, barHeight);
+      }
+    };
+    draw();
   };
 
   const startVolumeMonitor = (stream) => {
@@ -65,6 +107,8 @@ const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a messa
     audioContextRef.current = audioCtx;
     analyserRef.current = analyser;
     streamRef.current = stream;
+
+    drawWaveform(analyser);
 
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
     const checkVolume = () => {
@@ -124,6 +168,9 @@ const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a messa
           if (result?.text) onSendRef.current(result.text);
         }).catch(err => {
           console.error('STT failed:', err);
+          setSttError('Could not transcribe audio. Try again?');
+          if (sttErrorTimer.current) clearTimeout(sttErrorTimer.current);
+          sttErrorTimer.current = setTimeout(() => setSttError(''), 4000);
         }).finally(() => {
           setIsTranscribing(false);
         });
@@ -160,6 +207,9 @@ const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a messa
 
   return (
     <div className="message-input-container">
+      {isListening && (
+        <canvas ref={waveformCanvasRef} className="waveform-canvas" />
+      )}
       <div className="message-input-wrapper">
         <textarea
           ref={textareaRef}
@@ -175,6 +225,7 @@ const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a messa
           className={`mic-btn ${isListening ? 'listening' : ''} ${isTranscribing ? 'transcribing' : ''}`}
           onClick={toggleVoiceMode}
           title={isListening ? "Stop recording" : isTranscribing ? "Transcribing..." : "Start recording"}
+          aria-label={isListening ? "Stop recording" : isTranscribing ? "Transcribing..." : "Start voice recording"}
           disabled={(disabled && !isListening) || isTranscribing}
         >
           {isTranscribing ? (
@@ -187,14 +238,20 @@ const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a messa
         </button>
         <button
           id="send-button"
-          className="send-btn"
+          className={`send-btn${isSending ? ' loading' : ''}`}
           onClick={handleSubmit}
-          disabled={!text.trim() || disabled}
+          disabled={!text.trim() || disabled || isSending}
           title="Send message"
+          aria-label="Send message"
         >
-          <Send size={20} />
+          {isSending ? <div className="send-btn-spinner" /> : <Send size={20} />}
         </button>
       </div>
+      {sttError && (
+        <div className="error-toast" style={{ position: 'fixed', top: 72 }} role="alert">
+          {sttError}
+        </div>
+      )}
     </div>
   );
 });

@@ -8,7 +8,7 @@ export default function MessageBubble({ message }) {
 
   return (
     <div className={`message ${message.role}`}>
-      <div className="message-avatar">
+      <div className="message-avatar" aria-hidden="true">
         {message.role === 'assistant' ? '✦' : '◆'}
       </div>
       <div>

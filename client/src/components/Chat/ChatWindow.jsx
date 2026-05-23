@@ -56,6 +56,7 @@ const ChatWindow = forwardRef(function ChatWindow({
           className="mobile-menu-btn"
           onClick={onToggleSidebar}
           title="Toggle sidebar"
+          aria-label="Toggle sidebar"
         >
           <Menu size={20} />
         </button>
@@ -82,6 +83,8 @@ const ChatWindow = forwardRef(function ChatWindow({
             className={`tts-toggle-btn ${ttsEnabled ? 'enabled' : 'disabled'}`}
             onClick={onToggleTTS}
             title={ttsEnabled ? 'Disable voice' : 'Enable voice'}
+            aria-label={ttsEnabled ? 'Disable text-to-speech' : 'Enable text-to-speech'}
+            aria-pressed={ttsEnabled}
           >
             {ttsEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
           </button>
@@ -90,23 +93,7 @@ const ChatWindow = forwardRef(function ChatWindow({
 
       {/* Error Toast */}
       {showError && error && (
-        <div style={{
-          position: 'absolute',
-          top: 72,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 30,
-          padding: '10px 20px',
-          background: 'rgba(255, 107, 122, 0.15)',
-          border: '1px solid rgba(255, 107, 122, 0.3)',
-          borderRadius: 'var(--radius-md)',
-          color: 'var(--color-error)',
-          fontSize: '0.85rem',
-          maxWidth: '90%',
-          textAlign: 'center',
-          backdropFilter: 'blur(8px)',
-          animation: 'fade-in 0.3s ease',
-        }}>
+        <div className="error-toast" role="alert" aria-live="assertive">
           {error}
         </div>
       )}
@@ -114,26 +101,38 @@ const ChatWindow = forwardRef(function ChatWindow({
       {/* Messages or Welcome */}
       {messages.length === 0 && !isLoading ? (
         <div className="welcome-screen">
-          <div className="welcome-avatar">✦</div>
-          <h1>Hey there! I'm {companionName || 'Aria'} ♡</h1>
-          <p>
-            I'm your AI companion — here to chat, listen, and make your day a little brighter.
-            Tell me about yourself!
-          </p>
-          <div className="welcome-suggestions">
-            {SUGGESTIONS.map((s, i) => (
-              <button
-                key={i}
-                className="welcome-suggestion"
-                onClick={() => onSend(s)}
-              >
-                {s}
-              </button>
-            ))}
+          <div className="welcome-content">
+            <div className="welcome-badge">AI Companion</div>
+            <div className="welcome-avatar">
+              <div className="welcome-avatar-ring" />
+              <div className="welcome-avatar-inner">✦</div>
+            </div>
+            <h1 className="welcome-title">
+              Hey there! I'm <span className="welcome-name">{companionName || 'Aria'}</span>
+            </h1>
+            <p className="welcome-desc">
+              I'm your AI companion — here to chat, listen, and make your day a little brighter.
+            </p>
+            <div className="welcome-status">
+              <span className="welcome-status-dot" />
+              <span>Online & ready to chat</span>
+            </div>
+            <div className="welcome-suggestions">
+              {SUGGESTIONS.map((s, i) => (
+                <button
+                  key={i}
+                  className="welcome-suggestion"
+                  onClick={() => onSend(s)}
+                  style={{ animationDelay: `${i * 0.08}s` }}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       ) : (
-        <div className="messages-container">
+        <div className="messages-container" role="log" aria-live="polite" aria-relevant="additions" aria-label="Chat messages">
           {messages.map((msg) => (
             <MessageBubble key={msg.id} message={msg} />
           ))}

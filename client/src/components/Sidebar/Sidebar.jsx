@@ -1,5 +1,16 @@
-import { MessageSquare, Plus, Trash2, Settings } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MessageSquare, Plus, Trash2, Settings, Pin, PinOff, Search } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
+
+function loadPinned() {
+  try {
+    return JSON.parse(localStorage.getItem('waifu-pinned-convs') || '[]');
+  } catch { return []; }
+}
+
+function savePinned(ids) {
+  localStorage.setItem('waifu-pinned-convs', JSON.stringify(ids));
+}
 
 export default function Sidebar({
   conversations,
@@ -12,20 +23,36 @@ export default function Sidebar({
   onClose,
 }) {
   const { t } = useLanguage();
+  const [search, setSearch] = useState('');
+  const [pinnedIds, setPinnedIds] = useState(loadPinned);
+
+  useEffect(() => { savePinned(pinnedIds); }, [pinnedIds]);
+
+  const filtered = conversations
+    .filter(c => !search || c.title.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id);
+      const bPinned = pinnedIds.includes(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
+
+  const togglePin = (id, e) => {
+    e.stopPropagation();
+    setPinnedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
   return (
     <>
       {/* Mobile overlay */}
       {isOpen && (
         <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            zIndex: 15,
-            display: 'none',
-          }}
-          className="mobile-overlay"
+          className="sidebar-overlay mobile-overlay"
           onClick={onClose}
+          aria-hidden="true"
         />
       )}
 
@@ -49,48 +76,72 @@ export default function Sidebar({
           {t('common.newChat')}
         </button>
 
+        {/* Search Bar */}
+        <div className="sidebar-search-wrapper">
+          <Search size={14} className="sidebar-search-icon" />
+          <input
+            className="sidebar-search"
+            type="text"
+            placeholder="Search conversations..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {search && (
+            <button className="sidebar-search-clear" onClick={() => setSearch('')}>✕</button>
+          )}
+        </div>
+
         {/* Conversation List */}
         <div className="conversation-list">
           {conversations.length === 0 ? (
-            <div style={{
-              padding: '32px 16px',
-              textAlign: 'center',
-              color: 'var(--color-text-muted)',
-              fontSize: '0.85rem',
-            }}>
-              <MessageSquare
-                size={32}
-                style={{ margin: '0 auto 12px', opacity: 0.3 }}
-              />
+            <div className="sidebar-empty">
+              <MessageSquare size={32} className="sidebar-empty-icon" />
               <p>{t('sidebar.noConversations')}</p>
-              <p style={{ fontSize: '0.78rem', marginTop: 4 }}>
+              <p className="sidebar-empty-sub">
                 {t('sidebar.startNewChat')}
               </p>
             </div>
+          ) : filtered.length === 0 ? (
+            <div className="sidebar-empty">
+              <Search size={24} className="sidebar-empty-icon" />
+              <p>No conversations match "{search}"</p>
+            </div>
           ) : (
-            conversations.map((conv) => (
-              <div
-                key={conv.id}
-                className={`conversation-item ${activeConversationId === conv.id ? 'active' : ''}`}
-                onClick={() => {
-                  onSelectConversation(conv.id);
-                  onClose?.();
-                }}
-              >
-                <MessageSquare size={16} className="conv-icon" />
-                <span className="conv-title">{conv.title}</span>
-                <button
-                  className="conv-delete"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteConversation(conv.id);
+            filtered.map((conv) => {
+              const isPinned = pinnedIds.includes(conv.id);
+              return (
+                <div
+                  key={conv.id}
+                  className={`conversation-item ${activeConversationId === conv.id ? 'active' : ''} ${isPinned ? 'pinned' : ''}`}
+                  onClick={() => {
+                    onSelectConversation(conv.id);
+                    onClose?.();
                   }}
-                  title="Delete conversation"
                 >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))
+                  <button
+                    className={`conv-pin ${isPinned ? 'pinned' : ''}`}
+                    onClick={(e) => togglePin(conv.id, e)}
+                    title={isPinned ? 'Unpin conversation' : 'Pin conversation'}
+                    aria-label={isPinned ? 'Unpin conversation' : 'Pin conversation'}
+                  >
+                    {isPinned ? <PinOff size={12} /> : <Pin size={12} />}
+                  </button>
+                  <MessageSquare size={16} className="conv-icon" />
+                  <span className="conv-title">{conv.title}</span>
+                  <button
+                    className="conv-delete"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteConversation(conv.id);
+                    }}
+                    title="Delete conversation"
+                    aria-label={`Delete conversation: ${conv.title}`}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              );
+            })
           )}
         </div>
 

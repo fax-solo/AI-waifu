@@ -33,6 +33,7 @@ router.get('/', (req, res) => {
 
     // Don't send the actual encrypted key, just whether one exists
     const hasCustomKey = !!companion?.custom_api_key_encrypted;
+    const hasGroqKey = !!companion?.groq_api_key_encrypted;
 
     let shortcuts = {};
     try {
@@ -59,9 +60,11 @@ router.get('/', (req, res) => {
         ttsPitch: companion?.tts_pitch ?? 1.0,
         ttsVolume: companion?.tts_volume ?? 1.0,
         llmModel: companion?.llm_model || 'gemini-3.1-flash-lite',
+        llmProvider: companion?.llm_provider || 'gemini',
         shortcuts,
       },
       hasCustomApiKey: hasCustomKey,
+      hasGroqApiKey: hasGroqKey,
     });
   } catch (err) {
     console.error('[Settings] GET ERROR:', err);
@@ -110,48 +113,51 @@ router.put('/', (req, res) => {
               tts_pitch = COALESCE(?, tts_pitch),
               tts_volume = COALESCE(?, tts_volume),
               llm_model = COALESCE(?, llm_model),
-              shortcuts = COALESCE(?, shortcuts),
-              updated_at = CURRENT_TIMESTAMP
-          WHERE user_id = ?
-        `).run(
-          companion.name || null,
-          companion.tone || null,
-          companion.personality || null,
-          companion.backstory || null,
-          companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : null,
-          companion.ttsVoice || null,
-          companion.audioInputDevice || null,
-          companion.audioOutputDevice || null,
-          companion.ttsDevice || null,
-          companion.ttsEngine || null,
-          companion.ttsSpeed !== undefined ? companion.ttsSpeed : null,
-          companion.ttsPitch !== undefined ? companion.ttsPitch : null,
-          companion.ttsVolume !== undefined ? companion.ttsVolume : null,
-          companion.llmModel || null,
-          companion.shortcuts ? JSON.stringify(companion.shortcuts) : null,
-          userId
+               llm_provider = COALESCE(?, llm_provider),
+               shortcuts = COALESCE(?, shortcuts),
+               updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = ?
+         `).run(
+           companion.name || null,
+           companion.tone || null,
+           companion.personality || null,
+           companion.backstory || null,
+           companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : null,
+           companion.ttsVoice || null,
+           companion.audioInputDevice || null,
+           companion.audioOutputDevice || null,
+           companion.ttsDevice || null,
+           companion.ttsEngine || null,
+           companion.ttsSpeed !== undefined ? companion.ttsSpeed : null,
+           companion.ttsPitch !== undefined ? companion.ttsPitch : null,
+           companion.ttsVolume !== undefined ? companion.ttsVolume : null,
+           companion.llmModel || null,
+           companion.llmProvider || null,
+           companion.shortcuts ? JSON.stringify(companion.shortcuts) : null,
+           userId
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, tts_speed, tts_pitch, tts_volume, llm_model, shortcuts)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, tts_speed, tts_pitch, tts_volume, llm_model, llm_provider, shortcuts)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
-          companion.name || 'Aria',
-          companion.tone || 'cute, friendly, emotional',
-          companion.personality || 'You are a loving and caring companion who deeply cares about the user.',
-          companion.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
-          companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : 1,
-          companion.ttsVoice || 'af_bella',
-          companion.audioInputDevice || 'default',
-          companion.audioOutputDevice || 'default',
-          companion.ttsDevice || 'cpu',
-          companion.ttsEngine || 'onnx',
-          companion.ttsSpeed ?? 1.0,
-          companion.ttsPitch ?? 1.0,
-          companion.ttsVolume ?? 1.0,
-          companion.llmModel || 'gemini-3.1-flash-lite',
-          companion.shortcuts ? JSON.stringify(companion.shortcuts) : null
+           companion.name || 'Aria',
+           companion.tone || 'cute, friendly, emotional',
+           companion.personality || 'You are a loving and caring companion who deeply cares about the user.',
+           companion.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
+           companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : 1,
+           companion.ttsVoice || 'af_bella',
+           companion.audioInputDevice || 'default',
+           companion.audioOutputDevice || 'default',
+           companion.ttsDevice || 'cpu',
+           companion.ttsEngine || 'onnx',
+           companion.ttsSpeed ?? 1.0,
+           companion.ttsPitch ?? 1.0,
+           companion.ttsVolume ?? 1.0,
+           companion.llmModel || 'gemini-3.1-flash-lite',
+           companion.llmProvider || 'gemini',
+           companion.shortcuts ? JSON.stringify(companion.shortcuts) : null
         );
       }
     }

@@ -99,7 +99,8 @@ export function getUploadUrl(path) {
     : 'http://localhost:3005';
 
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return `${serverBase}${cleanPath}`;
+  const encoded = cleanPath.split('/').map(p => encodeURIComponent(p)).join('/');
+  return `${serverBase}${encoded}`;
 }
 
 // ─── Chat API ──────────────────────────────────────────────────

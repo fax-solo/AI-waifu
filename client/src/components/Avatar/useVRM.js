@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import * as THREE from 'three';
+import { BONE_MAPPING } from '../../animations/useBVH.js';
 
 /**
  * Tune spring bone parameters for better physics (anti-clipping, natural motion).
@@ -128,12 +129,13 @@ export function useVRM() {
   }, [vrm]);
 
   /**
-   * Load a VRM model from a URL.
+   * Load a VRM or GLB model from a URL.
    */
   const loadVRM = useCallback(async (url) => {
     if (!loaderRef.current) return;
 
-    console.log('[VRM] Starting load from URL:', url.substring(0, 50) + '...');
+    const isGLB = url.toLowerCase().endsWith('.glb');
+    console.log(`[Model] Starting load from URL:`, url.substring(0, 50) + '...', isGLB ? '(GLB)' : '(VRM)');
     setLoading(true);
     setProgress(0);
     setError(null);
@@ -148,7 +150,7 @@ export function useVRM() {
         loaderRef.current.load(
           url,
           (gltf) => {
-            console.log('[VRM] GLTF load success');
+            console.log('[Model] GLTF load success');
             setProgress(100);
             resolve(gltf);
           },
@@ -159,43 +161,100 @@ export function useVRM() {
             }
           },
           (err) => {
-            console.error('[VRM] GLTF load error:', err);
+            console.error('[Model] GLTF load error:', err);
             reject(err);
           }
         );
       });
 
       const loadedVRM = gltf.userData.vrm;
-      if (!loadedVRM) {
-        throw new Error('File is not a valid VRM model (no VRM data found in GLTF).');
+      const isVRM = !!loadedVRM;
+
+      if (isVRM) {
+        console.log('[Model] VRM data found:', loadedVRM.meta?.name || 'Unnamed');
+
+        // Optimize: remove unnecessary vertices and joints before creating skeleton
+        try {
+          VRMUtils.removeUnnecessaryVertices(gltf.scene);
+          VRMUtils.removeUnnecessaryJoints(gltf.scene);
+          console.log('[Model] Removed unnecessary vertices and joints');
+        } catch (e) {
+          console.warn('[Model] Optimization skipped:', e.message);
+        }
+
+        // Rotate model to face the camera (VRM 0.x faces +Z, needs 180deg flip)
+        VRMUtils.rotateVRM0(loadedVRM);
+
+        // Capture rest pose after rotation but before any animation
+        captureRestPose(loadedVRM);
+
+        // Tune spring bones for better physics (hair/skirt)
+        tuneSpringBones(loadedVRM);
+      } else {
+        console.log('[Model] No VRM data — loading as plain GLB scene');
       }
 
-      console.log('[VRM] VRM data found:', loadedVRM.meta?.name || 'Unnamed');
+      // For GLB, build a bone name → node map using prefix alias matching
+      let boneMap = null;
+      if (!isVRM) {
+        // Collect all scene bones (as array — we'll match by prefix)
+        const sceneBones = [];
+        gltf.scene.traverse((child) => {
+          if (child.isBone && child.name) {
+            sceneBones.push({
+              node: child,
+              normalized: child.name.toLowerCase().replace(/[^a-z0-9]/g, ''),
+              raw: child.name,
+            });
+          }
+        });
 
-      // Optimize: remove unnecessary vertices and joints before creating skeleton
-      try {
-        VRMUtils.removeUnnecessaryVertices(gltf.scene);
-        VRMUtils.removeUnnecessaryJoints(gltf.scene);
-        console.log('[VRM] Removed unnecessary vertices and joints');
-      } catch (e) {
-        console.warn('[VRM] Optimization skipped:', e.message);
+        // Map each VRM standard bone to the best matching scene bone.
+        // Uses prefix matching: scene bone name starts with the alias,
+        // and the remainder is either empty or starts with a digit.
+        // This handles VRoid-style names like upperarm_l_07 → upperarml.
+        // Bones are matched deepest-first (reversed traverse order) so that
+        // specific child bones (e.g. pelvis_02) take priority over generic
+        // ancestor bones (e.g. _rootJoint) for the same VRM mapping slot.
+        boneMap = {};
+        for (let i = sceneBones.length - 1; i >= 0; i--) {
+          const sb = sceneBones[i];
+          for (const [vrmBone, aliases] of BONE_MAPPING) {
+            if (boneMap[vrmBone]) continue; // already matched
+            for (const a of aliases) {
+              const aliasKey = a.toLowerCase().replace(/[^a-z0-9]/g, '');
+              if (sb.normalized.startsWith(aliasKey)) {
+                const rest = sb.normalized.slice(aliasKey.length);
+                if (rest === '' || /^\d/.test(rest)) {
+                  boneMap[vrmBone] = sb.node;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        console.log('[Model] GLB bone map:', Object.keys(boneMap).length, 'bones matched (of', sceneBones.length, 'scene bones)');
       }
 
-      // Rotate model to face the camera (VRM 0.x faces +Z, needs 180deg flip)
-      VRMUtils.rotateVRM0(loadedVRM);
+      // Wrap GLB in a compatible object so consuming code can use `vrm.scene` uniformly
+      const model = isVRM ? loadedVRM : {
+        scene: gltf.scene,
+        humanoid: null,
+        expressionManager: null,
+        blendShapeProxy: null,
+        springBoneManager: null,
+        lookAt: null,
+        meta: null,
+        boneMap,
+      };
+      gltf.scene.userData.isVRM = isVRM;
 
-      // Capture rest pose after rotation but before any animation
-      captureRestPose(loadedVRM);
-
-      // Tune spring bones for better physics (hair/skirt)
-      tuneSpringBones(loadedVRM);
-
-      setVRM(loadedVRM);
+      setVRM(model);
       setLoading(false);
-      return loadedVRM;
+      return model;
     } catch (err) {
-      console.error('[VRM] Error in loadVRM:', err);
-      setError(err.message || 'Failed to load VRM model.');
+      console.error('[Model] Error in loadVRM:', err);
+      setError(err.message || 'Failed to load model.');
       setLoading(false);
       setProgress(0);
       return null;

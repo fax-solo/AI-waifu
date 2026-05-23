@@ -163,6 +163,17 @@ export default function App() {
     }
   }, [isResizing, sidebarOpen]);
 
+  const handleResizerKeyDown = useCallback((e) => {
+    const step = e.shiftKey ? 20 : 5;
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      setPanelWidth(prev => Math.max(MIN_PANEL_WIDTH, prev - step));
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      setPanelWidth(prev => Math.min(window.innerWidth * 0.7, prev + step));
+    }
+  }, []);
+
   useEffect(() => {
     if (!isResizing) {
       localStorage.setItem('waifu-panel-width', panelWidth.toString());
@@ -256,8 +267,10 @@ export default function App() {
 
   if (checkingSetup) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyItems: 'center', height: '100vh', background: '#0f1115', color: '#e6edf3' }}>
-        <div style={{ margin: 'auto' }}>{t('setup.checking')}</div>
+      <div className="app-splash">
+        <div className="app-splash-logo">✦</div>
+        <div className="app-splash-title">Waifu</div>
+        <div className="app-splash-spinner" />
       </div>
     );
   }
@@ -300,6 +313,8 @@ export default function App() {
           onClick={() => setAvatarCollapsed(!avatarCollapsed)}
           style={{ left: avatarCollapsed ? '0px' : `${panelWidth - 16}px` }}
           title={avatarCollapsed ? 'Show avatar' : 'Hide avatar'}
+          aria-label={avatarCollapsed ? 'Show avatar panel' : 'Hide avatar panel'}
+          aria-expanded={!avatarCollapsed}
         >
           {avatarCollapsed ? '▶' : '◀'}
         </button>
@@ -309,6 +324,13 @@ export default function App() {
           <div 
             className={`layout-resizer ${isResizing ? 'dragging' : ''}`}
             onMouseDown={startResizing}
+            onKeyDown={handleResizerKeyDown}
+            tabIndex={0}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize avatar panel"
+            aria-valuenow={panelWidth}
+            aria-valuemin={MIN_PANEL_WIDTH}
           />
         )}
 

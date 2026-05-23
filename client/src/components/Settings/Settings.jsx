@@ -1,1363 +1,228 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, User, Sparkles, Key, Brain, Shield, Image, Volume2, Camera, Plus, Trash2, Cpu, Globe, Film, RefreshCw, Play, Upload, FolderOpen, Keyboard, Download } from 'lucide-react';
-import * as api from '../../utils/api.js';
-import { useTTS } from '../../hooks/useTTS.js';
+import { useRef, useCallback } from 'react';
+import { X, Search, User, Sparkles, Image, Volume2, Key, Keyboard, Brain, Film, Download, Info, Database } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
-import { DEFAULT_SHORTCUTS, SHORTCUT_LABELS } from '../../hooks/useShortcuts.js';
+import useSettings from './useSettings.js';
+import Toast from './Toast.jsx';
+import ProfileTab from './ProfileTab.jsx';
+import CompanionTab from './CompanionTab.jsx';
+import VoiceTab from './VoiceTab.jsx';
+import ApiKeyTab from './ApiKeyTab.jsx';
+import ShortcutsTab from './ShortcutsTab.jsx';
+import MemoriesTab from './MemoriesTab.jsx';
+import AnimationsTab from './AnimationsTab.jsx';
+import UpdatesTab from './UpdatesTab.jsx';
+import AvatarTab from './AvatarTab.jsx';
+import AboutTab from './AboutTab.jsx';
+import DataManagementTab from './DataManagementTab.jsx';
 
-const VOICES = [
-  { id: 'af_bella', name: 'Bella (US Female)', desc: 'Friendly & clear' },
-  { id: 'af_sarah', name: 'Sarah (US Female)', desc: 'Soft & calm' },
-  { id: 'af_sky', name: 'Sky (US Female)', desc: 'Bright & energetic' },
-  { id: 'af_nicole', name: 'Nicole (US Female)', desc: 'Professional' },
-  { id: 'am_adam', name: 'Adam (US Male)', desc: 'Deep & steady' },
-  { id: 'am_michael', name: 'Michael (US Male)', desc: 'Natural' },
-  { id: 'bf_emma', name: 'Emma (UK Female)', desc: 'British accent' },
-  { id: 'bm_george', name: 'George (UK Male)', desc: 'British accent' },
-  { id: 'jf_alpha', name: 'Alpha (JP Female)', desc: 'Cute anime-style' },
-  { id: 'jf_gongitsune', name: 'Gongitsune (JP Female)', desc: 'Sweet & playful' },
-  { id: 'jf_nezumi', name: 'Nezumi (JP Female)', desc: 'High-pitched & adorable' },
-  { id: 'jf_tebukuro', name: 'Tebukuro (JP Female)', desc: 'Soft & gentle' },
-  { id: 'jm_kumo', name: 'Kumo (JP Male)', desc: 'Calm & composed' },
-];
-
-const GEMINI_MODELS = [
-  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', desc: 'Next-gen efficiency (Newest)', free: true },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (Preview)', desc: 'Advanced generation', free: true },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Highly capable & stable', free: true },
-  { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: 'Ultra lightweight', free: true },
-];
-
-const GROQ_MODELS = [
-  { id: 'llama-3.1-70b-versatile', name: 'Llama 3.1 70B', desc: 'High intelligence (Powerful)', free: true },
-  { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', desc: 'Ultra fast responses', free: true },
-  { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B', desc: 'Large context expert', free: true },
-  { id: 'gemma2-9b-it', name: 'Gemma 2 9B', desc: 'Google lightweight model', free: true },
+const TAB_CONFIG = [
+  { id: 'profile', icon: User, labelKey: 'settings.tabs.profile' },
+  { id: 'companion', icon: Sparkles, labelKey: 'settings.tabs.companion' },
+  { id: 'avatar', icon: Image, labelKey: 'settings.tabs.avatar' },
+  { id: 'voice', icon: Volume2, labelKey: 'settings.tabs.voice' },
+  { id: 'apikey', icon: Key, labelKey: 'settings.tabs.apikey' },
+  { id: 'shortcuts', icon: Keyboard, labelKey: 'settings.shortcuts.title' },
+  { id: 'memories', icon: Brain, labelKey: 'settings.tabs.memories' },
+  { id: 'animations', icon: Film, labelKey: 'settings.tabs.animations' },
+  { id: 'updates', icon: Download, labelKey: 'settings.tabs.updates' },
+  { id: 'about', icon: Info, labelKey: 'About' },
+  { id: 'data', icon: Database, labelKey: 'Data' },
 ];
 
 export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShortcutsChange }) {
-  const { t, language, setLanguage } = useLanguage();
-  const [settings, setSettings] = useState(null);
-  const [displayName, setDisplayName] = useState('');
-  const [companion, setCompanion] = useState({
-    name: '',
-    tone: '',
-    personality: '',
-    backstory: '',
-    ttsEnabled: true,
-    ttsVoice: 'af_bella',
-    audioInputDevice: 'default',
-    audioOutputDevice: 'default',
-    ttsDevice: 'cpu',
-    ttsEngine: 'onnx',
-    llmModel: 'gemini-3.1-flash-lite',
-    llmProvider: 'gemini',
-    shortcuts: DEFAULT_SHORTCUTS
-  });
-  const [apiKeyInput, setApiKeyInput] = useState('');
-  const [groqApiKeyInput, setGroqApiKeyInput] = useState('');
-  const [hasCustomKey, setHasCustomKey] = useState(false);
-  const [hasGroqKey, setHasGroqKey] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
-  const [memories, setMemories] = useState([]);
-  const [activeTab, setActiveTab] = useState('profile');
-  const [shortcuts, setShortcuts] = useState(DEFAULT_SHORTCUTS);
-  const shortcutsRef = useRef(shortcuts);
-  shortcutsRef.current = shortcuts;
-  const [recordingAction, setRecordingAction] = useState(null);
+  const { t } = useLanguage();
+  const settings = useSettings({ onShortcutsChange, onVRMFileSelected, avatarRef });
+  const {
+    activeTab, setActiveTab, settingsSearch, setSettingsSearch,
+    displayName, setDisplayName, companion, setCompanion,
+    dirty, saving, toast, showToast, handleSave,
+    handleExport, handleImport, handleClearMemories, handleClearConversations,
+    memories, shortcuts, setShortcuts, recordingAction, setRecordingAction,
+    handleDeleteMemory, loadMemories, loadAnimations,
+    animations, animLoading, animSearch, setAnimSearch,
+    handleTestAnimation, handleDeleteAnimation, handleUploadAnimation,
+    testStatus, animFileInputRef,
+    avatars, loadAvatars, currentVRMName, handleSelectAvatar, handleDeleteAvatar,
+    showUploadForm, setShowUploadForm, uploadForm, setUploadForm, isUploading, handleUploadAvatar,
+    showGallery, setShowGallery, galleryAvatars, downloadingGalleryId, handleDownloadGalleryAvatar,
+    loadGalleryAvatars, fileInputRef, pfpInputRef,
+    audioDevices, testText, setTestText, micTestStatus, ttsStatus, isTestingVoice, speak, handleTestMic,
+    hasCustomKey, hasGroqKey, apiKeyInput, setApiKeyInput, groqApiKeyInput, setGroqApiKeyInput,
+    handleSetApiKey, handleSetGroqKey, handleRemoveApiKey, handleRemoveGroqKey,
+    updateStatus, latestVersion, updateUrl, updateError, checkForUpdates,
+    VOICES, GEMINI_MODELS, GROQ_MODELS,
+    settingsLoading, requestClose,
+    showUnsavedDialog, handleUnsavedConfirm, handleUnsavedCancel,
+  } = settings;
 
-  useEffect(() => {
-    if (!recordingAction) return;
-    const handler = (e) => {
-      if (e.key === 'Escape') {
-        setRecordingAction(null);
-        return;
-      }
-      const parts = [];
-      if (e.ctrlKey) parts.push('Ctrl');
-      if (e.metaKey) parts.push('Meta');
-      if (e.altKey) parts.push('Alt');
-      if (e.shiftKey) parts.push('Shift');
-      const key = e.key;
-      if (!['Control', 'Meta', 'Alt', 'Shift'].includes(key)) {
-        e.preventDefault();
-        e.stopPropagation();
-        parts.push(key.length === 1 ? key.toUpperCase() : key);
-        setShortcuts(prev => ({ ...prev, [recordingAction]: parts.join('+') }));
-        setRecordingAction(null);
-      }
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [recordingAction]);
+  const overlayRef = useRef(null);
+  const closeButtonRef = useRef(null);
 
-  const [animations, setAnimations] = useState({ facial: [], body: [] });
-  const [animLoading, setAnimLoading] = useState(false);
-  const [animSearch, setAnimSearch] = useState('');
-  const [testStatus, setTestStatus] = useState({});
-  const [currentVRMName, setCurrentVRMName] = useState(null);
-  
-  // {t('settings.avatar.title')} State
-  const [avatars, setAvatars] = useState([]);
-  const [isUploading, setIsUploading] = useState(false);
-  const [showUploadForm, setShowUploadForm] = useState(false);
-  const [uploadForm, setUploadForm] = useState({
-    name: '',
-    vrmFile: null,
-    pfpFile: null,
-    pfpPreview: null
-  });
-
-  const [showGallery, setShowGallery] = useState(false);
-  const [galleryAvatars, setGalleryAvatars] = useState([]);
-  const [downloadingGalleryId, setDownloadingGalleryId] = useState(null);
-
-  const fileInputRef = useRef(null);
-  const pfpInputRef = useRef(null);
-  const animFileInputRef = useRef(null);
-
-  // Audio Devices State
-  const [audioDevices, setAudioDevices] = useState({
-    inputs: [],
-    outputs: []
-  });
-  
-  // Voice Tester State
-  const [testText, setTestText] = useState("Hello! How do I sound?");
-  const { speak, isPlaying: isTestingVoice } = useTTS();
-
-  // Mic Tester State
-  const [micTestStatus, setMicTestStatus] = useState('idle'); // 'idle' | 'recording' | 'playing'
-
-  const handleTestMic = useCallback(async () => {
-    if (micTestStatus !== 'idle') return;
-    setMicTestStatus('recording');
-    try {
-      const constraints = {
-        audio: companion.audioInputDevice !== 'default'
-          ? { deviceId: { exact: companion.audioInputDevice } }
-          : true
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      const mediaRecorder = new MediaRecorder(stream);
-      const chunks = [];
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-      mediaRecorder.onstop = () => {
-        stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(chunks, { type: 'audio/webm' });
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.onended = () => { URL.revokeObjectURL(url); setMicTestStatus('idle'); };
-        audio.play().then(() => setMicTestStatus('playing')).catch(() => setMicTestStatus('idle'));
-      };
-      mediaRecorder.start();
-      setTimeout(() => { if (mediaRecorder.state === 'recording') mediaRecorder.stop(); }, 3000);
-    } catch (err) {
-      console.error('Mic test failed:', err);
-      setMicTestStatus('idle');
-      alert('Microphone access failed. Check permissions.');
-    }
-  }, [companion.audioInputDevice, micTestStatus]);
-
-  const loadAudioDevices = async () => {
-    try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const inputs = devices.filter(d => d.kind === 'audioinput');
-      const outputs = devices.filter(d => d.kind === 'audiooutput');
-      
-      setAudioDevices({
-        inputs: inputs.map(d => ({ id: d.deviceId, label: d.label || `Mic ${d.deviceId.slice(0,5)}` })),
-        outputs: outputs.map(d => ({ id: d.deviceId, label: d.label || `Speaker ${d.deviceId.slice(0,5)}` }))
-      });
-    } catch (err) {
-      console.warn('Failed to load audio devices:', err);
-    }
-  };
-
-  const [ttsStatus, setTtsStatus] = useState({ status: 'unknown', device: 'cpu' });
-
-  // Load settings
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      try {
-        const data = await api.getSettings();
-        if (cancelled) return;
-        setSettings(data);
-        setDisplayName(data.user.displayName || '');
-        const loadedShortcuts = data.companion.shortcuts;
-        const hasCustomShortcuts = loadedShortcuts && Object.keys(loadedShortcuts).length > 0;
-        setCompanion({
-          name: data.companion.name,
-          tone: data.companion.tone,
-          personality: data.companion.personality,
-          backstory: data.companion.backstory,
-          ttsEnabled: data.companion.ttsEnabled ?? true,
-          ttsVoice: data.companion.ttsVoice ?? 'af_bella',
-          audioInputDevice: data.companion.audioInputDevice ?? 'default',
-          audioOutputDevice: data.companion.audioOutputDevice ?? 'default',
-          ttsDevice: data.companion.ttsDevice ?? 'cpu',
-          ttsEngine: data.companion.ttsEngine ?? 'onnx',
-          llmModel: data.companion.llmModel ?? 'gemini-3.1-flash-lite',
-          llmProvider: data.companion.llmProvider ?? 'gemini',
-          shortcuts: hasCustomShortcuts ? loadedShortcuts : DEFAULT_SHORTCUTS
-        });
-        if (hasCustomShortcuts) {
-          setShortcuts(loadedShortcuts);
-        }
-        setHasCustomKey(data.hasCustomApiKey);
-        setHasGroqKey(data.hasGroqApiKey);
-      } catch (err) {
-        if (cancelled) return;
-        console.error('Failed to load settings:', err);
-      }
-    }
-    async function checkTTS() {
-      while (!cancelled) {
-        try {
-          const res = await fetch(`http://127.0.0.1:5000/health?t=${Date.now()}`, { cache: 'no-store' });
-          const data = await res.json();
-          if (!cancelled) setTtsStatus(data);
-          return;
-        } catch (err) {
-          if (!cancelled) setTtsStatus({ status: 'offline', device: 'none' });
-          await new Promise(r => setTimeout(r, 3000));
-        }
-      }
-    }
-
-    load();
-    checkTTS();
-    loadMemories();
-    loadAudioDevices();
-    
-    // Listen for device changes
-    navigator.mediaDevices.ondevicechange = loadAudioDevices;
-    
-    // Check for saved VRM name
-    const savedName = localStorage.getItem('waifu-vrm-name');
-    if (savedName) {
-      setCurrentVRMName(savedName);
-    }
-    
-    return () => {
-      cancelled = true;
-      navigator.mediaDevices.ondevicechange = null;
-      if (JSON.stringify(shortcutsRef.current) !== JSON.stringify(DEFAULT_SHORTCUTS)) {
-        onShortcutsChange?.(shortcutsRef.current);
-      }
-    };
-  }, []);
-
-  const loadAnimations = useCallback(async () => {
-    setAnimLoading(true);
-    try {
-      const data = await api.getAnimations();
-      setAnimations(data);
-    } catch (e) {
-      console.error('Failed to load animations:', e);
-    }
-    setAnimLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'animations') loadAnimations();
-  }, [activeTab, loadAnimations]);
-
-  const handleTestAnimation = (type, filename) => {
-    const key = `${type}/${filename}`;
-    setTestStatus((p) => ({ ...p, [key]: 'playing' }));
-    if (avatarRef?.current?.triggerAnimation) {
-      avatarRef.current.triggerAnimation(type, filename, { blendSpeed: 8 });
-    }
-    setTimeout(() => {
-      setTestStatus((p) => ({ ...p, [key]: 'idle' }));
-    }, 2000);
-  };
-
-  const handleDeleteAnimation = async (type, filename) => {
-    try {
-      await api.deleteAnimation(type, filename);
-      loadAnimations();
-    } catch (e) {
-      console.error('Failed to delete animation:', e);
-    }
-  };
-
-  const handleUploadAnimation = async (e) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setAnimLoading(true);
-    for (const file of files) {
-      try {
-        await api.uploadAnimation('body', file);
-      } catch (err) {
-        console.error('Failed to upload animation:', err);
-      }
-    }
-    loadAnimations();
-    e.target.value = '';
-    setAnimLoading(false);
-  };
-
-  const loadMemories = async () => {
-    try {
-      const data = await api.getMemories();
-      setMemories(data);
-    } catch (err) {
-      console.error('Failed to load memories:', err);
-    }
-  };
-
-  const loadAvatars = async () => {
-    try {
-      const data = await api.getAvatars();
-      setAvatars(data);
-    } catch (err) {
-      console.error('Failed to load avatars:', err);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'avatar') {
-      loadAvatars();
-    }
-  }, [activeTab]);
-
-  const handleUploadAvatar = async () => {
-    if (!uploadForm.vrmFile || !uploadForm.name) {
-      setSaveMessage('Please provide both a name and a VRM file.');
+  const handleOverlayKeyDown = useCallback((e) => {
+    if (e.key === 'Escape') {
+      requestClose(onClose);
       return;
     }
-
-    setIsUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('name', uploadForm.name);
-      formData.append('vrm', uploadForm.vrmFile);
-      if (uploadForm.pfpFile) {
-        formData.append('pfp', uploadForm.pfpFile);
+    if (e.key === 'Tab') {
+      const overlay = overlayRef.current;
+      if (!overlay) return;
+      const focusable = overlay.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
       }
+    }
+  }, [requestClose, onClose]);
 
-      const newAvatar = await api.uploadAvatar(formData);
-      setAvatars([newAvatar, ...avatars]);
-      setSaveMessage('Avatar saved to library! ✨');
-      setShowUploadForm(false);
-      setUploadForm({ name: '', vrmFile: null, pfpFile: null, pfpPreview: null });
-      
-      // Auto-select the newly uploaded avatar
-      handleSelectAvatar(newAvatar);
-    } catch (err) {
-      setSaveMessage('Failed to upload avatar.');
-    } finally {
-      setIsUploading(false);
+  const filteredTabs = TAB_CONFIG.filter(tab => {
+    const label = tab.labelKey.startsWith('settings.') ? t(tab.labelKey) : tab.labelKey;
+    return label.toLowerCase().includes(settingsSearch.toLowerCase());
+  });
+
+  const renderTabContent = () => {
+    if (settingsLoading) {
+      return (
+        <div className="settings-skeleton">
+          <div className="skeleton-line wide" />
+          <div className="skeleton-line medium" />
+          <div className="skeleton-block" />
+          <div className="skeleton-line narrow" />
+          <div className="skeleton-line wide" />
+          <div className="skeleton-block" />
+          <div className="skeleton-line medium" />
+        </div>
+      );
+    }
+
+    switch (activeTab) {
+      case 'profile':
+        return <ProfileTab displayName={displayName} setDisplayName={setDisplayName} />;
+      case 'companion':
+        return <CompanionTab companion={companion} setCompanion={setCompanion} />;
+      case 'voice':
+        return <VoiceTab companion={companion} setCompanion={setCompanion}
+          VOICES={VOICES} audioDevices={audioDevices} micTestStatus={micTestStatus}
+          testText={testText} setTestText={setTestText} ttsStatus={ttsStatus}
+          isTestingVoice={isTestingVoice} speak={speak} handleTestMic={handleTestMic} />;
+      case 'apikey':
+        return <ApiKeyTab companion={companion} setCompanion={setCompanion}
+          GEMINI_MODELS={GEMINI_MODELS} GROQ_MODELS={GROQ_MODELS}
+          apiKeyInput={apiKeyInput} setApiKeyInput={setApiKeyInput}
+          hasCustomKey={hasCustomKey} handleSetApiKey={handleSetApiKey} handleRemoveApiKey={handleRemoveApiKey}
+          groqApiKeyInput={groqApiKeyInput} setGroqApiKeyInput={setGroqApiKeyInput}
+          hasGroqKey={hasGroqKey} handleSetGroqKey={handleSetGroqKey} handleRemoveGroqKey={handleRemoveGroqKey} />;
+      case 'shortcuts':
+        return <ShortcutsTab shortcuts={shortcuts} setShortcuts={setShortcuts}
+          recordingAction={recordingAction} setRecordingAction={setRecordingAction} />;
+      case 'memories':
+        return <MemoriesTab memories={memories} handleDeleteMemory={handleDeleteMemory} />;
+      case 'animations':
+        return <AnimationsTab animations={animations} animLoading={animLoading}
+          animSearch={animSearch} setAnimSearch={setAnimSearch}
+          loadAnimations={loadAnimations} handleTestAnimation={handleTestAnimation}
+          handleDeleteAnimation={handleDeleteAnimation} handleUploadAnimation={handleUploadAnimation}
+          testStatus={testStatus} animFileInputRef={animFileInputRef} />;
+      case 'avatar':
+        return <AvatarTab avatars={avatars} loadAvatars={loadAvatars}
+          currentVRMName={currentVRMName} handleSelectAvatar={handleSelectAvatar}
+          handleDeleteAvatar={handleDeleteAvatar}
+          showUploadForm={showUploadForm} setShowUploadForm={setShowUploadForm}
+          uploadForm={uploadForm} setUploadForm={setUploadForm}
+          isUploading={isUploading} handleUploadAvatar={handleUploadAvatar}
+          showGallery={showGallery} setShowGallery={setShowGallery}
+          galleryAvatars={galleryAvatars} downloadingGalleryId={downloadingGalleryId}
+          handleDownloadGalleryAvatar={handleDownloadGalleryAvatar}
+          loadGalleryAvatars={loadGalleryAvatars}
+          fileInputRef={fileInputRef} pfpInputRef={pfpInputRef} />;
+      case 'updates':
+        return <UpdatesTab updateStatus={updateStatus} latestVersion={latestVersion}
+          updateUrl={updateUrl} updateError={updateError} checkForUpdates={checkForUpdates} />;
+      case 'about':
+        return <AboutTab />;
+      case 'data':
+        return <DataManagementTab memories={memories}
+          handleExport={handleExport} handleImport={handleImport}
+          handleClearMemories={handleClearMemories} handleClearConversations={handleClearConversations} />;
+      default:
+        return null;
     }
   };
-
-  const handleSelectAvatar = async (avatar) => {
-    try {
-      const url = api.getUploadUrl(avatar.file_path);
-      if (onVRMFileSelected) {
-        // We pass the URL string now
-        onVRMFileSelected(url);
-      }
-      setCurrentVRMName(avatar.name);
-      localStorage.setItem('waifu-vrm-name', avatar.name);
-      localStorage.setItem('waifu-vrm-id', avatar.id);
-      setSaveMessage(`Switched to ${avatar.name}!`);
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setSaveMessage('Failed to load selected avatar.');
-    }
-  };
-
-  const handleRemoveVRM = () => {
-    if (onVRMFileSelected) onVRMFileSelected(null);
-    setCurrentVRMName(null);
-    localStorage.removeItem('waifu-vrm-name');
-    localStorage.removeItem('waifu-vrm-id');
-  };
-
-  const handleDeleteAvatar = async (id, e) => {
-    e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this avatar?')) return;
-    try {
-      await api.deleteAvatar(id);
-      setAvatars(avatars.filter(a => a.id !== id));
-      if (localStorage.getItem('waifu-vrm-id') === id) {
-        handleRemoveVRM();
-      }
-    } catch (err) {
-      setSaveMessage('Failed to delete avatar.');
-    }
-  };
-
-  const loadGalleryAvatars = async () => {
-    try {
-      const data = await api.getGalleryAvatars();
-      setGalleryAvatars(data);
-    } catch (err) {
-      console.error('Failed to load gallery avatars:', err);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'avatar' && showGallery) {
-      loadGalleryAvatars();
-    }
-  }, [activeTab, showGallery]);
-
-  const handleDownloadGalleryAvatar = async (galleryModel) => {
-    setDownloadingGalleryId(galleryModel.id);
-    try {
-      const newAvatar = await api.downloadGalleryAvatar(galleryModel.id);
-      setAvatars([newAvatar, ...avatars]);
-      setSaveMessage(`"${galleryModel.name}" added to your library!`);
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setSaveMessage('Failed to download model.');
-      setTimeout(() => setSaveMessage(''), 3000);
-    } finally {
-      setDownloadingGalleryId(null);
-    }
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await api.updateSettings({ displayName, companion: { ...companion, shortcuts } });
-      onShortcutsChange?.(shortcuts);
-      setSaveMessage('Settings saved! ✨');
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setSaveMessage('Failed to save settings.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSetApiKey = async () => {
-    if (!apiKeyInput.trim()) return;
-    try {
-      await api.setApiKey(apiKeyInput.trim());
-      setHasCustomKey(true);
-      setApiKeyInput('');
-      setSaveMessage('Gemini API key saved securely! 🔐');
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setSaveMessage(err.data?.error || 'Failed to save Gemini API key.');
-      setTimeout(() => setSaveMessage(''), 4000);
-    }
-  };
-
-  const handleSetGroqKey = async () => {
-    if (!groqApiKeyInput.trim()) return;
-    try {
-      await api.fetchApi('/api/settings/groq-key', {
-        method: 'POST',
-        body: JSON.stringify({ apiKey: groqApiKeyInput.trim() })
-      });
-      setHasGroqKey(true);
-      setGroqApiKeyInput('');
-      setSaveMessage('Groq API key saved securely! 🔐');
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setSaveMessage(err.data?.error || 'Failed to save Groq API key.');
-      setTimeout(() => setSaveMessage(''), 4000);
-    }
-  };
-
-  const handleRemoveApiKey = async () => {
-    if (!window.confirm('Are you sure you want to remove your custom Gemini key?')) return;
-    try {
-      await api.removeApiKey();
-      setHasCustomKey(false);
-      setSaveMessage('Gemini API key removed.');
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setSaveMessage('Failed to remove Gemini API key.');
-    }
-  };
-
-  const handleRemoveGroqKey = async () => {
-    if (!window.confirm('Are you sure you want to remove your custom Groq key?')) return;
-    try {
-      await api.fetchApi('/api/settings/groq-key', { method: 'DELETE' });
-      setHasGroqKey(false);
-      setSaveMessage('Groq API key removed.');
-      setTimeout(() => setSaveMessage(''), 3000);
-    } catch (err) {
-      setSaveMessage('Failed to remove Groq API key.');
-    }
-  };
-
-  const handleDeleteMemory = async (memoryId) => {
-    try {
-      await api.deleteMemory(memoryId);
-      setMemories((prev) => prev.filter((m) => m.id !== memoryId));
-    } catch (err) {
-      console.error('Failed to delete memory:', err);
-    }
-  };
-
-
-  const tabs = [
-    { id: 'profile', label: t('settings.tabs.profile'), icon: User },
-    { id: 'companion', label: t('settings.tabs.companion'), icon: Sparkles },
-    { id: 'avatar', label: t('settings.tabs.avatar'), icon: Image },
-    { id: 'voice', label: t('settings.tabs.voice'), icon: Volume2 },
-    { id: 'apikey', label: t('settings.tabs.apikey'), icon: Key },
-    { id: 'shortcuts', label: t('settings.shortcuts.title'), icon: Keyboard },
-    { id: 'memories', label: t('settings.tabs.memories'), icon: Brain },
-    { id: 'animations', label: t('settings.tabs.animations'), icon: Film },
-  ];
 
   return (
-    <div className="settings-overlay" onClick={onClose}>
+    <div className="settings-overlay" onClick={(e) => { if (e.target === e.currentTarget) requestClose(onClose); }}
+      onKeyDown={handleOverlayKeyDown} ref={overlayRef} role="dialog" aria-modal="true" aria-label="Settings">
       <div className="settings-panel settings-panel--wide" onClick={(e) => e.stopPropagation()}>
         <div className="settings-header">
-          <h2>⚙️ Settings</h2>
-          <button className="settings-close-btn" onClick={onClose}>
+          <h2>Settings</h2>
+          <button className="settings-close-btn" onClick={() => requestClose(onClose)}
+            ref={closeButtonRef} aria-label="Close settings">
             <X size={18} />
           </button>
         </div>
 
         <div className="settings-layout">
           <div className="settings-sidebar">
-            {tabs.map((tab) => (
-              <button
-                key={tab.id}
-                className={`settings-sidebar-tab ${activeTab === tab.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                <tab.icon size={16} />
-                {tab.label}
-              </button>
-            ))}
+            <div className="settings-search-wrapper">
+              <Search size={14} className="settings-search-icon" />
+              <input type="text" className="settings-search-input"
+                placeholder="Search settings..."
+                value={settingsSearch} onChange={(e) => setSettingsSearch(e.target.value)} />
+              {settingsSearch && (
+                <button className="settings-search-clear" onClick={() => setSettingsSearch('')}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            <div className="settings-sidebar-tabs">
+              {filteredTabs.map((tab) => {
+                const Icon = tab.icon;
+                const label = tab.labelKey.startsWith('settings.') ? t(tab.labelKey) : tab.labelKey;
+                return (
+                  <button key={tab.id}
+                    className={`settings-sidebar-tab ${activeTab === tab.id ? 'active' : ''}`}
+                    onClick={() => setActiveTab(tab.id)}>
+                    <Icon size={16} />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="settings-content">
-          {/* Profile Tab */}
-          {activeTab === 'profile' && (
-            <div className="settings-section">
-              <div className="settings-section-title">
-                <Globe size={18} className="icon" />
-                {t('settings.system.language')}
-              </div>
-              <div className="form-group">
-                <label>{t('settings.system.selectLanguage')}</label>
-                <select 
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                >
-                  <option value="en">{t('settings.system.english')}</option>
-                  <option value="ar">{t('settings.system.arabic')}</option>
-                </select>
-              </div>
+            {renderTabContent()}
+          </div>
+        </div>
 
-              <div className="settings-section-title">
-                <User size={18} className="icon" />
-                {t('settings.profile.title')}
-              </div>
-              <div className="form-group">
-                <label htmlFor="display-name">Display Name</label>
-                <input
-                  id="display-name"
-                  type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="What should I call you?"
-                />
-                <div className="hint">Your companion will address you by this name.</div>
-              </div>
-              <button className="btn btn-primary btn-save" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          )}
-
-          {/* Companion Tab */}
-          {activeTab === 'companion' && (
-            <div className="settings-section">
-              <div className="settings-section-title">
-                <Sparkles size={18} className="icon" />
-                {t('settings.companion.title')}
-              </div>
-              <div className="form-group">
-                <label htmlFor="companion-name">Companion Name</label>
-                <input
-                  id="companion-name"
-                  type="text"
-                  value={companion.name}
-                  onChange={(e) => setCompanion((p) => ({ ...p, name: e.target.value }))}
-                  placeholder="e.g., Aria, Luna, Sakura..."
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="companion-tone">Tone & Style</label>
-                <input
-                  id="companion-tone"
-                  type="text"
-                  value={companion.tone}
-                  onChange={(e) => setCompanion((p) => ({ ...p, tone: e.target.value }))}
-                  placeholder="e.g., cute, friendly, emotional, witty..."
-                />
-                <div className="hint">Comma-separated list of personality traits.</div>
-              </div>
-              <div className="form-group">
-                <label htmlFor="companion-personality">Core Personality</label>
-                <textarea
-                  id="companion-personality"
-                  value={companion.personality}
-                  onChange={(e) => setCompanion((p) => ({ ...p, personality: e.target.value }))}
-                  placeholder="Describe the core personality..."
-                  rows={3}
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="companion-backstory">Backstory</label>
-                <textarea
-                  id="companion-backstory"
-                  value={companion.backstory}
-                  onChange={(e) => setCompanion((p) => ({ ...p, backstory: e.target.value }))}
-                  placeholder="Give your companion a backstory..."
-                  rows={3}
-                />
-              </div>
-              <button className="btn btn-primary btn-save" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : 'Save Personality'}
-              </button>
-            </div>
-          )}
-
-          {/* Avatar Tab */}
-          {activeTab === 'avatar' && (
-            <div className="settings-section">
-              <div className="settings-section-title">
-                <Image size={18} className="icon" />
-                {t('settings.avatar.title')}
-                <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-                  <button 
-                    className="btn btn-secondary" 
-                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                    onClick={() => { setShowGallery(false); setShowUploadForm(!showUploadForm); }}
-                  >
-                    {showUploadForm ? 'Cancel' : <><Plus size={14} style={{ marginRight: 4 }} /> Add New</>}
-                  </button>
-                  <button 
-                    className="btn btn-secondary" 
-                    style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                    onClick={() => { setShowUploadForm(false); setShowGallery(!showGallery); }}
-                  >
-                    {showGallery ? 'Cancel' : <><Download size={14} style={{ marginRight: 4 }} /> Gallery</>}
-                  </button>
-                </div>
-              </div>
-
-              {showUploadForm ? (
-                <div className="settings-upload-form">
-                  <div className="settings-upload-body">
-                    <div 
-                      className="settings-pfp-upload"
-                      onClick={() => pfpInputRef.current?.click()}
-                    >
-                      {uploadForm.pfpPreview ? (
-                        <img src={uploadForm.pfpPreview} alt="Preview" />
-                      ) : (
-                        <>
-                          <Camera size={20} style={{ color: 'var(--color-text-muted)', marginBottom: 4 }} />
-                          <span className="settings-pfp-upload-hint">Icon</span>
-                        </>
-                      )}
-                      <input 
-                        ref={pfpInputRef}
-                        type="file" 
-                        accept="image/*" 
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            setUploadForm({ ...uploadForm, pfpFile: file, pfpPreview: URL.createObjectURL(file) });
-                          }
-                        }}
-                        style={{ display: 'none' }}
-                      />
-                    </div>
-
-                    <div className="settings-upload-fields">
-                      <div className="form-group">
-                        <label>Companion Name</label>
-                        <input 
-                          type="text" 
-                          value={uploadForm.name}
-                          onChange={(e) => setUploadForm({ ...uploadForm, name: e.target.value })}
-                          placeholder="e.g. Aria"
-                        />
-                      </div>
-                      
-                      <div className="form-group">
-                        <label>VRM Model File</label>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button 
-                            className="btn btn-secondary" 
-                            style={{ flex: 1, fontSize: '0.75rem' }}
-                            onClick={() => fileInputRef.current?.click()}
-                          >
-                            {uploadForm.vrmFile ? uploadForm.vrmFile.name : 'Select .vrm File'}
-                          </button>
-                          <input 
-                            ref={fileInputRef}
-                            type="file" 
-                            accept=".vrm"
-                            onChange={(e) => setUploadForm({ ...uploadForm, vrmFile: e.target.files?.[0] })}
-                            style={{ display: 'none' }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button 
-                    className="btn btn-primary" 
-                    style={{ width: '100%', marginTop: '16px' }}
-                    onClick={handleUploadAvatar}
-                    disabled={isUploading || !uploadForm.vrmFile || !uploadForm.name}
-                  >
-                    {isUploading ? 'Uploading...' : 'Save to Library'}
-                  </button>
-                </div>
-              ) : showGallery ? (
-                <div className="settings-avatar-grid">
-                  {galleryAvatars.length === 0 ? (
-                    <div className="settings-empty">
-                      <Download size={32} className="settings-empty-icon" />
-                      <p>No gallery models available.<br/>Check back later for new additions!</p>
-                    </div>
-                  ) : (
-                    galleryAvatars.map((model) => {
-                      const alreadyOwned = avatars.some(a => a.name === model.name);
-                      const isDownloading = downloadingGalleryId === model.id;
-                      return (
-                        <div key={model.id} className="settings-avatar-card">
-                          <div className="settings-avatar-pfp">
-                            <Download size={24} style={{ opacity: 0.3 }} />
-                          </div>
-                          <span className="settings-avatar-name">{model.name}</span>
-                          {alreadyOwned ? (
-                            <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', padding: '2px 6px' }}>
-                              Owned ✓
-                            </span>
-                          ) : (
-                            <button
-                              className="btn btn-secondary"
-                              style={{ padding: '3px 8px', fontSize: '0.7rem', width: '100%' }}
-                              onClick={() => handleDownloadGalleryAvatar(model)}
-                              disabled={isDownloading}
-                            >
-                              {isDownloading ? 'Downloading...' : 'Download'}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              ) : (
-                <div className="settings-avatar-grid">
-                  {avatars.length === 0 ? (
-                    <div className="settings-empty">
-                      <Image size={32} className="settings-empty-icon" />
-                      <p>Your library is empty.<br/>Upload your first VRM model!</p>
-                    </div>
-                  ) : (
-                    avatars.map((avatar) => (
-                      <div 
-                        key={avatar.id}
-                        className={`settings-avatar-card ${currentVRMName === avatar.name ? 'active' : ''}`}
-                        onClick={() => handleSelectAvatar(avatar)}
-                      >
-                        <div className="settings-avatar-pfp">
-                          {avatar.pfp_path ? (
-                            <img src={api.getUploadUrl(avatar.pfp_path)} alt={avatar.name} />
-                          ) : (
-                            <User size={30} style={{ opacity: 0.3 }} />
-                          )}
-                        </div>
-                        <span className="settings-avatar-name">{avatar.name}</span>
-                        
-                        <button 
-                          className="settings-avatar-delete"
-                          onClick={(e) => handleDeleteAvatar(avatar.id, e)}
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    ))
-                  )}
-                </div>
-              )}
-
-              <div className="hint" style={{ marginTop: 16 }}>
-                {showGallery
-                  ? 'Browse and download models from the gallery. Downloaded models appear in your library.'
-                  : showUploadForm
-                    ? 'Upload your own VRM model files to build a personal library.'
-                    : 'Once saved, your models stay in the app library. Click a card to switch companions.'}
-              </div>
-            </div>
-          )}
-
-          {/* Voice Tab */}
-          {activeTab === 'voice' && (
-            <div className="settings-section">
-              <div className="settings-section-title">
-                <Volume2 size={18} className="icon" />
-                {t('settings.voice.title')}
-              </div>
-
-              <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <input 
-                  type="checkbox" 
-                  id="tts-enabled" 
-                  checked={companion.ttsEnabled}
-                  onChange={(e) => setCompanion({ ...companion, ttsEnabled: e.target.checked })}
-                />
-                <label htmlFor="tts-enabled" style={{ margin: 0 }}>{t('settings.voice.enableTTS')}</label>
-              </div>
-
-              {companion.ttsEnabled && (
-                <>
-                  <div className="settings-voice-grid">
-                    <div className="form-group">
-                      <label>{t('settings.voice.mic')}</label>
-                      <select 
-                        value={companion.audioInputDevice} 
-                        onChange={(e) => setCompanion({ ...companion, audioInputDevice: e.target.value })}
-                      >
-                        <option value="default">{t('settings.voice.systemDefault')}</option>
-                        {audioDevices.inputs.map(d => (
-                          <option key={d.id} value={d.id}>{d.label}</option>
-                        ))}
-                      </select>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={handleTestMic}
-                        disabled={micTestStatus !== 'idle'}
-                        style={{ marginTop: 8, width: '100%', fontSize: '0.8rem', padding: '6px 14px' }}
-                      >
-                        {micTestStatus === 'recording' ? '🔴 Recording... (3s)' : micTestStatus === 'playing' ? '▶ Playing back...' : '🎤 Test Microphone'}
-                      </button>
-                    </div>
-
-                    <div className="form-group">
-                      <label>{t('settings.voice.speaker')}</label>
-                      <select 
-                        value={companion.audioOutputDevice} 
-                        onChange={(e) => setCompanion({ ...companion, audioOutputDevice: e.target.value })}
-                      >
-                        <option value="default">{t('settings.voice.systemDefault')}</option>
-                        {audioDevices.outputs.map(d => (
-                          <option key={d.id} value={d.id}>{d.label}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label>{t('settings.voice.hardwareAccel')}</label>
-                      <select 
-                        value={companion.ttsDevice} 
-                        onChange={(e) => setCompanion({ ...companion, ttsDevice: e.target.value })}
-                      >
-                        <option value="cpu">{t('settings.voice.cpuStandard')}</option>
-                        <option value="gpu">{t('settings.voice.gpuAccel')}</option>
-                      </select>
-                      <div className="hint">
-                        {ttsStatus.device.includes('gpu') || ttsStatus.device === 'cuda'
-                          ? `✅ GPU Acceleration ACTIVE (${ttsStatus.device}).`
-                          : ttsStatus.status === 'offline'
-                          ? "❌ TTS Server Offline."
-                          : "⚠️ GPU NOT FOUND. PyTorch is running on CPU."}
-                      </div>
-                    </div>
-
-                    <div className="form-group">
-                      <label>{t('settings.voice.ttsEngine')}</label>
-                      <select 
-                        value={companion.ttsEngine} 
-                        onChange={(e) => setCompanion({ ...companion, ttsEngine: e.target.value })}
-                      >
-                        <option value="onnx">{t('settings.voice.onnxStandard')}</option>
-                        <option value="torch">{t('settings.voice.torchFull')}</option>
-                      </select>
-                      <div className="hint">
-                        {companion.ttsEngine === 'torch' 
-                          ? "Using full PyTorch engine. Needs 'torch' and 'kokoro' installed."
-                          : "Using high-speed ONNX engine (Recommended)."}
-                      </div>
-                    </div>
-                  </div>
-
-                    <div className="form-group">
-                      <label>{t('settings.voice.speed')}: {companion.ttsSpeed?.toFixed(2) ?? 1.00}x</label>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2.0"
-                        step="0.05"
-                        value={companion.ttsSpeed ?? 1.0}
-                        onChange={(e) => setCompanion({ ...companion, ttsSpeed: parseFloat(e.target.value) })}
-                        style={{ width: '100%' }}
-                      />
-                      <div className="hint">{t('settings.voice.speedHint')}</div>
-                    </div>
-
-                    <div className="form-group">
-                      <label>{t('settings.voice.pitch')}: {companion.ttsPitch?.toFixed(2) ?? 1.00}</label>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2.0"
-                        step="0.05"
-                        value={companion.ttsPitch ?? 1.0}
-                        onChange={(e) => setCompanion({ ...companion, ttsPitch: parseFloat(e.target.value) })}
-                        style={{ width: '100%' }}
-                      />
-                      <div className="hint">{t('settings.voice.pitchHint')}</div>
-                    </div>
-
-                    <div className="form-group">
-                      <label>{t('settings.voice.volume')}: {companion.ttsVolume?.toFixed(2) ?? 1.00}</label>
-                      <input
-                        type="range"
-                        min="0.0"
-                        max="2.0"
-                        step="0.05"
-                        value={companion.ttsVolume ?? 1.0}
-                        onChange={(e) => setCompanion({ ...companion, ttsVolume: parseFloat(e.target.value) })}
-                        style={{ width: '100%' }}
-                      />
-                      <div className="hint">{t('settings.voice.volumeHint')}</div>
-                    </div>
-
-                    <div className="form-group">
-                      <label>{t('settings.voice.testVoice')}</label>
-                    <div className="settings-test-row">
-                      <input 
-                        type="text" 
-                        value={testText}
-                        onChange={(e) => setTestText(e.target.value)}
-                        placeholder={t('settings.voice.testPlaceholder')}
-                      />
-                      <button 
-                        className="btn btn-primary"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          speak(testText, {
-                            enabled: true,
-                            voice: companion.ttsVoice,
-                            speed: companion.ttsSpeed ?? 1.0,
-                            pitch: companion.ttsPitch ?? 1.0,
-                            volume: companion.ttsVolume ?? 1.0,
-                            outputDeviceId: companion.audioOutputDevice,
-                            device: companion.ttsDevice,
-                            engine: companion.ttsEngine
-                          });
-                        }}
-                        disabled={isTestingVoice || !testText.trim()}
-                        style={{ padding: '0 20px', whiteSpace: 'nowrap' }}
-                      >
-                        {isTestingVoice ? t('common.playing') : '▶ ' + t('common.test')}
-                      </button>
-                    </div>
-                  </div>
-
-                  <label style={{ display: 'block', marginBottom: '8px', fontSize: '0.85rem' }}>{t('settings.voice.availableVoices')}</label>
-                  <div className="settings-voice-cards">
-                    {VOICES.map((v) => (
-                      <div 
-                        key={v.id} 
-                        className={`settings-voice-card ${companion.ttsVoice === v.id ? 'active' : ''}`}
-                        onClick={() => setCompanion({ ...companion, ttsVoice: v.id })}
-                      >
-                        <div className="settings-voice-card-name">{v.name}</div>
-                        <div className="settings-voice-card-desc">{v.desc}</div>
-                      </div>
-                    ))}
-                  </div>
-                </>
-              )}
-              
-              <button className="btn btn-primary btn-save" onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving...' : t('settings.voice.save')}
-              </button>
-            </div>
-          )}
-
-           {/* API Key Tab */}
-          {activeTab === 'apikey' && (
-            <div className="settings-section">
-              <div className="settings-section-title">
-                <Sparkles size={18} className="icon" />
-                {t('settings.apikey.modelSelectionTitle')}
-              </div>
-              <div className="form-group">
-                <label>{t('settings.apikey.aiProvider')}</label>
-                <div className="settings-provider-btns">
-                  <button 
-                    className={`btn ${companion.llmProvider === 'gemini' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setCompanion(p => ({ ...p, llmProvider: 'gemini', llmModel: 'gemini-3.1-flash-lite' }))}
-                  >
-                    Google Gemini
-                  </button>
-                  <button 
-                    className={`btn ${companion.llmProvider === 'groq' ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setCompanion(p => ({ ...p, llmProvider: 'groq', llmModel: 'llama-3.1-70b-versatile' }))}
-                  >
-                    Groq (Super Fast)
-                  </button>
-                </div>
-
-                <label htmlFor="llm-model">{t('settings.apikey.preferredModel').replace('{provider}', companion.llmProvider === 'groq' ? 'Groq' : 'Gemini')}</label>
-                <select
-                  id="llm-model"
-                  value={companion.llmModel}
-                  onChange={(e) => setCompanion((p) => ({ ...p, llmModel: e.target.value }))}
-                >
-                  {(companion.llmProvider === 'groq' ? GROQ_MODELS : GEMINI_MODELS).map(model => (
-                    <option key={model.id} value={model.id}>
-                      {model.name} {model.free ? '(Free)' : ''}
-                    </option>
-                  ))}
-                </select>
-                <div className="hint">
-                  {(companion.llmProvider === 'groq' ? GROQ_MODELS : GEMINI_MODELS).find(m => m.id === companion.llmModel)?.desc}
-                </div>
-                <button 
-                  className="btn btn-primary"
-                  style={{ marginTop: 12, width: 'auto', padding: '6px 16px' }}
-                  onClick={handleSave} 
-                  disabled={saving}
-                >
-                  {saving ? 'Saving...' : t('settings.apikey.updateModel')}
-                </button>
-              </div>
-
-              <div className="settings-section-title" style={{ marginTop: 32 }}>
-                <Key size={18} className="icon" />
-                {t('settings.apikey.bringYourOwnKey')}
-              </div>
-              <div className="api-key-section">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                  <img src="https://www.gstatic.com/lamda/images/favicon_v2_16x16.png" alt="Gemini" style={{ width: 16, height: 16 }} />
-                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t('settings.apikey.geminiKey')}</span>
-                </div>
-                
-                <div className={`api-key-status ${hasCustomKey ? 'active' : 'inactive'}`}>
-                  <Shield size={16} />
-                  {hasCustomKey
-                    ? t('settings.apikey.customGeminiActive')
-                    : t('settings.apikey.defaultGeminiActive')
-                  }
-                </div>
-
-                {!hasCustomKey ? (
-                  <div className="settings-api-key-row">
-                    <input
-                      type="password"
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      placeholder={t("settings.apikey.pasteGeminiKey")}
-                    />
-                    <button className="btn btn-primary" onClick={handleSetApiKey} disabled={saving || !apiKeyInput.trim()}>
-                      Save
-                    </button>
-                  </div>
-                ) : (
-                  <button className="btn btn-danger" onClick={handleRemoveApiKey} style={{ width: '100%' }}>
-                    {t('settings.apikey.removeGeminiKey')}
-                  </button>
-                )}
-                <div className="hint" style={{ marginTop: 8 }}>
-                  {t('settings.apikey.getFreeKeyAt')} <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer">Google AI Studio</a>
-                </div>
-              </div>
-
-              <div className="api-key-section" style={{ marginTop: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                  <div style={{ width: 16, height: 16, background: '#f55036', borderRadius: '4px' }} />
-                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>{t('settings.apikey.groqKey')}</span>
-                </div>
-
-                <div className={`api-key-status ${hasGroqKey ? 'active' : 'inactive'}`}>
-                  <Shield size={16} />
-                  {hasGroqKey
-                    ? t('settings.apikey.customGroqActive')
-                    : t('settings.apikey.defaultGroqActive')
-                  }
-                </div>
-
-                {!hasGroqKey ? (
-                  <div className="settings-api-key-row">
-                    <input
-                      type="password"
-                      value={groqApiKeyInput}
-                      onChange={(e) => setGroqApiKeyInput(e.target.value)}
-                      placeholder={t("settings.apikey.pasteGroqKey")}
-                    />
-                    <button className="btn btn-primary" onClick={handleSetGroqKey} disabled={saving || !groqApiKeyInput.trim()}>
-                      Save
-                    </button>
-                  </div>
-                ) : (
-                  <button className="btn btn-danger" onClick={handleRemoveGroqKey} style={{ width: '100%' }}>
-                    {t('settings.apikey.removeGroqKey')}
-                  </button>
-                )}
-                <div className="hint" style={{ marginTop: 8 }}>
-                  {t('settings.apikey.getFreeKeyAt')} <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">Groq Console</a>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Shortcuts Tab */}
-          {activeTab === 'shortcuts' && (
-            <div className="settings-section">
-              <div className="settings-section-title">
-                <Keyboard size={18} className="icon" />
-                {t('settings.shortcuts.title')}
-              </div>
-              <p className="settings-hint">{t('settings.shortcuts.hint')}</p>
-
-              <div className="settings-shortcuts-list">
-                {Object.entries(SHORTCUT_LABELS).map(([action, label]) => (
-                  <div key={action} className="settings-shortcut-item">
-                    <span className="settings-shortcut-label">{label}</span>
-                    <div className="settings-shortcut-actions">
-                      <button
-                        className={`settings-shortcut-key ${recordingAction === action ? 'recording' : ''}`}
-                        onClick={() => {
-                          setRecordingAction(recordingAction === action ? null : action);
-                        }}
-                      >
-                        {recordingAction === action ? t('settings.shortcuts.recording') : (shortcuts[action] || '—')}
-                      </button>
-                      {shortcuts[action] !== DEFAULT_SHORTCUTS[action] && (
-                        <button
-                          className="btn btn-secondary"
-                          style={{ padding: '4px 8px', fontSize: '0.75rem' }}
-                          onClick={() => setShortcuts(prev => ({ ...prev, [action]: DEFAULT_SHORTCUTS[action] }))}
-                        >
-                          {t('settings.shortcuts.reset')}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {JSON.stringify(shortcuts) !== JSON.stringify(DEFAULT_SHORTCUTS) && (
-                <button
-                  className="btn btn-secondary"
-                  style={{ width: '100%', marginTop: 8, fontSize: '0.8rem', padding: '6px 14px' }}
-                  onClick={() => setShortcuts(DEFAULT_SHORTCUTS)}
-                >
-                  {t('settings.shortcuts.resetAll')}
-                </button>
-              )}
-
-              <button
-                className="btn btn-primary btn-save"
-                  onClick={async () => {
-                  setCompanion(p => ({ ...p, shortcuts }));
-                  setSaving(true);
-                  try {
-                    await api.updateSettings({ companion: { shortcuts } });
-                    onShortcutsChange?.(shortcuts);
-                    setSaveMessage(t('settings.shortcuts.saved'));
-                    setTimeout(() => setSaveMessage(''), 3000);
-                  } catch (err) {
-                    setSaveMessage('Failed to save shortcuts.');
-                  } finally {
-                    setSaving(false);
-                  }
-                }}
-                disabled={saving}
-              >
-                {saving ? t('common.saving') : t('common.saveChanges')}
-              </button>
-            </div>
-          )}
-
-          {/* Memories Tab */}
-          {activeTab === 'memories' && (
-            <div className="settings-section">
-              <div className="settings-section-title">
-                <Brain size={18} className="icon" />
-                {t('settings.memories.title')}
-              </div>
-              {memories.length === 0 ? (
-                <div className="settings-empty">
-                  <Brain size={32} className="settings-empty-icon" />
-                  <p>{t('settings.memories.empty')}</p>
-                </div>
-              ) : (
-                <div className="settings-anim-list">
-                  {memories.map((memory) => (
-                    <div
-                      key={memory.id}
-                      className="settings-anim-item"
-                      style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}
-                    >
-                      <span style={{ flex: 1 }}>💭 {memory.content}</span>
-                      <button
-                        className="btn btn-danger"
-                        style={{ padding: '4px 8px', fontSize: '0.75rem' }}
-                        onClick={() => handleDeleteMemory(memory.id)}
-                      >
-                        Forget
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Animations Tab */}
-          {activeTab === 'animations' && (
-            <div className="settings-section">
-              <div className="settings-section-title">
-                <Film size={18} className="icon" />
-                {t('settings.animations.title')}
-              </div>
-              <p className="settings-hint">
-                {t('settings.animations.hint')}
-              </p>
-
-              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                <button className="btn btn-primary" onClick={loadAnimations} disabled={animLoading} style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
-                  <RefreshCw size={14} style={{ marginRight: 6 }} />
-                  {t('settings.animations.refresh')}
-                </button>
-                <button className="btn btn-primary" onClick={() => animFileInputRef.current?.click()} disabled={animLoading} style={{ fontSize: '0.8rem', padding: '6px 14px' }}>
-                  <Upload size={14} style={{ marginRight: 6 }} />
-                  {t('settings.animations.upload')}
-                </button>
-                <input
-                  ref={animFileInputRef}
-                  type="file"
-                  accept=".json,.bvh"
-                  multiple
-                  style={{ display: 'none' }}
-                  onChange={handleUploadAnimation}
-                />
-              </div>
-
-              <input
-                className="avatar-browse-search"
-                type="text"
-                placeholder="Search animations..."
-                value={animSearch}
-                onChange={(e) => setAnimSearch(e.target.value)}
-                style={{ marginBottom: 12 }}
-              />
-
-              {/* Facial Expressions */}
-              <div style={{ marginBottom: 20 }}>
-                <h4 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
-                  {t('settings.animations.facial')}
-                </h4>
-                {animations.facial.filter(a => !animSearch || a.name.toLowerCase().includes(animSearch.toLowerCase())).length === 0 ? (
-                  <div className="settings-empty">
-                    {animSearch ? 'No matching facial animations.' : t('settings.animations.empty')}
-                  </div>
-                ) : (
-                  <div className="settings-anim-list">
-                    {animations.facial
-                      .filter(a => !animSearch || a.name.toLowerCase().includes(animSearch.toLowerCase()))
-                      .map((anim) => (
-                      <div key={anim.filename} className="settings-anim-item">
-                        <div className="settings-anim-info">
-                          <span className="settings-anim-name">{anim.name}</span>
-                          <span className="settings-anim-meta">{anim.duration.toFixed(1)}s {anim.loop ? '(loop)' : ''}</span>
-                        </div>
-                        <div className="settings-anim-actions">
-                          <button className="btn btn-primary"
-                            onClick={() => handleTestAnimation('facial', anim.filename)}
-                            disabled={testStatus[`facial/${anim.filename}`] === 'playing'}>
-                            <Play size={12} style={{ marginRight: 4 }} />
-                            {testStatus[`facial/${anim.filename}`] === 'playing' ? t('common.playing') : t('common.test')}
-                          </button>
-                          <button className="btn btn-danger"
-                            onClick={() => handleDeleteAnimation('facial', anim.filename)}>
-                            {t('common.delete')}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Body Animations */}
-              <div>
-                <h4 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
-                  {t('settings.animations.body')}
-                </h4>
-                {animations.body.filter(a => !animSearch || a.name.toLowerCase().includes(animSearch.toLowerCase())).length === 0 ? (
-                  <div className="settings-empty">
-                    {animSearch ? 'No matching body animations.' : t('settings.animations.empty')}
-                  </div>
-                ) : (
-                  <div className="settings-anim-list">
-                    {animations.body
-                      .filter(a => !animSearch || a.name.toLowerCase().includes(animSearch.toLowerCase()))
-                      .map((anim) => (
-                      <div key={anim.filename} className="settings-anim-item">
-                        <div className="settings-anim-info">
-                          <span className="settings-anim-name">
-                            {anim.name}
-                            {anim.format === 'bvh' && (
-                              <span className="tag">BVH</span>
-                            )}
-                          </span>
-                          <span className="settings-anim-meta">{anim.duration.toFixed(1)}s {anim.loop ? '(loop)' : ''} {anim.format === 'bvh' ? '| motion capture' : ''}</span>
-                        </div>
-                        <div className="settings-anim-actions">
-                          <button className="btn btn-primary"
-                            onClick={() => handleTestAnimation('body', anim.filename)}
-                            disabled={testStatus[`body/${anim.filename}`] === 'playing'}>
-                            <Play size={12} style={{ marginRight: 4 }} />
-                            {testStatus[`body/${anim.filename}`] === 'playing' ? t('common.playing') : t('common.test')}
-                          </button>
-                          <button className="btn btn-danger"
-                            onClick={() => handleDeleteAnimation('body', anim.filename)}>
-                            {t('common.delete')}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="settings-folder-hint">
-                <FolderOpen size={20} />
-                <p>{t('settings.animations.folderHint')}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Save Status */}
-          {saveMessage && <div className="save-status">{saveMessage}</div>}
+        <div className="settings-footer">
+          {dirty && <span className="unsaved-badge">Unsaved changes</span>}
+          <Toast message={toast?.message} type={toast?.type} onDismiss={() => showToast(null)} />
+          <button className="btn btn-primary" onClick={() => handleSave()} disabled={saving || !dirty}>
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
         </div>
       </div>
+
+      {showUnsavedDialog && (
+        <div className="unsaved-dialog-overlay">
+          <div className="unsaved-dialog">
+            <h3>Unsaved Changes</h3>
+            <p>You have unsaved changes. Do you want to discard them?</p>
+            <div className="unsaved-dialog-actions">
+              <button className="btn btn-secondary" onClick={handleUnsavedCancel}>Keep Editing</button>
+              <button className="btn btn-danger" onClick={handleUnsavedConfirm}>Discard</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
-  </div>
   );
 }

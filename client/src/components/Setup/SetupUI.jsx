@@ -37,14 +37,14 @@ export default function SetupUI({ onComplete, systemInfo }) {
               : 'Downloading and configuring local AI companions'}
           </p>
         </div>
-        <div className="step-progress-indicator">
-          <div className={`step-dot ${screen >= 1 ? 'active' : ''} ${screen > 1 ? 'completed' : ''}`}>
+        <div className="step-progress-indicator" role="progressbar" aria-valuenow={screen} aria-valuemin={1} aria-valuemax={2} aria-label="Setup progress">
+          <div className={`step-dot ${screen >= 1 ? 'active' : ''} ${screen > 1 ? 'completed' : ''}`} aria-current={screen === 1 ? 'step' : undefined}>
             {screen > 1 ? '✓' : '1'}
           </div>
           <div className="step-line-connector">
             <div className="step-line-fill" style={{ width: screen >= 2 ? '100%' : '0%' }}></div>
           </div>
-          <div className={`step-dot ${screen >= 2 ? 'active' : ''}`}>
+          <div className={`step-dot ${screen >= 2 ? 'active' : ''}`} aria-current={screen === 2 ? 'step' : undefined}>
             2
           </div>
         </div>

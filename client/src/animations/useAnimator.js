@@ -36,7 +36,31 @@ const SKELETON_BONES = [
 ];
 
 function getBone(vrm, name) {
-  return vrm.humanoid?.getNormalizedBoneNode?.(name) ?? null;
+  if (vrm.humanoid) return vrm.humanoid.getNormalizedBoneNode?.(name) ?? null;
+  if (vrm.boneMap?.[name]) return vrm.boneMap[name];
+  // Fallback: traverse scene, try exact match then endsWith
+  // (endsWith handles mixamorig:Spine, Head, etc. uniquely without prefix clashes)
+  const lower = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  let found = null;
+  vrm.scene?.traverse?.((child) => {
+    if (!found && child.isBone) {
+      const n = child.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (n === lower || n.endsWith(lower)) found = child;
+    }
+  });
+  return found;
+}
+
+function getRawBone(vrm, name) {
+  // For BVH: VRM uses getRawBoneNode, GLB uses direct bone lookup
+  if (vrm.humanoid) return vrm.humanoid.getRawBoneNode?.(name) ?? null;
+  // Try bone map first, then scene traversal
+  if (vrm.boneMap) return vrm.boneMap[name] ?? null;
+  let found = null;
+  vrm.scene?.traverse?.((child) => {
+    if (!found && child.isBone && child.name.toLowerCase() === name.toLowerCase()) found = child;
+  });
+  return found;
 }
 
 function lerpKeyframes(keyframes, time) {
@@ -155,7 +179,7 @@ export function useAnimator() {
 
     let data = parsedCache.current[filename];
 
-    if (!data && textCache.current[filename] && vrmRef.current?.humanoid) {
+    if (!data && textCache.current[filename] && vrmRef.current?.scene) {
       data = parseBVH(textCache.current[filename], vrmRef.current);
       if (data) parsedCache.current[filename] = data;
     }
@@ -230,7 +254,8 @@ export function useAnimator() {
 
   // ── Main update loop (called every frame) ────────────────
   const update = useCallback((vrm, deltaTime, state = {}) => {
-    if (!vrm?.humanoid) return;
+    if (!vrm?.scene) return;
+    const isVRM = !!vrm.humanoid;
 
     // Clear caches when VRM changes (stale raw node references)
     if (vrm !== vrmRef.current) {
@@ -252,17 +277,22 @@ export function useAnimator() {
       preloadAll();
     }
 
-    // 2. Apply base pose to normalized bones
+    // 2. Apply base pose to bones (VRM uses restPose, GLB resets to identity)
     for (const name of SKELETON_BONES) {
       const node = getBone(vrm, name);
       if (!node) continue;
-      const pose = state.restPose?.current?.[name];
-      if (pose) {
-        node.quaternion.copy(pose.quaternion);
-        node.position.copy(pose.position);
+      if (isVRM) {
+        const pose = state.restPose?.current?.[name];
+        if (pose) {
+          node.quaternion.copy(pose.quaternion);
+          node.position.copy(pose.position);
+        } else {
+          node.rotation.set(0, 0, 0);
+          if (name === 'hips') node.position.set(0, 0, 0);
+        }
       } else {
         node.rotation.set(0, 0, 0);
-        if (name === 'hips') node.position.set(0, 0, 0);
+        node.position.set(0, 0, 0);
       }
       node.scale.set(1, 1, 1);
     }
@@ -277,22 +307,22 @@ export function useAnimator() {
       }
     }
 
-    // 3. Builtin animations (blink, eyes, breathing)
+    // 3. Builtin animations (blink, eyes, breathing) — VRM only for blink/eyes
     updateBuiltins(vrm, dt, {
       mouseX: state.mouseX || 0,
       mouseY: state.mouseY || 0,
       mouseMoving: state.mouseMoving || false,
     });
 
-    // 4. Propagate normalized → raw (no spring bones, no expressions — we handle those separately)
+    // 4. Propagate normalized → raw (VRM only)
     vrm.humanoid?.update();
 
-    // 5. LookAt and expressions (after normalized→raw copy, before spring bones)
+    // 5. LookAt and expressions (VRM only)
     vrm.lookAt?.update(dt);
     (vrm.expressionManager || vrm.blendShapeProxy)?.update();
 
-    // 6. Apply BVH frames to RAW bones (overwrites the normalized→raw copy)
-    //    Must happen BEFORE spring bones so parent transforms are correct.
+    // 6. Apply BVH frames to bones
+    //    For VRM: uses raw bone nodes. For GLB: uses direct bone lookup.
     if (bvh.current) {
       const { data, loop, done } = bvh.current;
       if (!done) {
@@ -306,20 +336,20 @@ export function useAnimator() {
       }
     }
 
-    // 7. Material updates (MToon per-frame shader sync)
+    // 7. Material updates (MToon per-frame shader sync) — VRM only
     if (vrm.materials) {
       vrm.materials.forEach((material) => { if (material.update) material.update(dt); });
     }
 
-    // 8. Ensure world matrices are current (BVH just changed raw bone quats)
+    // 8. Ensure world matrices are current
     vrm.scene.updateMatrixWorld(true);
 
-    // 9. Spring bone physics — runs ONCE with correct post-BVH parent transforms
+    // 9. Spring bone physics — VRM only
     vrm.springBoneManager?.update(dt);
     vrm.nodeConstraintManager?.update();
 
-    // 10. Process facial queue (blend shape animations from JSON keyframes)
-    const em = vrm.expressionManager || vrm.blendShapeProxy;
+    // 10. Process facial queue (blend shapes from JSON keyframes)
+    const em = isVRM ? (vrm.expressionManager || vrm.blendShapeProxy) : null;
 
     // Compute target expression values from the active facial animation queue
     const targetExpressions = {};
