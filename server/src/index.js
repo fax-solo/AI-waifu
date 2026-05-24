@@ -34,7 +34,15 @@ const PORT = process.env.PORT || 3005;
 
 // ─── Middleware ─────────────────────────────────────────────────────
 
-app.use(cors());
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (curl, server-to-server) and
+    // null origin (Electron loads via file:// protocol).
+    if (!origin || origin === 'null') return cb(null, true);
+    cb(null, true);
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 
 /**

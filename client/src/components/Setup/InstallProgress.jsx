@@ -14,6 +14,7 @@ export default function InstallProgress({ packages, onComplete }) {
   const logEndRef = useRef(null);
   const eventSourceRef = useRef(null);
   const finishedRef = useRef(false);
+  const progressRef = useRef({});
 
   // Auto-scroll logs
   useEffect(() => {
@@ -43,12 +44,12 @@ export default function InstallProgress({ packages, onComplete }) {
 
       eventSource.addEventListener('progress', (e) => {
         const data = JSON.parse(e.data);
+        progressRef.current[data.id] = data.progress;
         setProgresses(prev => ({ ...prev, [data.id]: data.progress }));
         
+        // Also use ref-based index tracking to avoid stale closures
         const pkgIndex = packages.findIndex(p => p.id === data.id);
-        if (pkgIndex > currentIndex) {
-          setCurrentIndex(pkgIndex);
-        }
+        setCurrentIndex(prev => Math.max(prev, pkgIndex));
       });
 
       eventSource.addEventListener('done', (e) => {
@@ -61,8 +62,20 @@ export default function InstallProgress({ packages, onComplete }) {
       });
 
       eventSource.addEventListener('error', (e) => {
-        // Igore errors after the stream completed successfully
         if (finishedRef.current) return;
+
+        // If every package has reached 100 %, treat this as a clean
+        // completion — the done event may not have arrived before the
+        // connection closed.
+        if (packages.every(p => (progressRef.current[p.id] || 0) >= 100)) {
+          finishedRef.current = true;
+          addLog('All packages installed successfully.', 'success');
+          setCurrentIndex(packages.length);
+          setIsFinished(true);
+          eventSource.close();
+          return;
+        }
+
         let msg = 'Connection lost or stream ended unexpectedly.';
         if (e.data) {
           try {

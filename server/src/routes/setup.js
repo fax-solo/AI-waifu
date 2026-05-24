@@ -538,6 +538,9 @@ router.get('/stream', async (req, res) => {
 
     if (!destroyed) {
       sendEvent('done', { text: 'All packages installed successfully.' });
+      // Wait briefly so the browser processes the done event before the
+      // connection closes — prevents spurious EventSource "error" on close.
+      await new Promise(r => setTimeout(r, 300));
     }
     res.end();
 
@@ -545,6 +548,7 @@ router.get('/stream', async (req, res) => {
     console.error('Setup download error:', error);
     if (!destroyed) {
       sendEvent('error', { text: error.message });
+      await new Promise(r => setTimeout(r, 300));
     }
     res.end();
   } finally {
