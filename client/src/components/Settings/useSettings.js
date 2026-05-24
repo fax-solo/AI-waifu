@@ -102,6 +102,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
   const [testText, setTestText] = useState("Hello! How do I sound?");
   const [micTestStatus, setMicTestStatus] = useState('idle');
   const [ttsStatus, setTtsStatus] = useState({ status: 'unknown', device: 'cpu' });
+  const [setupStatus, setSetupStatus] = useState(null);
 
   const [activeTab, setActiveTab] = useState('profile');
   const [settingsSearch, setSettingsSearch] = useState('');
@@ -198,6 +199,15 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
       }
     }
 
+    async function checkSetupStatus() {
+      try {
+        const data = await api.fetchApi('/setup/status');
+        if (!cancelled) setSetupStatus(data);
+      } catch {
+        if (!cancelled) setSetupStatus(null);
+      }
+    }
+
     async function checkTTS() {
       while (!cancelled) {
         try {
@@ -215,6 +225,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     }
 
     load();
+    checkSetupStatus();
     checkTTS();
     loadMemories();
     loadAudioDevices();
@@ -686,7 +697,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     animations, animLoading, animSearch, testStatus,
     currentVRMName, avatars, isUploading, showUploadForm, uploadForm,
     showGallery, galleryAvatars, downloadingGalleryId,
-    audioDevices, testText, micTestStatus, ttsStatus,
+    audioDevices, testText, micTestStatus, ttsStatus, setupStatus,
     activeTab, settingsSearch, dirty, showUnsavedDialog,
     isTestingVoice,
 

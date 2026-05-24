@@ -2099,6 +2099,91 @@ input:checked + .slider:before {
   font-weight: 600;
 }
 
+/* ── System Status Banner ──────────────────────────────────────── */
+.system-status {
+  margin: 0 24px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+
+.system-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.system-status-bar:hover {
+  background: var(--color-surface-hover);
+}
+
+.system-status-label {
+  flex: 1;
+  text-align: left;
+  font-weight: 500;
+}
+
+.system-status-count {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  margin-right: 4px;
+}
+
+.system-status--error .system-status-bar {
+  border-color: rgba(255, 107, 122, 0.3);
+}
+
+.system-status--warn .system-status-bar {
+  border-color: rgba(255, 200, 87, 0.3);
+}
+
+.system-status-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 12px 10px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-top: none;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+}
+
+.system-status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+
+.system-status-item-label {
+  flex: 1;
+}
+
+.system-status-item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.system-status-item-message {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 /* ── Settings: Wide Layout (left sidebar) ──────────────────────── */
 .settings-panel--wide {
   width: 760px;

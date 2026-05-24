@@ -13,6 +13,7 @@ export default function InstallProgress({ packages, onComplete }) {
   
   const logEndRef = useRef(null);
   const eventSourceRef = useRef(null);
+  const finishedRef = useRef(false);
 
   // Auto-scroll logs
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function InstallProgress({ packages, onComplete }) {
       });
 
       eventSource.addEventListener('done', (e) => {
+        finishedRef.current = true;
         const data = JSON.parse(e.data);
         addLog(data.text, 'success');
         setCurrentIndex(packages.length);
@@ -59,6 +61,8 @@ export default function InstallProgress({ packages, onComplete }) {
       });
 
       eventSource.addEventListener('error', (e) => {
+        // Igore errors after the stream completed successfully
+        if (finishedRef.current) return;
         let msg = 'Connection lost or stream ended unexpectedly.';
         if (e.data) {
           try {

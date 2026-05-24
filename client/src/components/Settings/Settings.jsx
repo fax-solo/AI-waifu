@@ -14,6 +14,7 @@ import UpdatesTab from './UpdatesTab.jsx';
 import AvatarTab from './AvatarTab.jsx';
 import AboutTab from './AboutTab.jsx';
 import DataManagementTab from './DataManagementTab.jsx';
+import SystemStatusBanner from './SystemStatusBanner.jsx';
 
 const TAB_CONFIG = [
   { id: 'profile', icon: User, labelKey: 'settings.tabs.profile' },
@@ -46,7 +47,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
     showUploadForm, setShowUploadForm, uploadForm, setUploadForm, isUploading, handleUploadAvatar,
     showGallery, setShowGallery, galleryAvatars, downloadingGalleryId, handleDownloadGalleryAvatar,
     loadGalleryAvatars, fileInputRef, pfpInputRef,
-    audioDevices, testText, setTestText, micTestStatus, ttsStatus, isTestingVoice, speak, handleTestMic,
+    audioDevices, testText, setTestText, micTestStatus, ttsStatus, setupStatus, isTestingVoice, speak, handleTestMic,
     hasCustomKey, hasGroqKey, apiKeyInput, setApiKeyInput, groqApiKeyInput, setGroqApiKeyInput,
     handleSetApiKey, handleSetGroqKey, handleRemoveApiKey, handleRemoveGroqKey,
     updateStatus, latestVersion, updateUrl, updateError, updateProgress, checkForUpdates,
@@ -170,6 +171,13 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
             <X size={18} />
           </button>
         </div>
+
+        <SystemStatusBanner
+          setupStatus={setupStatus}
+          ttsStatus={ttsStatus}
+          hasCustomKey={hasCustomKey}
+          hasGroqKey={hasGroqKey}
+        />
 
         <div className="settings-layout">
           <div className="settings-sidebar">

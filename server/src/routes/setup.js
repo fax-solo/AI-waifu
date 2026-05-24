@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import os from 'os';
+import { pipeline } from 'stream/promises';
+import { Readable } from 'stream';
 
 const router = express.Router();
 
@@ -44,8 +46,6 @@ router.get('/status', async (req, res) => {
       : (process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd());
       
     const pythonDir = path.join(rootDir, 'python');
-    const venvDirName = fs.existsSync(path.join(pythonDir, 'venv_py311')) ? 'venv_py311' : 'venv';
-    const venvPath = path.join(pythonDir, venvDirName);
     const modelsPath = path.join(rootDir, 'models.json');
     
     let modelsMissing = false;
@@ -65,8 +65,10 @@ router.get('/status', async (req, res) => {
     }
 
     const isWindows = os.platform() === 'win32';
+    const venvName = resolveVenvName(pythonDir);
+    const venvPath = path.join(pythonDir, venvName);
     const binDir = isWindows ? path.join(venvPath, 'Scripts') : path.join(venvPath, 'bin');
-    const venvValid = (fs.existsSync(venvPath) && fs.existsSync(binDir)) || fs.existsSync(path.join(pythonDir, 'venv_py311'));
+    const venvValid = fs.existsSync(venvPath) && fs.existsSync(binDir);
 
     const gpuInfo = await getGpuInfo();
 
@@ -109,6 +111,39 @@ function runCommand(command, args, cwd, sendEvent, progressUpdate) {
   });
 }
 
+function resolveVenvName(pythonDir) {
+  if (fs.existsSync(path.join(pythonDir, 'venv_py311'))) return 'venv_py311';
+  if (fs.existsSync(path.join(pythonDir, 'venv'))) return 'venv';
+  return 'venv_py311'; // default for fresh installs
+}
+
+async function findPython(pythonDir, sendEvent) {
+  const candidates = os.platform() === 'win32'
+    ? ['python']
+    : ['python3.11', 'python3.10', 'python3.12', 'python3', 'python'];
+
+  for (const cmd of candidates) {
+    try {
+      const proc = spawn(cmd, ['--version'], { cwd: pythonDir });
+      await new Promise((resolve, reject) => {
+        proc.on('close', (code) => code === 0 ? resolve() : reject());
+        proc.on('error', reject);
+      });
+      return cmd;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+function isVenvValid(venvPath) {
+  const isWindows = os.platform() === 'win32';
+  const binDir = isWindows ? path.join(venvPath, 'Scripts') : path.join(venvPath, 'bin');
+  const pythonExe = isWindows ? 'python.exe' : 'python';
+  return fs.existsSync(venvPath) && fs.existsSync(path.join(binDir, pythonExe));
+}
+
 async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gpuName) {
   const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
   const rootDir = (process.platform === 'win32' && process.resourcesPath && isProd)
@@ -123,24 +158,22 @@ async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gp
   
   sendEvent('progress', { id: pkgId, status: 'active', progress: 5 });
 
-  if (fs.existsSync(venvPath) && !fs.existsSync(binDir)) {
-    sendEvent('log', { text: `Found incompatible virtual environment (wrong OS layout). Removing...`, type: 'warning' });
+  // Remove incompatible venv (wrong OS layout)
+  if (fs.existsSync(venvPath) && !isVenvValid(venvPath)) {
+    sendEvent('log', { text: `Found incomplete or incompatible virtual environment. Removing...`, type: 'warning' });
     fs.rmSync(venvPath, { recursive: true, force: true });
   }
   
   if (!fs.existsSync(venvPath)) {
     sendEvent('log', { text: `Creating virtual environment in ${venvPath}...`, type: 'info' });
-    let pyCmd = isWindows ? 'python' : 'python3';
+    let pyCmd = await findPython(pythonDir, sendEvent);
+    let hasPython = !!pyCmd;
     
-    // Check if python is available
-    let hasPython = false;
-    try {
-      await runCommand(pyCmd, ['--version'], pythonDir, sendEvent);
-      hasPython = true;
-    } catch (e) {
-      sendEvent('log', { text: `System Python not found. Attempting to bootstrap portable Python...`, type: 'warning' });
+    if (!hasPython) {
+      sendEvent('log', { text: `System Python not found.`, type: 'warning' });
     }
 
+    // Windows: download portable Python if system Python is missing
     if (!hasPython && isWindows) {
       const portablePyDir = path.join(pythonDir, 'runtime');
       const zipPath = path.join(pythonDir, 'python-portable.zip');
@@ -172,6 +205,7 @@ async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gp
       }
       
       pyCmd = path.join(portablePyDir, 'python.exe');
+      hasPython = true;
       
       // Install pip if missing
       if (!fs.existsSync(path.join(portablePyDir, 'Scripts', 'pip.exe'))) {
@@ -188,6 +222,7 @@ async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gp
           await runCommand(pyCmd, [localGetPip], portablePyDir, sendEvent);
         } else {
           const getPipUrl = 'https://bootstrap.pypa.io/get-pip.py';
+          sendEvent('log', { text: `Downloading get-pip.py...`, type: 'info' });
           const getPipResp = await fetch(getPipUrl);
           const getPipBuf = await getPipResp.arrayBuffer();
           const getPipPath = path.join(portablePyDir, 'get-pip.py');
@@ -198,14 +233,27 @@ async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gp
       }
     }
 
+    if (!hasPython) {
+      sendEvent('log', { text: `Python is not installed.`, type: 'error' });
+      sendEvent('log', { text: `Please install Python 3.10 or later from https://python.org`, type: 'info' });
+      throw new Error('Python not found');
+    }
+
     try {
-      await runCommand(pyCmd, ['-m', 'venv', 'venv'], pythonDir, sendEvent);
+      await runCommand(pyCmd, ['-m', 'venv', 'venv_py311'], pythonDir, sendEvent);
     } catch (e) {
-      if (isWindows && !hasPython) {
-        sendEvent('log', { text: `Creating venv with portable Python...`, type: 'info' });
-        // For embeddable python, we might just use the runtime dir as venv or copy it
-        // Simpler: Just use the runtime dir as the "venv"
-        pyCmd = path.join(pythonDir, 'runtime', 'python.exe');
+      // If venv module is missing (common with embedded Python on Windows), copy the runtime as venv
+      sendEvent('log', { text: `Creating venv failed (missing venv module?). Copying Python environment as fallback...`, type: 'warning' });
+      if (isWindows && fs.existsSync(path.join(pythonDir, 'runtime'))) {
+        const runtimeDir = path.join(pythonDir, 'runtime');
+        // Copy runtime files into the venv directory structure
+        fs.cpSync(runtimeDir, venvPath, { recursive: true, force: true });
+        // Manually create the Scripts dir with pip
+        const scriptsDir = path.join(venvPath, 'Scripts');
+        if (!fs.existsSync(scriptsDir)) fs.mkdirSync(scriptsDir, { recursive: true });
+        if (fs.existsSync(path.join(runtimeDir, 'Scripts', 'pip.exe'))) {
+          fs.cpSync(path.join(runtimeDir, 'Scripts'), scriptsDir, { recursive: true, force: true });
+        }
       } else {
         sendEvent('log', { text: `Failed to create venv: ${e.message}. Please install Python manually.`, type: 'error' });
         throw e;
@@ -220,6 +268,10 @@ async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gp
   const pipCmd = isWindows 
     ? path.join(venvPath, 'Scripts', 'pip.exe')
     : path.join(venvPath, 'bin', 'pip');
+  
+  if (!fs.existsSync(pipCmd)) {
+    throw new Error(`pip not found at ${pipCmd}. Virtual environment is incomplete.`);
+  }
     
   let fakeProgress = 20;
   const advanceProgress = () => {
@@ -265,33 +317,73 @@ async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gp
     await runCommand(pipCmd, ['uninstall', '-y', 'onnxruntime'], pythonDir, sendEvent);
   }
   
+  // Linux: check libsndfile1 (required by soundfile)
+  if (!isWindows) {
+    await checkLibsndfile(sendEvent);
+  }
+  
   sendEvent('progress', { id: pkgId, status: 'done', progress: 100 });
   sendEvent('log', { text: `Python Environment successfully bootstrapped!`, type: 'success' });
+}
+
+async function checkLibsndfile(sendEvent) {
+  try {
+    const proc = spawn('ldconfig', ['-p']);
+    let output = '';
+    proc.stdout.on('data', (d) => { output += d.toString(); });
+    await new Promise((resolve) => { proc.on('close', () => resolve()); proc.on('error', () => resolve()); });
+    
+    if (!output.includes('libsndfile')) {
+      sendEvent('log', { text: `libsndfile1 not found on system. The TTS engine needs it for audio processing.`, type: 'warning' });
+      sendEvent('log', { text: `Attempting to install libsndfile1 (requires sudo)...`, type: 'info' });
+      
+      try {
+        await runCommand('sudo', ['apt-get', 'install', '-y', 'libsndfile1'], process.cwd(), sendEvent);
+        sendEvent('log', { text: `✅ libsndfile1 installed successfully.`, type: 'success' });
+      } catch {
+        sendEvent('log', { text: `Could not auto-install libsndfile1.`, type: 'warning' });
+        sendEvent('log', { text: `Install it manually: sudo apt-get install libsndfile1 (Debian/Ubuntu)`, type: 'info' });
+        sendEvent('log', { text: `Or: sudo dnf install libsndfile (Fedora) or brew install libsndfile (Mac)`, type: 'info' });
+      }
+    }
+  } catch {
+    // ldconfig not available, skip check
+  }
 }
 
 async function checkVCRedist(sendEvent) {
   if (os.platform() !== 'win32') return;
   
-  // Check if VC++ Redist is likely installed by looking for a common DLL
   const system32 = path.join(process.env.WINDIR || 'C:\\Windows', 'System32');
   const hasVC = fs.existsSync(path.join(system32, 'vcruntime140.dll')) || 
                 fs.existsSync(path.join(system32, 'msvcp140.dll'));
 
   if (!hasVC) {
-    sendEvent('log', { text: `⚠️ Potential Issue: Microsoft Visual C++ Redistributable not detected.`, type: 'warning' });
-    sendEvent('log', { text: `AI models and Python require this to run. Downloading installer...`, type: 'info' });
+    sendEvent('log', { text: `Microsoft Visual C++ Redistributable not detected.`, type: 'warning' });
+    sendEvent('log', { text: `AI models and Python require this to run. Installing...`, type: 'info' });
     
     const vcUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
-    const dest = path.join(process.cwd(), '..', 'python', 'vc_redist.x64.exe');
+    const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
+    const rootDir = (process.platform === 'win32' && process.resourcesPath && isProd)
+      ? process.resourcesPath 
+      : (process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd());
+    const dest = path.join(rootDir, 'python', 'vc_redist.x64.exe');
     
     if (!fs.existsSync(path.dirname(dest))) fs.mkdirSync(path.dirname(dest), { recursive: true });
     
     const response = await fetch(vcUrl);
+    if (!response.ok) throw new Error(`Failed to download VC++ Redist: HTTP ${response.status}`);
     const buffer = await response.arrayBuffer();
     fs.writeFileSync(dest, Buffer.from(buffer));
     
-    sendEvent('log', { text: `✅ Downloaded. Please run 'python/vc_redist.x64.exe' to fix AI errors.`, type: 'success' });
-    sendEvent('log', { text: `(The app will continue, but may crash if you don't install it!)`, type: 'warning' });
+    sendEvent('log', { text: `Running VC++ Redistributable installer silently...`, type: 'info' });
+    try {
+      await runCommand(dest, ['/install', '/quiet', '/norestart'], path.dirname(dest), sendEvent);
+      sendEvent('log', { text: `✅ Microsoft Visual C++ Redistributable installed.`, type: 'success' });
+    } catch (e) {
+      sendEvent('log', { text: `Installer exited with error. You may need to run it manually: ${dest}`, type: 'warning' });
+    }
+    fs.unlinkSync(dest);
   }
 }
 
@@ -302,9 +394,26 @@ router.get('/stream', async (req, res) => {
     'Connection': 'keep-alive',
   });
 
+  let destroyed = false;
+  const cleanup = () => { destroyed = true; };
+
+  req.on('close', cleanup);
+  req.on('error', cleanup);
+
   const sendEvent = (event, data) => {
-    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    if (destroyed || res.destroyed) return;
+    try {
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    } catch {
+      destroyed = true;
+    }
   };
+
+  // Keepalive — sends a comment every 20s to prevent proxies/browsers from timing out
+  const keepalive = setInterval(() => {
+    if (destroyed || res.destroyed) { clearInterval(keepalive); return; }
+    try { res.write(': keepalive\n\n'); } catch { clearInterval(keepalive); destroyed = true; }
+  }, 20000);
 
   try {
     const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
@@ -314,7 +423,7 @@ router.get('/stream', async (req, res) => {
       
     const modelsPath = path.join(rootDir, 'models.json');
     const VENV_PATH = path.join(rootDir, 'python');
-    const venvDirName = fs.existsSync(path.join(VENV_PATH, 'venv_py311')) ? 'venv_py311' : 'venv';
+    const venvDirName = resolveVenvName(VENV_PATH);
     
     let packagesToDownload = [];
     if (fs.existsSync(modelsPath)) {
@@ -362,6 +471,7 @@ router.get('/stream', async (req, res) => {
     await checkVCRedist(sendEvent);
 
     for (const pkg of targetPackages) {
+      if (destroyed) break;
       if (pkg.type === 'python-env') {
         await bootstrapPython(pkg.id, path.join(VENV_PATH, venvDirName), sendEvent, gpuNvidia, gpuAmd, gpuName);
         continue;
@@ -392,41 +502,55 @@ router.get('/stream', async (req, res) => {
       }
       
       const totalBytes = parseInt(response.headers.get('content-length'), 10) || 0;
-      let downloadedBytes = 0;
       
-      const fileStream = fs.createWriteStream(pkg.dest);
       const body = response.body;
-      
       if (!body) {
          throw new Error(`Response body is null for ${pkg.url}`);
       }
       
+      // Pipe with proper backpressure and progress tracking
+      const fileStream = fs.createWriteStream(pkg.dest);
+      let downloadedBytes = 0;
       let lastReportTime = Date.now();
       
-      for await (const chunk of body) {
-        fileStream.write(chunk);
+      const webStream = Readable.fromWeb(body);
+      webStream.on('data', (chunk) => {
         downloadedBytes += chunk.length;
-        
         const now = Date.now();
         if (now - lastReportTime > 250) {
           const pct = totalBytes ? Math.min(Math.floor((downloadedBytes / totalBytes) * 100), 99) : 0;
           sendEvent('progress', { id: pkg.id, status: 'active', progress: pct });
           lastReportTime = now;
         }
+      });
+      
+      try {
+        await pipeline(webStream, fileStream);
+      } catch (err) {
+        // Clean up partial download
+        try { fs.unlinkSync(pkg.dest); } catch {}
+        throw new Error(`Download failed for ${path.basename(pkg.dest)}: ${err.message}`);
       }
       
-      fileStream.end();
       sendEvent('progress', { id: pkg.id, status: 'done', progress: 100 });
       sendEvent('log', { text: `Finished downloading ${path.basename(pkg.dest)}.`, type: 'success' });
     }
 
-    sendEvent('done', { text: 'All packages installed successfully.' });
+    if (!destroyed) {
+      sendEvent('done', { text: 'All packages installed successfully.' });
+    }
     res.end();
 
   } catch (error) {
     console.error('Setup download error:', error);
-    sendEvent('error', { text: error.message });
+    if (!destroyed) {
+      sendEvent('error', { text: error.message });
+    }
     res.end();
+  } finally {
+    clearInterval(keepalive);
+    req.off('close', cleanup);
+    req.off('error', cleanup);
   }
 });
 
