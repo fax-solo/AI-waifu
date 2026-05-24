@@ -1,6 +1,6 @@
 {
   "name": "waifu-ai-companion",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "AI Companion Chat powered by Gemini",
   "author": "User",
@@ -13,6 +13,7 @@
     "dev:electron": "wait-on http://localhost:5173 && electron .",
     "build:client": "cd client && node build.mjs",
     "build:desktop": "npm run download:models && npm run build:client && electron-builder build --win",
+    "publish:desktop": "npm run download:models && npm run build:client && electron-builder publish --win --publish always",
     "download:models": "node download-models.mjs",
     "install:all": "cd server && npm install && cd ../client && npm install && npm install",
     "start": "electron ."
