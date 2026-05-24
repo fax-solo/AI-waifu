@@ -16,19 +16,25 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dependencies
-        run: |
-          cd server && npm ci
-          cd ../client && npm ci
-          cd .. && npm ci
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Install root dependencies
+        run: npm ci
 
       - name: Download TTS models
-        run: node download-models.mjs
+        run: npm run download:models
 
       - name: Build client
-        run: cd client && node build.mjs
+        working-directory: client
+        run: node build.mjs
 
       - name: Build and publish
-        run: npx electron-builder publish --win --publish always
+        run: npx electron-builder build --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
