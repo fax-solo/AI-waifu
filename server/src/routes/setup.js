@@ -37,16 +37,26 @@ async function getGpuInfo() {
   });
 }
 
+function detectRootDir() {
+  const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
+  if (process.platform === 'win32' && process.resourcesPath && isProd) {
+    return process.resourcesPath;
+  }
+  // In Electron, process.execPath is the app .exe — models sit alongside it
+  if (isProd && process.execPath) {
+    const exeDir = path.dirname(process.execPath);
+    if (fs.existsSync(path.join(exeDir, 'models.json'))) return exeDir;
+  }
+  return process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd();
+}
+
 router.get('/status', async (req, res) => {
   try {
-    // Robust root directory detection
-    const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
-    const rootDir = (process.platform === 'win32' && process.resourcesPath && isProd)
-      ? process.resourcesPath 
-      : (process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd());
+    const rootDir = detectRootDir();
       
     const pythonDir = path.join(rootDir, 'python');
     const modelsPath = path.join(rootDir, 'models.json');
+    const markerPath = path.join(rootDir, '.setup-complete');
     
     let modelsMissing = false;
     if (fs.existsSync(modelsPath)) {
@@ -69,15 +79,28 @@ router.get('/status', async (req, res) => {
     const venvPath = path.join(pythonDir, venvName);
     const binDir = isWindows ? path.join(venvPath, 'Scripts') : path.join(venvPath, 'bin');
     const venvValid = fs.existsSync(venvPath) && fs.existsSync(binDir);
+    const setupComplete = fs.existsSync(markerPath);
 
     const gpuInfo = await getGpuInfo();
 
     res.json({
-      setupRequired: modelsMissing || !venvValid,
+      setupRequired: !setupComplete && (modelsMissing || !venvValid),
       modelsMissing,
       venvMissing: !venvValid,
+      setupComplete,
       gpuInfo
     });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/complete', async (req, res) => {
+  try {
+    const rootDir = detectRootDir();
+    const markerPath = path.join(rootDir, '.setup-complete');
+    fs.writeFileSync(markerPath, new Date().toISOString(), 'utf8');
+    res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

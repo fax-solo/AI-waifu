@@ -3,7 +3,7 @@ import './Setup.css';
 import PackageSelection from './PackageSelection';
 import InstallProgress from './InstallProgress';
 
-export default function SetupUI({ onComplete, systemInfo }) {
+export default function SetupUI({ onComplete, onCancel, systemInfo }) {
   const [screen, setScreen] = useState(1);
   const [selectedPackages, setSelectedPackages] = useState([]);
   const [isReady, setIsReady] = useState(false);
@@ -56,7 +56,7 @@ export default function SetupUI({ onComplete, systemInfo }) {
             onPackagesSelected={handlePackagesSelected} 
             onNext={goToInstall} 
             systemInfo={systemInfo}
-            onCancel={onComplete}
+            onCancel={onCancel || onComplete}
           />
         )}
         {screen === 2 && (

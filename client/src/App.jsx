@@ -109,7 +109,7 @@ export default function App() {
 
     checkSetup();
     loadSettings();
-  }, [showSettings, loadRateLimit]); // Still run on showSettings change, but it should also run on mount
+  }, [loadRateLimit]);
 
   // Load last used avatar
   useEffect(() => {
@@ -281,7 +281,26 @@ export default function App() {
   }
 
   if (showSetup) {
-    return <SetupUI onComplete={() => setShowSetup(false)} systemInfo={systemInfo} />;
+    return (
+      <SetupUI
+        onComplete={async () => {
+          try {
+            await api.fetchApi('/setup/complete', { method: 'POST' });
+          } catch {
+            // non-critical
+          }
+          try {
+            const data = await api.fetchApi('/setup/status');
+            setSystemInfo(data);
+          } catch {
+            // Ignore — keep stale systemInfo
+          }
+          setShowSetup(false);
+        }}
+        onCancel={() => setShowSetup(false)}
+        systemInfo={systemInfo}
+      />
+    );
   }
 
   return (
