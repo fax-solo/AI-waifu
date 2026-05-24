@@ -36,7 +36,13 @@ jobs:
         working-directory: client
         run: node build.mjs
 
-      - name: Build and publish
-        run: npx electron-builder build --win --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build installer
+        run: npx electron-builder build --win
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-desktop/WaifuAI-Setup-*.exe
+            dist-desktop/WaifuAI-Setup-*.exe.blockmap
+            dist-desktop/latest.yml
