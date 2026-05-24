@@ -39,10 +39,11 @@ async function getGpuInfo() {
 
 function detectRootDir() {
   const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
-  if (process.platform === 'win32' && process.resourcesPath && isProd) {
+  // In production (Electron), process.resourcesPath points to the app resources folder
+  if (isProd && process.resourcesPath) {
     return process.resourcesPath;
   }
-  // In Electron, process.execPath is the app .exe — models sit alongside it
+  // Fallback: check alongside the executable
   if (isProd && process.execPath) {
     const exeDir = path.dirname(process.execPath);
     if (fs.existsSync(path.join(exeDir, 'models.json'))) return exeDir;
@@ -371,11 +372,12 @@ async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gp
   sendEvent('log', { text: `Installing TTS dependencies (kokoro-onnx, fastapi, uvicorn, soundfile)...`, type: 'info' });
   const deps = ['fastapi', 'uvicorn', 'soundfile', 'kokoro-onnx'];
   await runCommand(pipCmd, ['install', ...deps], pythonDir, sendEvent, advanceProgress);
-  
-  if (gpuNvidia || gpuAmd) {
-    sendEvent('log', { text: `Cleaning up conflicting CPU packages...`, type: 'info' });
-    await runCommand(pipCmd, ['uninstall', '-y', 'onnxruntime'], pythonDir, sendEvent);
-  }
+  // Ensure onnxruntime is properly installed (kokoro-onnx needs it, and onnxruntime-gpu
+  // may leave a broken package directory with only capi/ and no __init__.py).
+  // This force-reinstall overwrites the broken GPU package with a working import.
+  try {
+    await runCommand(pipCmd, ['install', '--force-reinstall', '--no-deps', 'onnxruntime'], pythonDir, sendEvent);
+  } catch {}
   
   // Linux: check libsndfile1 (required by soundfile)
   if (!isWindows) {
@@ -424,7 +426,7 @@ async function checkVCRedist(sendEvent) {
     
     const vcUrl = 'https://aka.ms/vs/17/release/vc_redist.x64.exe';
     const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
-    const rootDir = (process.platform === 'win32' && process.resourcesPath && isProd)
+    const rootDir = (isProd && process.resourcesPath)
       ? process.resourcesPath 
       : (process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd());
     const dest = path.join(rootDir, 'python', 'vc_redist.x64.exe');

@@ -24,8 +24,6 @@ def ensure_nvidia_libs():
                 
             if os.environ.get('LD_LIBRARY_PATH') != new_ld:
                 os.environ['LD_LIBRARY_PATH'] = new_ld
-                # Restart the process so the dynamic linker picks up the new paths
-                os.execv(sys.executable, [sys.executable] + sys.argv)
     except Exception as e:
         pass
 
@@ -43,8 +41,8 @@ import time
 import re
 import contextlib
 import base64
+import numpy as np
 
-# Fix Windows console encoding for emojis
 def safe_print(msg):
     try:
         print(msg)
@@ -62,49 +60,72 @@ try:
 except Exception:
     pass
 
-# Global Engine
-pipelines = {}
+# Global engine
+kokoro = None
+engine_loaded = False
+engine_error = None
 current_device = "cpu"
 CACHE_DIR = "tts_cache"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Map PyTorch lang codes to ONNX locale codes
+LANG_MAP = {
+    'a': 'en-us',
+    'b': 'en-gb',
+    'j': 'ja-jp',
+}
+
+# Voice prefixes for each language
+VOICE_LANG = {
+    'af_': 'a', 'am_': 'a',
+    'bf_': 'b', 'bm_': 'b',
+    'jf_': 'j', 'jm_': 'j',
+}
 
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 
 def init_engine():
-    global pipelines, current_device
+    global kokoro, engine_loaded, engine_error, current_device
     
-    if pipelines:
+    if kokoro:
         return
-        
-    safe_print("[TTS] Initializing Kokoro PyTorch Runtime...")
+    
+    safe_print("[TTS] Initializing Kokoro ONNX Runtime...")
     start_time = time.time()
-        
+    
+    # Find model files alongside this script
+    model_path = os.path.join(SCRIPT_DIR, 'kokoro-v1.0.int8.onnx')
+    voices_path = os.path.join(SCRIPT_DIR, 'voices-v1.0.bin')
+    
+    # Also try parent dirs for different install layouts
+    if not os.path.exists(model_path):
+        model_path = os.path.join(SCRIPT_DIR, '..', 'python', 'kokoro-v1.0.int8.onnx')
+        voices_path = os.path.join(SCRIPT_DIR, '..', 'python', 'voices-v1.0.bin')
+    if not os.path.exists(model_path):
+        model_path = os.path.join(os.path.dirname(SCRIPT_DIR), 'kokoro-v1.0.int8.onnx')
+        voices_path = os.path.join(os.path.dirname(SCRIPT_DIR), 'voices-v1.0.bin')
+    
+    if not os.path.exists(model_path):
+        engine_error = f"Model file not found at {model_path}"
+        safe_print(f"[TTS] ❌ {engine_error}")
+        return
+    
+    if not os.path.exists(voices_path):
+        engine_error = f"Voices file not found at {voices_path}"
+        safe_print(f"[TTS] ❌ {engine_error}")
+        return
+    
     try:
-        from kokoro import KPipeline
-        import torch
-        
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        if device == 'cuda':
-            gpu_name = torch.cuda.get_device_name(0)
-            current_device = f"gpu ({gpu_name})"
-        else:
-            current_device = "cpu"
-            
-        safe_print(f"[TTS] Loading American English pipeline on {current_device}...")
-        pipelines['a'] = KPipeline(lang_code='a', device=device)
-        
-        safe_print(f"[TTS] Loading British English pipeline on {current_device}...")
-        pipelines['b'] = KPipeline(lang_code='b', device=device)
-        
-        safe_print(f"[TTS] Loading Japanese pipeline on {current_device}...")
-        pipelines['j'] = KPipeline(lang_code='j', device=device)
-        
-        safe_print(f"[TTS] Pipelines loaded in {time.time() - start_time:.2f}s")
-    except ImportError as e:
-        safe_print(f"[TTS] ❌ Missing dependencies. Please run Setup UI. {e}")
+        from kokoro_onnx import Kokoro
+        kokoro = Kokoro(model_path, voices_path)
+        engine_loaded = True
+        safe_print(f"[TTS] Engine loaded in {time.time() - start_time:.2f}s")
     except Exception as e:
-        safe_print(f"[TTS] ❌ Failed to load pipeline: {e}")
+        engine_error = str(e)
+        safe_print(f"[TTS] ❌ Failed to load engine: {e}")
+        import traceback
+        traceback.print_exc()
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -128,88 +149,78 @@ class TTSRequest(BaseModel):
     speed: float = 1.0
     pitch: float = 1.0
     volume: float = 1.0
-    device: str = "gpu"
+    device: str = "cpu"
 
 def clean_text_for_tts(text):
     text = re.sub(r'\*.*?\*', '', text)
-    # Remove ASCII filter to allow Japanese characters
     text = re.sub(r'\([^\w\s]*?\)', '', text)
     text = re.sub(r'\[[^\w\s]*?\]', '', text)
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
 def has_japanese(text):
-    """Check if text contains Japanese characters (hiragana, katakana, kanji)."""
     for ch in text:
         cp = ord(ch)
         if 0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF or 0x4E00 <= cp <= 0x9FFF:
             return True
     return False
 
+def resolve_lang(voice, text):
+    """Determine language locale from voice prefix and text content."""
+    for prefix, lang in VOICE_LANG.items():
+        if voice.startswith(prefix):
+            if lang == 'j':
+                if has_japanese(text):
+                    return 'ja-jp'
+                else:
+                    return 'en-us'
+            return LANG_MAP.get(lang, 'en-us')
+    return 'en-us'
+
 @app.post("/tts")
 async def text_to_speech(request: TTSRequest):
-    global pipelines
+    global kokoro, engine_loaded
+    
+    if not engine_loaded:
+        init_engine()
+    
+    if not engine_loaded or not kokoro:
+        detail = engine_error or "TTS Engine not initialized (missing models?)"
+        raise HTTPException(status_code=503, detail=detail)
     
     clean_text = clean_text_for_tts(request.text)
     
     if not clean_text:
         safe_print(f"[TTS] Skipping message with no speakable content")
         raise HTTPException(status_code=400, detail="No speakable content")
-
-    if not pipelines:
-        init_engine()
-        if not pipelines:
-            raise HTTPException(status_code=503, detail="TTS Engine not initialized (missing models?)")
-
-    # Determine language pipeline before cache check
-    lang_code = 'a'
-    if request.voice.startswith("bf_") or request.voice.startswith("bm_"):
-        lang_code = 'b'
-    elif request.voice.startswith("jf_") or request.voice.startswith("jm_"):
-        if has_japanese(clean_text):
-            lang_code = 'j'
-        else:
-            lang_code = 'a'
-
-    cache_key = hashlib.md5(f"{clean_text}|{request.voice}|{request.speed}|{request.pitch}|{request.volume}|{current_device}|{lang_code}".encode()).hexdigest()
+    
+    lang = resolve_lang(request.voice, clean_text)
+    
+    cache_key = hashlib.md5(f"{clean_text}|{request.voice}|{request.speed}|{request.pitch}|{request.volume}|{lang}".encode()).hexdigest()
     cache_path = os.path.join(CACHE_DIR, f"{cache_key}.wav")
-
+    
     if os.path.exists(cache_path):
         with open(cache_path, "rb") as f:
             return Response(content=f.read(), media_type="audio/wav")
-
+    
     try:
         start_time = time.time()
-            
-        pipeline = pipelines.get(lang_code)
-        if not pipeline:
-            raise HTTPException(status_code=500, detail=f"Pipeline for language {lang_code} not found")
-            
-        generator = pipeline(
-            clean_text, 
-            voice=request.voice, 
-            speed=request.speed, 
-            split_pattern=r'\n+'
+        
+        samples, sample_rate = kokoro.create(
+            clean_text,
+            voice=request.voice,
+            speed=request.speed,
+            lang=lang,
         )
         
-        all_audio = []
-        for gs, ps, audio in generator:
-            if hasattr(audio, 'numpy'):
-                audio = audio.numpy()
-            all_audio.append(audio)
-            
-        import numpy as np
-        if len(all_audio) == 0:
+        if samples is None or len(samples) == 0:
             raise HTTPException(status_code=500, detail="No audio generated")
-            
-        samples = np.concatenate(all_audio)
-        sample_rate = 24000
-
+        
         # Apply volume
         if request.volume != 1.0:
             samples = samples * max(0.0, min(2.0, request.volume))
-
-        # Apply pitch shift via linear interpolation resampling
+        
+        # Apply pitch shift via resampling
         if request.pitch != 1.0:
             orig_len = len(samples)
             step = request.pitch
@@ -217,9 +228,9 @@ async def text_to_speech(request: TTSRequest):
             indices = indices[indices < orig_len]
             if len(indices) > 0:
                 samples = np.interp(indices, np.arange(orig_len), samples).astype(samples.dtype)
-
+        
         gen_time = time.time() - start_time
-        safe_print(f"[TTS] Generated audio in {gen_time:.2f}s on {current_device}")
+        safe_print(f"[TTS] Generated audio in {gen_time:.2f}s ({lang} {request.voice})")
         
         buffer = io.BytesIO()
         sf.write(buffer, samples, sample_rate, format='WAV')
@@ -237,7 +248,14 @@ async def text_to_speech(request: TTSRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "device": current_device, "engine": "torch"}
+    status = "ok" if engine_loaded else ("error" if engine_error else "loading")
+    return {
+        "status": status,
+        "device": current_device,
+        "engine": "onnx",
+        "loaded": engine_loaded,
+        "error": engine_error,
+    }
 
 class STTRequest(BaseModel):
     audio: str
@@ -250,7 +268,7 @@ async def speech_to_text(req: STTRequest):
         data = base64.b64decode(req.audio)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 audio data")
-
+    
     import speech_recognition as sr
     from pydub import AudioSegment
     tmp_in = tempfile.NamedTemporaryFile(suffix=".webm", delete=False)
@@ -261,7 +279,7 @@ async def speech_to_text(req: STTRequest):
         audio_seg = AudioSegment.from_file(tmp_in.name)
         audio_seg.export(tmp_wav.name, format="wav")
         tmp_wav.close()
-
+        
         recognizer = sr.Recognizer()
         with sr.AudioFile(tmp_wav.name) as source:
             audio = recognizer.record(source)
