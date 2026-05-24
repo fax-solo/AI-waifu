@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import os from 'os';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
@@ -100,6 +100,46 @@ router.post('/complete', async (req, res) => {
     const rootDir = detectRootDir();
     const markerPath = path.join(rootDir, '.setup-complete');
     fs.writeFileSync(markerPath, new Date().toISOString(), 'utf8');
+
+    // Start TTS Python sidecar
+    const pythonDir = path.join(rootDir, 'python');
+    const venvName = resolveVenvName(pythonDir);
+    const venvPath = path.join(pythonDir, venvName);
+    const isWindows = os.platform() === 'win32';
+    const binDir = isWindows ? path.join(venvPath, 'Scripts') : path.join(venvPath, 'bin');
+    const pythonExe = path.join(binDir, isWindows ? 'python.exe' : 'python');
+    const scriptPath = path.join(pythonDir, 'tts_server.py');
+
+    if (fs.existsSync(pythonExe) && fs.existsSync(scriptPath)) {
+      // Kill stale process on port 5000
+      if (isWindows) {
+        try {
+          const result = execSync(`netstat -ano | findstr :5000 | findstr LISTENING`, { encoding: 'utf8', timeout: 3000 });
+          const lines = result.trim().split('\n');
+          for (const line of lines) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && pid !== '0') {
+              try { execSync(`taskkill /PID ${pid} /F`, { timeout: 2000 }); } catch {}
+            }
+          }
+        } catch {}
+      } else {
+        try { execSync(`fuser -k 5000/tcp 2>/dev/null`, { timeout: 3000 }); } catch {}
+      }
+
+      const proc = spawn(pythonExe, [scriptPath], {
+        cwd: pythonDir,
+        detached: true,
+        stdio: 'ignore',
+        env: {
+          ...process.env,
+          PYTHONUNBUFFERED: '1',
+        }
+      });
+      proc.unref();
+    }
+
     res.json({ ok: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -168,10 +208,7 @@ function isVenvValid(venvPath) {
 }
 
 async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gpuName) {
-  const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
-  const rootDir = (process.platform === 'win32' && process.resourcesPath && isProd)
-    ? process.resourcesPath 
-    : (process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd());
+  const rootDir = detectRootDir();
     
   const pythonDir = path.join(rootDir, 'python');
   if (!fs.existsSync(pythonDir)) fs.mkdirSync(pythonDir, { recursive: true });
@@ -439,10 +476,7 @@ router.get('/stream', async (req, res) => {
   }, 10000);
 
   try {
-    const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
-    const rootDir = (process.platform === 'win32' && process.resourcesPath && isProd)
-      ? process.resourcesPath 
-      : (process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd());
+    const rootDir = detectRootDir();
       
     const modelsPath = path.join(rootDir, 'models.json');
     const VENV_PATH = path.join(rootDir, 'python');
