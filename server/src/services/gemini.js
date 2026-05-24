@@ -1,21 +1,7 @@
-/**
- * Gemini Service
- *
- * Handles communication with Google's Gemini API.
- * Supports both server API key and user-provided keys.
- */
-
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Cache GenAI instances by API key to avoid recreating
 const clientCache = new Map();
 
-/**
- * Get or create a Gemini client for the given API key.
- *
- * @param {string} apiKey
- * @returns {GoogleGenerativeAI}
- */
 function getClient(apiKey) {
   if (!clientCache.has(apiKey)) {
     clientCache.set(apiKey, new GoogleGenerativeAI(apiKey));
@@ -23,19 +9,21 @@ function getClient(apiKey) {
   return clientCache.get(apiKey);
 }
 
-/**
- * Send a message to Gemini and get a response.
- *
- * @param {object} options
- * @param {string} options.apiKey - The API key to use
- * @param {string} options.systemPrompt - System instructions for the AI
- * @param {Array} options.history - Conversation history in Gemini format
- * @param {string} options.userMessage - The new user message
- * @param {string} options.model - The preferred model name
- * @returns {Promise<{text: string, emotion: string}>} The AI's response text and detected emotion
- */
-export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel }) {
-  // Resolve the API key: prefer user-provided, fall back to server key
+const WEB_SEARCH_TOOL = [{
+  functionDeclarations: [{
+    name: 'web_search',
+    description: 'Search the web for real-time or up-to-date information. Use this when the user asks about current events, news, weather, game releases, prices, or anything that might have changed since your training data.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The search query to look up on the web' }
+      },
+      required: ['query']
+    }
+  }]
+}];
+
+export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb }) {
   const key = (apiKey && apiKey.trim()) || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim());
 
   if (!key) {
@@ -45,15 +33,14 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
   }
 
   const client = getClient(key);
-  
-  // Build models to try, prioritizing the user's preferred model
+
   const fallbackModels = [
     'gemini-3.1-flash-lite',
     'gemini-2.5-flash',
     'gemini-2.5-flash-lite'
   ];
-  
-  const modelsToTry = preferredModel 
+
+  const modelsToTry = preferredModel
     ? [preferredModel, ...fallbackModels.filter(m => m !== preferredModel)]
     : fallbackModels;
 
@@ -62,13 +49,14 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
 
   for (const modelName of modelsToTry) {
     let retries = 0;
-    const maxRetries = 1; // Reduced for fallbacks
-    
+    const maxRetries = 1;
+
     while (retries <= maxRetries) {
       try {
         const model = client.getGenerativeModel({
           model: modelName,
           systemInstruction: systemPrompt,
+          tools: WEB_SEARCH_TOOL,
           generationConfig: {
             temperature: 0.7,
             topP: 0.95,
@@ -82,10 +70,40 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
         });
 
         const result = await chatSession.sendMessage(userMessage);
-        const response = await result.response;
+        const response = result.response;
+        const call = response.functionCalls?.[0];
+
+        if (call?.name === 'web_search' && searchWeb) {
+          const searchResults = await searchWeb(call.args.query);
+          const searchContent = searchResults || 'No results found';
+
+          const followUp = await chatSession.sendMessage([{
+            functionResponse: {
+              name: 'web_search',
+              response: { results: searchContent }
+            }
+          }]);
+          const followUpResponse = followUp.response;
+          const fullText = followUpResponse.text();
+
+          const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud)\]\s*(.*)/i);
+          const animMatch = fullText.match(/\[animation:([\w.\-]+?\.bvh)\]/i);
+
+          let text = emotionMatch ? emotionMatch[2].trim() : fullText.trim();
+          let animation = animMatch ? animMatch[1].toLowerCase() : null;
+
+          if (animation) {
+            text = text.replace(/\[animation:[\w.\-]+?\.bvh\]/gi, '').trim();
+          }
+
+          if (emotionMatch) {
+            return { emotion: emotionMatch[1].toLowerCase(), animation, text };
+          }
+          return { emotion: 'neutral', animation, text };
+        }
+
         const fullText = response.text();
-        
-        // Parse emotion tag: [emotion] message and optional [animation:file.bvh] tag
+
         const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud)\]\s*(.*)/i);
         const animMatch = fullText.match(/\[animation:([\w.\-]+?\.bvh)\]/i);
 
@@ -93,38 +111,27 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
         let animation = animMatch ? animMatch[1].toLowerCase() : null;
 
         if (animation) {
-          // Remove the animation tag from the visible text
           text = text.replace(/\[animation:[\w.\-]+?\.bvh\]/gi, '').trim();
         }
 
         if (emotionMatch) {
-          return {
-            emotion: emotionMatch[1].toLowerCase(),
-            animation,
-            text,
-          };
+          return { emotion: emotionMatch[1].toLowerCase(), animation, text };
         }
 
-        return {
-          emotion: 'neutral',
-          animation,
-          text,
-        };
+        return { emotion: 'neutral', animation, text };
       } catch (error) {
         lastError = error;
         const errorMessage = error.message || '';
         allErrors.push(`${modelName}: ${errorMessage.split('\n')[0]}`);
-        
+
         console.warn(`Gemini attempt with ${modelName} failed:`, errorMessage);
 
-        // If it's an API key error, STOP IMMEDIATELY
         if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('API key not valid') || errorMessage.includes('400')) {
           if (errorMessage.includes('API key not valid') || errorMessage.includes('API_KEY_INVALID')) {
             throw new Error('INVALID_API_KEY');
           }
         }
-        
-        // If it's a quota/rate limit error (429), retry with exponential backoff
+
         if (errorMessage.includes('quota') || errorMessage.includes('429') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
           if (retries < maxRetries) {
             retries++;
@@ -136,18 +143,15 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
           break;
         }
 
-        // If it's a 404 (Model not found), move to next model immediately
         if (errorMessage.includes('404') || errorMessage.includes('not found')) {
           break;
         }
 
-        // For other errors, try next model
         break;
       }
     }
   }
 
-  // If we get here, all models/retries failed
   if (lastError?.message === 'INVALID_API_KEY' || lastError?.message?.includes('API key not valid')) {
     throw new Error('Your Gemini API key appears to be invalid. Please check your settings and ensure the key is correct.');
   }

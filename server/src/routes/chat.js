@@ -96,7 +96,7 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
     const systemPrompt = buildSystemPrompt(settings, memories, userName);
 
     // --- Smart Search Logic ---
-    let searchResults = null;
+    let proactiveResults = null;
     let isSearching = false;
     const searchNeeded = shouldSearch(message);
 
@@ -108,10 +108,9 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
 
       if (searchCount < 10) {
         isSearching = true;
-        searchResults = await searchWeb(message.trim());
+        proactiveResults = await searchWeb(message.trim());
         
-        if (searchResults) {
-          // Increment search count
+        if (proactiveResults) {
           db.prepare(`
             INSERT INTO rate_limits (user_id, date, search_count) 
             VALUES (?, ?, 1) 
@@ -123,15 +122,19 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
       }
     }
 
-    // Prepare message for Gemini (inject search results if found)
+    // Prepare message (inject proactive search results if found)
     let finalUserMessage = message.trim();
-    if (searchResults) {
+    if (proactiveResults) {
       finalUserMessage = `Use the following real-time information to answer the user:
 [SEARCH RESULTS]
-${searchResults}
+${proactiveResults}
 [END SEARCH RESULTS]
 
 User Query: ${finalUserMessage}`;
+    } else if (searchNeeded) {
+      finalUserMessage = `User Query: ${message.trim()}
+
+[Note: The user expects you to look up up-to-date information. A web search was attempted but returned no results. If you want, you can use the web_search tool to try a different search query.]`;
     }
 
     // Save user message (original one)
@@ -151,13 +154,14 @@ User Query: ${finalUserMessage}`;
       saveMemories(userId, newMemories);
     }
 
-    // Call AI
+    // Call AI — attach searchWeb so the AI can autonomously search if needed
     const chatOptions = {
       apiKey,
       systemPrompt,
       history,
       userMessage: finalUserMessage,
       model: settings.llm_model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gemini-3.1-flash-lite'),
+      searchWeb,
     };
 
     const { text, emotion, animation } = await (provider === 'groq' ? groqChat(chatOptions) : geminiChat(chatOptions));
