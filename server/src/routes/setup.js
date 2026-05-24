@@ -409,11 +409,11 @@ router.get('/stream', async (req, res) => {
     }
   };
 
-  // Keepalive — sends a comment every 20s to prevent proxies/browsers from timing out
+  // Keepalive — sends a comment every 10s to prevent proxies/browsers from timing out
   const keepalive = setInterval(() => {
     if (destroyed || res.destroyed) { clearInterval(keepalive); return; }
     try { res.write(': keepalive\n\n'); } catch { clearInterval(keepalive); destroyed = true; }
-  }, 20000);
+  }, 10000);
 
   try {
     const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
