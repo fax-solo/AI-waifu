@@ -13,7 +13,7 @@ const WEB_SEARCH_TOOL = [{
   }
 }];
 
-export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb }) {
+export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb, forceSearch }) {
   const key = (apiKey && apiKey.trim()) || (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.trim());
 
   if (!key) {
@@ -61,6 +61,7 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
           model: modelName,
           messages: groqMessages,
           tools: WEB_SEARCH_TOOL,
+          tool_choice: forceSearch ? 'required' : 'auto',
           temperature: 0.7,
           max_tokens: 1024,
           top_p: 1,

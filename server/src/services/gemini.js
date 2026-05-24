@@ -23,7 +23,7 @@ const WEB_SEARCH_TOOL = [{
   }]
 }];
 
-export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb }) {
+export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb, forceSearch }) {
   const key = (apiKey && apiKey.trim()) || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim());
 
   if (!key) {
@@ -53,7 +53,8 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
 
     while (retries <= maxRetries) {
       try {
-        const model = client.getGenerativeModel({
+        // When forceSearch is true, force the model to call web_search
+        const modelConfig = {
           model: modelName,
           systemInstruction: systemPrompt,
           tools: WEB_SEARCH_TOOL,
@@ -63,11 +64,18 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
             topK: 40,
             maxOutputTokens: 1024,
           },
-        });
+        };
+        if (forceSearch) {
+          modelConfig.tool_config = {
+            function_calling_config: {
+              mode: 'ANY',
+              allowed_function_names: ['web_search'],
+            },
+          };
+        }
 
-        const chatSession = model.startChat({
-          history: history || [],
-        });
+        const model = client.getGenerativeModel(modelConfig);
+        const chatSession = model.startChat({ history: history || [] });
 
         const result = await chatSession.sendMessage(userMessage);
         const response = result.response;
@@ -77,13 +85,28 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
           const searchResults = await searchWeb(call.args.query);
           const searchContent = searchResults || 'No results found';
 
-          const followUp = await chatSession.sendMessage([{
-            functionResponse: {
-              name: 'web_search',
-              response: { results: searchContent }
-            }
-          }]);
-          const followUpResponse = followUp.response;
+          const replyModel = client.getGenerativeModel({
+            model: modelName,
+            systemInstruction: systemPrompt,
+            tools: WEB_SEARCH_TOOL,
+            generationConfig: {
+              temperature: 0.7,
+              topP: 0.95,
+              topK: 40,
+              maxOutputTokens: 1024,
+            },
+          });
+
+          const fullHistory = [
+            ...(history || []),
+            { role: 'user', parts: [{ text: userMessage }] },
+            { role: 'model', parts: [{ functionCall: { name: 'web_search', args: { query: call.args.query } } }] },
+            { role: 'function', parts: [{ functionResponse: { name: 'web_search', response: { results: searchContent } } }] },
+          ];
+
+          const replyChat = replyModel.startChat({ history: fullHistory });
+          const followUpResult = await replyChat.sendMessage('Now respond to the user based on the search results above.');
+          const followUpResponse = followUpResult.response;
           const fullText = followUpResponse.text();
 
           const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud)\]\s*(.*)/i);

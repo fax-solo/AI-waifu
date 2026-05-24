@@ -20,7 +20,10 @@ const SEARCH_KEYWORDS = [
   'current', 'weather', 'stock', 'price', 'what happened',
   'who is the current', 'who won', 'search', 'find', 'google',
   'lookup', 'items for', 'build for', 'meta', 'tft', 'league',
-  'the items', 'best build', 'what build', 'which items', 'stats for'
+  'the items', 'best build', 'what build', 'which items', 'stats for',
+  'recommend', 'suggest', 'simulator', 'examples',
+  'give me', 'gimme', 'list of', 'any good', 'similar to',
+  'alternatives', 'game recs'
 ];
 
 /**
@@ -58,6 +61,27 @@ export function shouldSearch(query) {
  * @param {string} query 
  * @returns {Promise<string|null>} Summarized search results
  */
+/**
+ * Extracts meaningful search terms from a user message by removing filler words.
+ * @param {string} message
+ * @returns {string}
+ */
+export function extractSearchQuery(message) {
+  const stopWords = new Set([
+    'gimme', 'give', 'tell', 'show', 'want', 'need', 'can', 'you',
+    'please', 'some', 'the', 'a', 'an', 'is', 'are', 'was', 'what',
+    'how', 'where', 'when', 'do', 'and', 'or', 'for', 'of', 'in',
+    'on', 'at', 'to', 'i', 'me', 'my', 'we', 'our', 'list', 'all',
+    'okay', 'ok'
+  ]);
+  return message
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !stopWords.has(w))
+    .join(' ');
+}
+
 export async function searchWeb(query) {
   if (!TAVILY_API_KEY) {
     console.warn('[Search] Tavily API key is missing. Skipping search.');

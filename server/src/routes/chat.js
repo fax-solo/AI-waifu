@@ -8,7 +8,7 @@ import { Router } from 'express';
 import { chat as geminiChat } from '../services/gemini.js';
 import { chat as groqChat } from '../services/groq.js';
 import { buildSystemPrompt, extractMemoryHints } from '../services/personality.js';
-import { shouldSearch, searchWeb } from '../services/search.js';
+import { shouldSearch, searchWeb, extractSearchQuery } from '../services/search.js';
 import {
   getConversationHistory,
   saveMessage,
@@ -98,6 +98,7 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
     // --- Smart Search Logic ---
     let proactiveResults = null;
     let isSearching = false;
+    let forceSearch = false;
     const searchNeeded = shouldSearch(message);
 
     if (searchNeeded) {
@@ -109,13 +110,23 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
       if (searchCount < 10) {
         isSearching = true;
         proactiveResults = await searchWeb(message.trim());
-        
+
+        // If the raw message returned nothing, extract key terms and retry
+        if (!proactiveResults) {
+          const cleaned = extractSearchQuery(message);
+          if (cleaned && cleaned !== message.trim().toLowerCase().replace(/[^\w\s]/g, '').trim()) {
+            proactiveResults = await searchWeb(cleaned);
+          }
+        }
+
         if (proactiveResults) {
           db.prepare(`
             INSERT INTO rate_limits (user_id, date, search_count) 
             VALUES (?, ?, 1) 
             ON CONFLICT(user_id, date) DO UPDATE SET search_count = search_count + 1
           `).run(userId, today);
+        } else {
+          forceSearch = true;
         }
       } else {
         console.warn(`[Search] User ${userId} reached daily search limit.`);
@@ -131,10 +142,10 @@ ${proactiveResults}
 [END SEARCH RESULTS]
 
 User Query: ${finalUserMessage}`;
-    } else if (searchNeeded) {
+    } else if (forceSearch) {
       finalUserMessage = `User Query: ${message.trim()}
 
-[Note: The user expects you to look up up-to-date information. A web search was attempted but returned no results. If you want, you can use the web_search tool to try a different search query.]`;
+MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date information before answering. Do NOT answer from your training data or memory. Search first, then answer based ONLY on the search results.`;
     }
 
     // Save user message (original one)
@@ -160,8 +171,9 @@ User Query: ${finalUserMessage}`;
       systemPrompt,
       history,
       userMessage: finalUserMessage,
-      model: settings.llm_model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gemini-3.1-flash-lite'),
+      model: settings.llm_model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gemini-2.5-flash-lite'),
       searchWeb,
+      forceSearch,
     };
 
     const { text, emotion, animation } = await (provider === 'groq' ? groqChat(chatOptions) : geminiChat(chatOptions));
@@ -182,7 +194,7 @@ User Query: ${finalUserMessage}`;
       emotion: emotion,
       animation: resolvedAnim.animation,
       loopAnimation: resolvedAnim.loop,
-      isSearching: isSearching && !!searchResults,
+      isSearching: isSearching && !!proactiveResults,
       conversationId,
       rateLimit: req.rateLimit || null,
     });
