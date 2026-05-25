@@ -1,4 +1,4 @@
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import { X, Search, User, Sparkles, Image, Volume2, Key, Keyboard, Brain, Film, Download, Info, Database } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import useSettings from './useSettings.js';
@@ -26,8 +26,8 @@ const TAB_CONFIG = [
   { id: 'memories', icon: Brain, labelKey: 'settings.tabs.memories' },
   { id: 'animations', icon: Film, labelKey: 'settings.tabs.animations' },
   { id: 'updates', icon: Download, labelKey: 'settings.tabs.updates' },
-  { id: 'about', icon: Info, labelKey: 'About' },
-  { id: 'data', icon: Database, labelKey: 'Data' },
+  { id: 'about', icon: Info, labelKey: 'settings.about.title' },
+  { id: 'data', icon: Database, labelKey: 'settings.data.title' },
 ];
 
 export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShortcutsChange, onTriggerSetup }) {
@@ -59,6 +59,17 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
 
   const overlayRef = useRef(null);
   const closeButtonRef = useRef(null);
+  const previousFocusRef = useRef(null);
+
+  // Save and restore focus on mount/unmount
+  useEffect(() => {
+    previousFocusRef.current = document.activeElement;
+    // Focus the close button on open
+    requestAnimationFrame(() => closeButtonRef.current?.focus());
+    return () => {
+      previousFocusRef.current?.focus?.();
+    };
+  }, []);
 
   const handleOverlayKeyDown = useCallback((e) => {
     if (e.key === 'Escape') {

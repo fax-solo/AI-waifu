@@ -18,11 +18,48 @@ const BODY_DIR = path.join(DATA_DIR, 'body');
 
 const router = Router();
 
-const ALLOWED_EXTENSIONS = ['.json', '.bvh'];
+const ALLOWED_EXTENSIONS = ['.json', '.bvh', '.vrma'];
 
 function isAllowed(file) {
   const ext = path.extname(file).toLowerCase();
   return ALLOWED_EXTENSIONS.includes(ext);
+}
+
+function getVrmaDuration(fullPath) {
+  try {
+    const buf = fs.readFileSync(fullPath);
+    const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+    // Parse GLB header
+    const version = dv.getUint32(4, true);
+    const totalLen = dv.getUint32(8, true);
+    let cursor = 12;
+    let jsonStr = null;
+    let binStart = 0;
+    while (cursor < totalLen) {
+      const chunkLen = dv.getUint32(cursor, true); cursor += 4;
+      const chunkType = dv.getUint32(cursor, true); cursor += 4;
+      if (chunkType === 0x4E4F534A) { // JSON
+        jsonStr = new TextDecoder().decode(new Uint8Array(buf.buffer, buf.byteOffset + cursor, chunkLen));
+      } else if (chunkType === 0x004E4942) { // BIN\0
+        binStart = buf.byteOffset + cursor;
+      }
+      cursor += chunkLen;
+    }
+    if (!jsonStr) return 0;
+    const gltf = JSON.parse(jsonStr);
+    const anim = gltf.animations?.[0];
+    if (!anim?.samplers?.length) return 0;
+    const sampler = anim.samplers[0];
+    const inputAccessor = gltf.accessors?.[sampler.input];
+    if (!inputAccessor) return 0;
+    const bufView = gltf.bufferViews?.[inputAccessor.bufferView];
+    if (!bufView) return 0;
+    const count = inputAccessor.count;
+    const byteOffset = (bufView.byteOffset || 0) + (inputAccessor.byteOffset || 0);
+    const lastFloatOffset = byteOffset + (count - 1) * 4;
+    const timeBuf = new DataView(buf.buffer, binStart + lastFloatOffset, 4);
+    return timeBuf.getFloat32(0, true);
+  } catch { return 0; }
 }
 
 function getBvhDuration(fullPath) {
@@ -50,6 +87,7 @@ function listAnimationFiles(dir) {
         const fullPath = path.join(dir, f);
         const ext = path.extname(f).toLowerCase();
         const isBvh = ext === '.bvh';
+        const isVrma = ext === '.vrma';
         try {
           if (isBvh) {
             return {
@@ -58,6 +96,17 @@ function listAnimationFiles(dir) {
               type: 'body',
               format: 'bvh',
               duration: getBvhDuration(fullPath),
+              loop: false,
+              blendSpeed: 8,
+            };
+          }
+          if (isVrma) {
+            return {
+              filename: f,
+              name: f.replace('.vrma', ''),
+              type: 'body',
+              format: 'vrma',
+              duration: getVrmaDuration(fullPath),
               loop: false,
               blendSpeed: 8,
             };
@@ -103,7 +152,7 @@ const upload = multer({
     if (ALLOWED_EXTENSIONS.includes(ext) && file.fieldname === 'animation') {
       cb(null, true);
     } else {
-      cb(new Error('Only .json and .bvh files are allowed'), false);
+      cb(new Error('Only .json, .bvh, and .vrma files are allowed'), false);
     }
   }
 });
@@ -124,11 +173,13 @@ router.post('/upload/:type', upload.single('animation'), (req, res) => {
   }
   
   const ext = path.extname(req.file.originalname).toLowerCase();
-  const format = ext === '.bvh' ? 'bvh' : 'json';
+  const format = ext === '.bvh' ? 'bvh' : ext === '.vrma' ? 'vrma' : 'json';
   
   let duration = 1;
   if (format === 'bvh') {
     duration = getBvhDuration(req.file.path);
+  } else if (format === 'vrma') {
+    duration = getVrmaDuration(req.file.path);
   } else {
     try {
       const raw = fs.readFileSync(req.file.path, 'utf-8');
@@ -160,12 +211,17 @@ router.get('/:type/:filename', (req, res) => {
     return res.status(404).json({ error: 'Animation not found' });
   }
   try {
-    const raw = fs.readFileSync(filePath, 'utf-8');
     const ext = path.extname(filename).toLowerCase();
-    if (ext === '.bvh') {
+    if (ext === '.vrma') {
+      const buffer = fs.readFileSync(filePath);
+      res.set('Content-Type', 'model/gltf-binary');
+      res.send(buffer);
+    } else if (ext === '.bvh') {
+      const raw = fs.readFileSync(filePath, 'utf-8');
       res.set('Content-Type', 'text/plain');
       res.send(raw);
     } else {
+      const raw = fs.readFileSync(filePath, 'utf-8');
       res.json(JSON.parse(raw));
     }
   } catch {

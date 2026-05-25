@@ -223,6 +223,58 @@ router.delete('/api-key', (req, res) => {
 });
 
 /**
+ * POST /api/settings/groq-key
+ * Store a user's custom Groq API key (encrypted).
+ */
+router.post('/groq-key', (req, res) => {
+  const userId = req.headers['x-user-id'];
+  const { apiKey } = req.body;
+
+  if (!apiKey?.trim()) {
+    return res.status(400).json({ error: 'API key cannot be empty.' });
+  }
+
+  // Basic validation - Groq API keys start with "gsk_"
+  if (!apiKey.trim().startsWith('gsk_')) {
+    return res.status(400).json({
+      error: 'Invalid API key format. Groq API keys typically start with "gsk_".',
+    });
+  }
+
+  const encrypted = encrypt(apiKey.trim());
+
+  const existing = db.prepare(
+    'SELECT user_id FROM companion_settings WHERE user_id = ?'
+  ).get(userId);
+
+  if (existing) {
+    db.prepare(
+      'UPDATE companion_settings SET groq_api_key_encrypted = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+    ).run(encrypted, userId);
+  } else {
+    db.prepare(
+      'INSERT INTO companion_settings (user_id, groq_api_key_encrypted) VALUES (?, ?)'
+    ).run(userId, encrypted);
+  }
+
+  res.json({ success: true, message: 'Groq API key saved securely.' });
+});
+
+/**
+ * DELETE /api/settings/groq-key
+ * Remove a user's custom Groq API key.
+ */
+router.delete('/groq-key', (req, res) => {
+  const userId = req.headers['x-user-id'];
+
+  db.prepare(
+    'UPDATE companion_settings SET groq_api_key_encrypted = NULL, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
+  ).run(userId);
+
+  res.json({ success: true, message: 'Groq API key removed.' });
+});
+
+/**
  * GET /api/settings/rate-limit
  * Get current rate limit status.
  */

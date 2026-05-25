@@ -29,42 +29,44 @@ function getFileIndex() {
   try {
     if (fs.existsSync(BODY_DIR)) {
       for (const f of fs.readdirSync(BODY_DIR)) {
-        if (f.endsWith('.bvh')) _fileIndex.add(f.toLowerCase());
+        if (f.endsWith('.bvh') || f.endsWith('.vrma')) _fileIndex.add(f.toLowerCase());
       }
     }
   } catch { /* empty */ }
   return _fileIndex;
 }
 
-/** Check if a BVH file exists (case-insensitive). */
+/** Check if an animation file exists (case-insensitive, supports .bvh and .vrma). */
 function fileExists(filename) {
   if (!filename) return false;
   return getFileIndex().has(filename.toLowerCase());
 }
 
-/** Pick a random variant from available files. e.g. "joy" → "joy.bvh"|"joy2.bvh"|"joy3.bvh" */
+/** Pick a random variant from available files. e.g. "joy" → "joy.vrma"|"joy.bvh"|"joy2.bvh" */
 function pickVariant(baseName, exclude = null, requestedVersion = null) {
   const index = getFileIndex();
-  const variants = [];
-  // For 'dance_1', treat 'dance' as the base for matching versions
-  const base = baseName.toLowerCase().replace(/\.bvh$/, '').replace(/_1$/, '');
+  const bvhVariants = [];
+  const vrmaVariants = [];
+  // Strip extension and version suffix for base matching
+  const base = baseName.toLowerCase().replace(/\.(bvh|vrma)$/, '').replace(/_1$/, '');
+  const extRe = /\.(bvh|vrma)$/;
 
   for (const f of index) {
-    const stripped = f.replace(/\.bvh$/, '');
-    
+    const stripped = f.replace(extRe, '');
     // Exact match or base + number/suffix match
-    // e.g., 'joy' matches 'joy', 'joy2', 'joy3'. 'dance' matches 'dance_1', 'dance_2'
     if (stripped === base || stripped.match(new RegExp(`^${escapeRegex(base)}_?\\d+$`))) {
-      variants.push(f);
+      if (f.endsWith('.vrma')) vrmaVariants.push(f);
+      else bvhVariants.push(f);
     }
   }
 
+  // Prefer VRMA over BVH when both exist for the same animation
+  const variants = vrmaVariants.length > 0 ? vrmaVariants : bvhVariants;
   if (variants.length === 0) return null;
 
   // If a specific version is requested, try to find it
   if (requestedVersion) {
-    // Try to find a variant that ends with the requested version number
-    const targetSuffix = new RegExp(`_?${requestedVersion}(\\.bvh)?$`);
+    const targetSuffix = new RegExp(`_?${requestedVersion}(\\.(bvh|vrma))?$`);
     const specificVariant = variants.find(v => v.match(targetSuffix));
     if (specificVariant) return specificVariant;
   }
@@ -98,13 +100,9 @@ const ACTION_INTENTS = [
 
   // Dance
   { keywords: ['dance', 'dancing', 'boogie', 'groove'], phrases: ['show me a dance', 'do a dance', 'dance for me', 'let me see you dance'], base: 'dance_1', loop: true },
-  { keywords: [], phrases: ['gangnam style', 'gangnam'], base: 'dance_gangnam_style', loop: true },
-  { keywords: ['rumba'], phrases: [], base: 'dance_rumba', loop: true },
-  { keywords: ['dab', 'dabbing'], phrases: ['do the dab', 'do a dab'], base: 'dance_dab', loop: false },
 
   // Movement
   { keywords: ['run', 'running', 'sprint'], phrases: ['start running', 'run for me', 'can you run'], base: 'action_run', loop: true, requiresAction: true },
-  { keywords: ['walk', 'walking', 'stroll'], phrases: ['walk around', 'take a walk', 'can you walk'], base: 'action_walk', loop: true, requiresAction: true },
   { keywords: ['jog', 'jogging'], phrases: ['go jogging', 'start jogging'], base: 'action_jog', loop: true },
   { keywords: ['jump', 'jumping', 'leap', 'hop'], phrases: ['do a jump', 'can you jump'], base: 'action_jump', loop: false },
   { keywords: ['crawl', 'crawling'], phrases: ['crawl around'], base: 'action_crawling', loop: true },
@@ -114,7 +112,6 @@ const ACTION_INTENTS = [
   { keywords: [], phrases: ['lay down', 'lie down', 'go to sleep', 'take a nap'], base: 'action_laydown', loop: false },
   { keywords: [], phrases: ['stand up', 'get up'], base: 'action_standup', loop: false },
   { keywords: ['sit', 'sitting'], phrases: ['sit down', 'take a seat', 'have a seat'], base: 'sit_idle', loop: true, requiresAction: true },
-  { keywords: ['kneel', 'kneeling'], phrases: ['kneel down'], base: 'kneel_idle', loop: true },
 
   // Exercise
   { keywords: ['exercise', 'workout'], phrases: ['work out', 'do some exercise', 'let\'s exercise'], base: 'exercise_jumping_jacks', loop: true },
@@ -129,6 +126,30 @@ const RESPONSE_ACTIONS = [
   { patterns: ['let me dance', 'watch me dance', 'time to dance', 'dancing', 'starts dancing'], base: 'dance_1' },
   { patterns: ['waves at you', 'waving', 'waves hello'], base: 'action_greeting' },
   { patterns: ['jumps up', 'jumping around', 'jumping for joy'], base: 'action_jump' },
+];
+
+// Mouth expression patterns detected in AI response text
+const RESPONSE_MOUTH = [
+  { patterns: ['smiles', 'smiling', 'with a smile', 'smile at you', 'gives a smile', 'flashes a smile'], value: 'smile' },
+  { patterns: ['frowns', 'frowning', 'with a frown', 'pouts', 'pouting'], value: 'frown' },
+  { patterns: ['mouth open', 'open-mouthed', 'jaw drops', 'gapes', 'gaping'], value: 'open' },
+  { patterns: ['gasp', 'gasps', 'gasping'], value: 'surprised' },
+  { patterns: ['mouth wide', 'wide mouth', 'wide-open'], value: 'wide' },
+  { patterns: ['purses lips', 'pursed lips', 'puckers', 'puckered'], value: 'pucker' },
+  { patterns: ['grins', 'grinning', 'grin at you', 'with a grin', 'gives a grin'], value: 'smile' },
+  { patterns: ['bites lip', 'biting lip', 'lip bite'], value: 'pucker' },
+];
+
+// Eye expression patterns detected in AI response text
+const RESPONSE_EYES = [
+  { patterns: ['winks', 'winking', 'gives a wink', 'with a wink', 'wink at you'], value: 'wink_left' },
+  { patterns: ['eye wide', 'eyes wide', 'wide-eyed', 'wide eyes'], value: 'wide' },
+  { patterns: ['eyes narrow', 'narrows eyes', 'squints', 'squinting'], value: 'angry' },
+  { patterns: ['rolls eyes', 'eye roll', 'rolls her eyes', 'rolls his eyes'], value: 'neutral' },
+  { patterns: ['eyes light up', 'eyes sparkle', 'eyes sparkled'], value: 'happy' },
+  { patterns: ['teary-eyed', 'teary eyes', 'eyes well up', 'eyes filled with tears'], value: 'sad' },
+  { patterns: ['eyes widen', 'eyes wide in', 'widens eyes', 'eyes went wide'], value: 'surprised' },
+  { patterns: ['blinks', 'blinking', 'rapid blinking'], value: 'neutral' },
 ];
 
 // Emotion keywords detected in AI response text
@@ -167,7 +188,10 @@ const EMOTION_TO_BVH = {
   annoyed: 'annoyance',
   curious: 'curiosity',
   worried: 'fear',
-  proud: 'pride'
+  proud: 'pride',
+  relaxed: 'neutral',
+  disgust: 'disgust',
+  fear: 'fear'
 };
 
 // Track last animation to avoid repetition
@@ -182,11 +206,50 @@ let _lastAnimation = null;
  * @param {string|null} aiAnimationTag - The AI's [animation:...] tag value (if any)
  * @returns {{ animation: string|null, loop: boolean, source: string }}
  */
+function matchMouthExpression(text) {
+  if (!text) return null;
+  const lower = text.toLowerCase();
+  for (const group of RESPONSE_MOUTH) {
+    for (const pattern of group.patterns) {
+      if (lower.includes(pattern)) return group.value;
+    }
+  }
+  return null;
+}
+
+function matchEyeExpression(text) {
+  if (!text) return null;
+  const lower = text.toLowerCase();
+  for (const group of RESPONSE_EYES) {
+    for (const pattern of group.patterns) {
+      if (lower.includes(pattern)) return group.value;
+    }
+  }
+  return null;
+}
+
 export function resolveAnimation(userMessage, aiText, aiEmotion, aiAnimationTag = null) {
+  // Detect mouth/eye expressions from AI text
+  const mouthExpression = aiText ? matchMouthExpression(aiText) : null;
+  const eyeExpression = aiText ? matchEyeExpression(aiText) : null;
   
-  // Extract requested version if present in user message (e.g. "version 2", "v2", "number 3")
+  // Extract requested version if present in user message
   const versionMatch = userMessage ? (userMessage.match(/version\s*(\d+)/i) || userMessage.match(/\bv\s*(\d+)\b/i) || userMessage.match(/number\s*(\d+)/i) || userMessage.match(/part\s*(\d+)/i)) : null;
   const requestedVersion = versionMatch ? versionMatch[1] : null;
+
+  // Helper to determine if an animation should loop based on its name
+  const shouldLoop = (filename) => {
+    const name = filename.toLowerCase();
+    return name.includes('dance') || name.includes('sit') || name.includes('lay') || 
+           name.includes('kneel') || name.includes('walk') || name.includes('run') || 
+           name.includes('idle');
+  };
+
+  const makeResult = (anim, loop, source) => ({
+    animation: anim, loop, source,
+    mouthExpression: mouthExpression || undefined,
+    eyeExpression: eyeExpression || undefined,
+  });
 
   // ── 1. Explicit user action request ──
   const userAction = matchUserIntent(userMessage);
@@ -195,7 +258,7 @@ export function resolveAnimation(userMessage, aiText, aiEmotion, aiAnimationTag 
     if (variant) {
       console.log(`[AnimResolver] User intent "${userAction.matched}" → ${variant} (Requested Version: ${requestedVersion || 'none'})`);
       _lastAnimation = variant;
-      return { animation: variant, loop: userAction.loop, source: 'user_intent' };
+      return makeResult(variant, userAction.loop, 'user_intent');
     }
   }
 
@@ -207,41 +270,29 @@ export function resolveAnimation(userMessage, aiText, aiEmotion, aiAnimationTag 
       if (variant) {
         console.log(`[AnimResolver] AI action text "${aiAction.matched}" → ${variant}`);
         _lastAnimation = variant;
-        // Actions like sitting/laying down usually loop
-        return { animation: variant, loop: ['sit_idle', 'action_laydown', 'kneel_idle', 'dance_1'].includes(aiAction.base), source: 'ai_action_text' };
+        return makeResult(variant, ['sit_idle', 'action_laydown', 'kneel_idle', 'dance_1'].includes(aiAction.base), 'ai_action_text');
       }
     }
   }
 
-  // Helper to determine if an animation should loop based on its name
-  const shouldLoop = (filename) => {
-    const name = filename.toLowerCase();
-    return name.includes('dance') || name.includes('sit') || name.includes('lay') || 
-           name.includes('kneel') || name.includes('walk') || name.includes('run') || 
-           name.includes('idle');
-  };
-
   // ── 3. AI-provided animation tag (validated) ──
   if (aiAnimationTag) {
     const tag = aiAnimationTag.toLowerCase();
-    
-    // If the LLM hallucinated a requested version like "joy version 2.bvh"
     const tagVersionMatch = tag.match(/(?:version|v|number|_|\s)+(\d+)(?:\.bvh)?$/i);
     const tagVersion = tagVersionMatch ? tagVersionMatch[1] : requestedVersion;
     
     if (fileExists(tag)) {
       console.log(`[AnimResolver] Using AI tag: ${tag}`);
       _lastAnimation = tag;
-      return { animation: tag, loop: shouldLoop(tag), source: 'ai_tag' };
+      return makeResult(tag, shouldLoop(tag), 'ai_tag');
     }
     
-    // AI hallucinated a filename — try to find the base variant
     const base = tag.replace(/\.bvh$/, '').replace(/(?:version|v|number|_|\s)+(\d+)$/i, '').replace(/\d+$/, '');
     const variant = pickVariant(base, _lastAnimation, tagVersion);
     if (variant) {
       console.log(`[AnimResolver] AI tag "${tag}" not found, resolved variant: ${variant}`);
       _lastAnimation = variant;
-      return { animation: variant, loop: shouldLoop(variant), source: 'ai_tag_corrected' };
+      return makeResult(variant, shouldLoop(variant), 'ai_tag_corrected');
     }
     console.warn(`[AnimResolver] AI tag "${tag}" has no matching file, falling through`);
   }
@@ -254,7 +305,7 @@ export function resolveAnimation(userMessage, aiText, aiEmotion, aiAnimationTag 
       if (variant) {
         console.log(`[AnimResolver] AI sentiment "${sentiment.matched}" → ${variant}`);
         _lastAnimation = variant;
-        return { animation: variant, loop: true, source: 'response_sentiment' };
+        return makeResult(variant, true, 'response_sentiment');
       }
     }
   }
@@ -267,13 +318,13 @@ export function resolveAnimation(userMessage, aiText, aiEmotion, aiAnimationTag 
       if (variant) {
         console.log(`[AnimResolver] Emotion fallback "${aiEmotion}" → ${variant}`);
         _lastAnimation = variant;
-        return { animation: variant, loop: true, source: 'emotion_fallback' };
+        return makeResult(variant, true, 'emotion_fallback');
       }
     }
   }
 
   // No animation needed
-  return { animation: null, loop: false, source: 'none' };
+  return makeResult(null, false, 'none');
 }
 
 /**

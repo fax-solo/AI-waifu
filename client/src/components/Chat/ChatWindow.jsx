@@ -1,4 +1,4 @@
-import { useEffect, useState, forwardRef } from 'react';
+import { useEffect, useState, forwardRef, memo } from 'react';
 import { Menu, Volume2, VolumeX } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import MessageBubble from './MessageBubble.jsx';
@@ -27,6 +27,10 @@ const ChatWindow = forwardRef(function ChatWindow({
   ttsEnabled,
   onToggleTTS,
   audioInputDevice,
+  screenshot,
+  screenshotError,
+  onCaptureScreenshot,
+  onClearScreenshot,
 }, ref) {
   const { t } = useLanguage();
   const [showError, setShowError] = useState(false);
@@ -98,8 +102,17 @@ const ChatWindow = forwardRef(function ChatWindow({
         </div>
       )}
 
-      {/* Messages or Welcome */}
-      {messages.length === 0 && !isLoading ? (
+      {/* Messages or Welcome or Loading Skeleton */}
+      {isLoading && messages.length === 0 ? (
+        <div className="messages-container" role="status" aria-label="Loading messages">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className={`message skeleton-message ${i % 2 === 0 ? 'assistant' : 'user'}`}>
+              <div className="message-avatar skeleton-pulse" aria-hidden="true" />
+              <div className="message-bubble skeleton-pulse" style={{ width: `${60 + i * 10}%`, height: 48 }} />
+            </div>
+          ))}
+        </div>
+      ) : messages.length === 0 && !isLoading ? (
         <div className="welcome-screen">
           <div className="welcome-content">
             <div className="welcome-badge">AI Companion</div>
@@ -148,10 +161,14 @@ const ChatWindow = forwardRef(function ChatWindow({
         disabled={isSending || (rateLimit && rateLimit.remaining <= 0 && !rateLimit.bypassed)}
         placeholder={t('chat.typeMessage')}
         audioInputDevice={audioInputDevice}
+        screenshot={screenshot}
+        screenshotError={screenshotError}
+        onCaptureScreenshot={onCaptureScreenshot}
+        onClearScreenshot={onClearScreenshot}
       />
     </div>
   );
 });
 
 ChatWindow.displayName = 'ChatWindow';
-export default ChatWindow;
+export default memo(ChatWindow);

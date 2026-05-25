@@ -23,7 +23,7 @@ const WEB_SEARCH_TOOL = [{
   }]
 }];
 
-export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb, forceSearch }) {
+export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb, forceSearch, screenshot }) {
   const key = (apiKey && apiKey.trim()) || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim());
 
   if (!key) {
@@ -77,7 +77,8 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
         const model = client.getGenerativeModel(modelConfig);
         const chatSession = model.startChat({ history: history || [] });
 
-        const result = await chatSession.sendMessage(userMessage);
+        const userParts = buildUserParts(userMessage, screenshot);
+        const result = await chatSession.sendMessage(userParts);
         const response = result.response;
         const call = response.functionCalls?.[0];
 
@@ -97,9 +98,10 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
             },
           });
 
+          const userParts = buildUserParts(userMessage, screenshot);
           const fullHistory = [
             ...(history || []),
-            { role: 'user', parts: [{ text: userMessage }] },
+            { role: 'user', parts: userParts },
             { role: 'model', parts: [{ functionCall: { name: 'web_search', args: { query: call.args.query } } }] },
             { role: 'function', parts: [{ functionResponse: { name: 'web_search', response: { results: searchContent } } }] },
           ];
@@ -109,7 +111,7 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
           const followUpResponse = followUpResult.response;
           const fullText = followUpResponse.text();
 
-          const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud)\]\s*(.*)/i);
+          const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i);
           const animMatch = fullText.match(/\[animation:([\w.\-]+?\.bvh)\]/i);
 
           let text = emotionMatch ? emotionMatch[2].trim() : fullText.trim();
@@ -127,7 +129,7 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
 
         const fullText = response.text();
 
-        const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud)\]\s*(.*)/i);
+        const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i);
         const animMatch = fullText.match(/\[animation:([\w.\-]+?\.bvh)\]/i);
 
         let text = emotionMatch ? emotionMatch[2].trim() : fullText.trim();
@@ -185,6 +187,31 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
 
   const finalMessage = allErrors.length > 0 ? allErrors.join(' | ') : lastError?.message;
   throw new Error(`Gemini connection error: ${finalMessage}. Please check your internet and API key.`);
+}
+
+function buildUserParts(userMessage, screenshot) {
+  if (!screenshot) {
+    return [{ text: userMessage }];
+  }
+
+  // Handle both raw base64 and data URLs
+  let rawData = screenshot;
+  let mimeType = 'image/png';
+
+  if (typeof screenshot === 'string' && screenshot.startsWith('data:')) {
+    const comma = screenshot.indexOf(',');
+    if (comma !== -1) {
+      const header = screenshot.slice(0, comma);
+      const mime = header.match(/^data:([^;]+)/);
+      if (mime) mimeType = mime[1];
+      rawData = screenshot.slice(comma + 1);
+    }
+  }
+
+  return [
+    { text: userMessage },
+    { inlineData: { mimeType, data: rawData } },
+  ];
 }
 
 export default { chat };

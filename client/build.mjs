@@ -12,7 +12,15 @@ await build({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    minify: 'terser',
+    minify: 'esbuild',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three'],
+          vrm: ['@pixiv/three-vrm'],
+        },
+      },
+    },
   },
 });
 

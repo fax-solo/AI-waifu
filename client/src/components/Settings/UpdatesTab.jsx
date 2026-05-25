@@ -1,6 +1,6 @@
 import { Download, RefreshCw } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
-import { version as APP_VERSION } from '../../../package.json';
+import { version as APP_VERSION } from '../../../../package.json';
 
 export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, updateError, updateProgress, checkForUpdates, downloadUpdate, installUpdate, onTriggerSetup }) {
   const { t } = useLanguage();
@@ -41,7 +41,7 @@ export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, upd
         )}
 
         {updateStatus === 'available' && (
-          <div className="settings-empty update-available">
+          <div className="settings-empty update-available" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <Download size={24} className="update-icon" />
             <p className="update-text">{t('settings.updates.available')}</p>
             <p>{t('settings.updates.latestVersion')}: {latestVersion}</p>
@@ -60,9 +60,9 @@ export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, upd
         )}
 
         {updateStatus === 'downloading' && (
-          <div className="settings-empty">
+          <div className="settings-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <Download size={24} className="update-icon" />
-            <p>Downloading Update...</p>
+            <p>Downloading Update…</p>
             <div className="progress-bar-container" style={{ width: '100%', marginTop: '1rem' }}>
               <div className="progress-bar-fill" style={{ width: `${updateProgress}%` }}></div>
             </div>
@@ -71,7 +71,7 @@ export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, upd
         )}
 
         {updateStatus === 'downloaded' && (
-          <div className="settings-empty update-available">
+          <div className="settings-empty update-available" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <Download size={24} className="update-icon" />
             <p className="update-text">Update Ready</p>
             <p>The update has been downloaded and is ready to install.</p>
@@ -90,7 +90,7 @@ export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, upd
         )}
       </div>
 
-      <div className="settings-section" style={{ marginTop: '2rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+      <div className="settings-section" style={{ marginTop: '2rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
         <div className="settings-section-title">
           <Download size={18} className="icon" />
           Component Setup Wizard

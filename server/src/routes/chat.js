@@ -2,6 +2,7 @@
  * Chat Routes
  *
  * POST /api/chat - Send a message and get an AI response
+ * Features sliding window context, vector memory search, and background summarization.
  */
 
 import { Router } from 'express';
@@ -11,10 +12,12 @@ import { buildSystemPrompt, extractMemoryHints } from '../services/personality.j
 import { shouldSearch, searchWeb, extractSearchQuery } from '../services/search.js';
 import {
   getConversationHistory,
+  getConversationSummary,
   saveMessage,
   saveMemories,
-  getMemories,
+  getRelevantMemories,
   autoTitle,
+  checkAndTriggerSummarization,
 } from '../services/memory.js';
 import { rateLimitMiddleware } from '../middleware/rateLimit.js';
 import { decrypt } from '../utils/crypto.js';
@@ -23,12 +26,14 @@ import { resolveAnimation } from '../services/animationResolver.js';
 
 const router = Router();
 
-// Animation intent is now handled by animationResolver.js
+const WINDOW_SIZE = 10;
+const MAX_RELEVANT_MEMORIES = 5;
 
 /**
  * POST /api/chat
  *
  * Send a message to the AI companion and receive a response.
+ * Uses sliding window context + vector memory search + background summarization.
  *
  * Body: { conversationId, message }
  * Headers: x-user-id, x-has-own-key (optional)
@@ -36,7 +41,7 @@ const router = Router();
 router.post('/', rateLimitMiddleware, async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
-    const { conversationId, message } = req.body;
+    const { conversationId, message, screenshot } = req.body;
 
     if (!message?.trim()) {
       return res.status(400).json({ error: 'Message cannot be empty.' });
@@ -81,28 +86,38 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
         console.error('Failed to decrypt user Groq API key:', e.message);
       }
     }
-    
+
     if (apiKey) {
       console.log(`[Chat] Using custom user ${provider} API key (starts with ${apiKey.substring(0, 4)}...)`);
     } else {
       console.log(`[Chat] Using system default ${provider} API key`);
     }
 
-    // Get memories and conversation history
-    const memories = getMemories(userId);
-    const history = getConversationHistory(conversationId);
+    // ─── Sliding Window Context ─────────────────────────────────────
+    // 1. Use vector search to find semantically relevant memories
+    const relevantMemories = await getRelevantMemories(userId, message, apiKey, MAX_RELEVANT_MEMORIES);
 
-    // Build system prompt with personality and memories
-    const systemPrompt = buildSystemPrompt(settings, memories, userName);
+    // 2. Get conversation summary (for older, compressed context)
+    const conversationSummary = getConversationSummary(conversationId);
 
-    // --- Smart Search Logic ---
+    // 3. Get the last N messages verbatim (sliding window)
+    const history = getConversationHistory(conversationId, WINDOW_SIZE);
+
+    // 4. Build system prompt with personality and relevant memories
+    let systemPrompt = buildSystemPrompt(settings, relevantMemories, userName);
+
+    // 5. Prepend conversation summary if it exists
+    if (conversationSummary) {
+      systemPrompt = `## Earlier Conversation Summary\n${conversationSummary}\n\nThe summary above captures the key points from earlier in this conversation. The most recent messages follow below.\n\n${systemPrompt}`;
+    }
+
+    // ─── Smart Search Logic ────────────────────────────────────────
     let proactiveResults = null;
     let isSearching = false;
     let forceSearch = false;
     const searchNeeded = shouldSearch(message);
 
     if (searchNeeded) {
-      // Check search rate limit (e.g., 10 per day)
       const today = new Date().toISOString().split('T')[0];
       const limit = db.prepare('SELECT search_count FROM rate_limits WHERE user_id = ? AND date = ?').get(userId, today);
       const searchCount = limit?.search_count || 0;
@@ -111,7 +126,6 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
         isSearching = true;
         proactiveResults = await searchWeb(message.trim());
 
-        // If the raw message returned nothing, extract key terms and retry
         if (!proactiveResults) {
           const cleaned = extractSearchQuery(message);
           if (cleaned && cleaned !== message.trim().toLowerCase().replace(/[^\w\s]/g, '').trim()) {
@@ -165,21 +179,31 @@ MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date i
       saveMemories(userId, newMemories);
     }
 
-    // Call AI — attach searchWeb so the AI can autonomously search if needed
+    // ─── Call AI ────────────────────────────────────────────────────
+    const model = settings.llm_model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gemini-2.5-flash-lite');
+
     const chatOptions = {
       apiKey,
       systemPrompt,
       history,
       userMessage: finalUserMessage,
-      model: settings.llm_model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gemini-2.5-flash-lite'),
+      model,
       searchWeb,
       forceSearch,
+      screenshot: provider === 'gemini' ? screenshot : undefined,
     };
 
     const { text, emotion, animation } = await (provider === 'groq' ? groqChat(chatOptions) : geminiChat(chatOptions));
 
     // Save AI response (just the text, not the tag)
     saveMessage(conversationId, 'assistant', text);
+
+    // ─── Background Summarization ───────────────────────────────────
+    // Trigger async summarization if enough new messages have accumulated
+    checkAndTriggerSummarization(conversationId, {
+      apiKey,
+      provider,
+    });
 
     // Resolve the best animation based on the user's message, AI's response text, and the AI's emotion/animation tags
     const resolvedAnim = resolveAnimation(message, text, emotion, animation);
@@ -194,6 +218,8 @@ MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date i
       emotion: emotion,
       animation: resolvedAnim.animation,
       loopAnimation: resolvedAnim.loop,
+      mouthExpression: resolvedAnim.mouthExpression || null,
+      eyeExpression: resolvedAnim.eyeExpression || null,
       isSearching: isSearching && !!proactiveResults,
       conversationId,
       rateLimit: req.rateLimit || null,
@@ -201,7 +227,6 @@ MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date i
   } catch (error) {
     console.error('Chat error:', error.message);
 
-    // Classify error for proper HTTP status
     let status = 500;
     if (error.message.includes('API key') || error.message.includes('No API key')) {
       status = 401;

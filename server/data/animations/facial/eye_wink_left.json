@@ -1,0 +1,26 @@
+{
+  "materialReset": {},
+  "duration": 0.3,
+  "loop": false,
+  "blendSpeed": 20,
+  "keyframes": [
+    {
+      "time": 0,
+      "expressions": {
+        "blinkLeft": 1
+      }
+    },
+    {
+      "time": 0.15,
+      "expressions": {
+        "blinkLeft": 1
+      }
+    },
+    {
+      "time": 0.3,
+      "expressions": {
+        "blinkLeft": 0
+      }
+    }
+  ]
+}

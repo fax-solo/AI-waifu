@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import * as api from '../../utils/api.js';
 import { useTTS } from '../../hooks/useTTS.js';
 import { DEFAULT_SHORTCUTS } from '../../hooks/useShortcuts.js';
-import { version as APP_VERSION } from '../../../package.json';
+import { version as APP_VERSION } from '../../../../package.json';
 
 const VOICES = [
   { id: 'af_bella', name: 'Bella (US Female)', desc: 'Friendly & clear' },

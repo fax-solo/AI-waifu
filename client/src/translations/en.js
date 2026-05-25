@@ -11,6 +11,8 @@ export default {
     search: 'Search...',
     newChat: 'New Chat',
     settings: 'Settings',
+    active: 'Active',
+    inactive: 'Inactive',
   },
   setup: {
     title: 'Waifu setup',
@@ -221,6 +223,13 @@ export default {
       selectLanguage: 'Select Language',
       english: 'English',
       arabic: 'العربية',
+      accentColor: 'Accent Color',
+      purple: 'Purple',
+      blue: 'Blue',
+      green: 'Green',
+      pink: 'Pink',
+      orange: 'Orange',
+      red: 'Red',
     }
   }
 };

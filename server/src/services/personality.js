@@ -100,7 +100,7 @@ FORBIDDEN PHRASES (DO NOT EVER SAY): "I don't have a body", "I'm just code", "I'
 
 ## Response Format (MANDATORY)
 Every response starts with: [emotion] optionally followed by [animation:FILE.bvh] then your message.
-Emotions: neutral, happy, angry, sad, relaxed, surprised, excited, embarrassed, nervous, affectionate, playful, tired, thoughtful, smug, loving, grateful, annoyed, curious, worried, proud
+Emotions: neutral, happy, angry, sad, relaxed, surprised, excited, embarrassed, nervous, affectionate, playful, tired, thoughtful, smug, loving, grateful, annoyed, curious, worried, proud, disgust, fear
 
 ## Animation Catalog (use the exact filename after [animation:])
 ${formatAnimationList(ANIMATION_CATALOG)}
@@ -160,6 +160,10 @@ export function extractMemoryHints(userMessage) {
     { regex: /i (?:hate|dislike|can't stand) (.+?)(?:\.|,|!|$)/i, template: (m) => `User dislikes ${m[1].trim()}` },
     { regex: /i work (?:as|at|in) (.+?)(?:\.|,|!|$)/i, template: (m) => `User works as/at/in ${m[1].trim()}` },
     { regex: /i(?:'m| am) a (.+?)(?:\.|,|!|$)/i, template: (m) => `User is a ${m[1].trim()}` },
+    { regex: /(?:i(?:'m| am) |my project is )(?:building|working on|making|creating) (.+?)(?:\.|,|!|$)/i, template: (m) => `User is working on ${m[1].trim()}` },
+    { regex: /i(?:'m| am) learning (.+?)(?:\.|,|!|$)/i, template: (m) => `User is learning ${m[1].trim()}` },
+    { regex: /i know (?:how to |)(.+?)(?:\.|,|!|$)/i, template: (m) => `User knows ${m[1].trim()}` },
+    { regex: /my (?:dream|goal|ambition) is (?:to |)(.+?)(?:\.|,|!|$)/i, template: (m) => `User's goal is ${m[1].trim()}` },
     { regex: /my favorite (.+?) is (.+?)(?:\.|,|!|$)/i, template: (m) => `User's favorite ${m[1].trim()} is ${m[2].trim()}` },
     { regex: /i have a (?:pet |)(cat|dog|bird|fish|hamster|rabbit|pet) (?:named |called |)(\w+)/i, template: (m) => `User has a ${m[1]} named ${m[2]}` },
     { regex: /my (?:birthday|bday) is (.+?)(?:\.|,|!|$)/i, template: (m) => `User's birthday is ${m[1].trim()}` },

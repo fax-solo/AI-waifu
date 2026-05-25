@@ -1,0 +1,39 @@
+{
+  "duration": 1.5,
+  "loop": true,
+  "blendSpeed": 10,
+  "materialReset": {
+    "N00_000_00_Face_00_SKIN (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "emissive": [
+        0,
+        0,
+        0
+      ],
+      "shadeColorFactor": [
+        0,
+        0,
+        0
+      ],
+      "map": null
+    }
+  },
+  "keyframes": [
+    {
+      "time": 0,
+      "expressions": {
+        "aa": 0.5
+      }
+    },
+    {
+      "time": 1.5,
+      "expressions": {
+        "aa": 0.5
+      }
+    }
+  ]
+}

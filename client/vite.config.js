@@ -19,11 +19,23 @@ export default defineConfig({
         target: 'http://localhost:3005',
         changeOrigin: true,
       },
+      '/textures': {
+        target: 'http://localhost:3005',
+        changeOrigin: true,
+      },
     },
   },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    minify: 'esbuild', // Try esbuild instead of terser
+    minify: 'esbuild',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ['three'],
+          vrm: ['@pixiv/three-vrm'],
+        },
+      },
+    },
   },
 });

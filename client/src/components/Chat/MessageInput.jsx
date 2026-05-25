@@ -1,8 +1,17 @@
 import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Send, Mic, MicOff, Loader2 } from 'lucide-react';
+import { Send, Mic, MicOff, Loader2, ScanEye, X } from 'lucide-react';
 import { sendSTT } from '../../utils/api.js';
 
-const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a message...", audioInputDevice }, ref) => {
+const MessageInput = forwardRef(({
+  onSend,
+  disabled,
+  placeholder = "Type a message...",
+  audioInputDevice,
+  screenshot,
+  screenshotError,
+  onCaptureScreenshot,
+  onClearScreenshot,
+}, ref) => {
   const [text, setText] = useState('');
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -19,8 +28,37 @@ const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a messa
     }
   }, [text]);
 
+  // Paste handler for clipboard images
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const handlePaste = async (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (const item of items) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          if (!file) continue;
+
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            onCaptureScreenshot?.(ev.target.result);
+          };
+          reader.readAsDataURL(file);
+          break;
+        }
+      }
+    };
+
+    textarea.addEventListener('paste', handlePaste);
+    return () => textarea.removeEventListener('paste', handlePaste);
+  }, [onCaptureScreenshot]);
+
   const handleSubmit = async () => {
-    if (!text.trim() || disabled) return;
+    if ((!text.trim() && !screenshot) || disabled) return;
     setIsSending(true);
     await onSend(text);
     setText('');
@@ -76,6 +114,9 @@ const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a messa
       if (!isListeningRef.current || !ctx) return;
       waveformAnimRef.current = requestAnimationFrame(draw);
       analyser.getByteFrequencyData(dataArray);
+      // Sync canvas resolution to CSS size to prevent distortion
+      if (canvas.width !== canvas.clientWidth) canvas.width = canvas.clientWidth;
+      if (canvas.height !== canvas.clientHeight) canvas.height = canvas.clientHeight;
       const width = canvas.width;
       const height = canvas.height;
       ctx.clearRect(0, 0, width, height);
@@ -205,54 +246,80 @@ const MessageInput = forwardRef(({ onSend, disabled, placeholder = "Type a messa
     isListening,
   }), [isListening, toggleVoiceMode]);
 
+  const activeScreenshot = screenshot;
+
   return (
-    <div className="message-input-container">
-      {isListening && (
-        <canvas ref={waveformCanvasRef} className="waveform-canvas" />
-      )}
-      <div className="message-input-wrapper">
-        <textarea
-          ref={textareaRef}
-          id="message-input"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          disabled={disabled}
-          rows={1}
-        />
-        <button
-          className={`mic-btn ${isListening ? 'listening' : ''} ${isTranscribing ? 'transcribing' : ''}`}
-          onClick={toggleVoiceMode}
-          title={isListening ? "Stop recording" : isTranscribing ? "Transcribing..." : "Start recording"}
-          aria-label={isListening ? "Stop recording" : isTranscribing ? "Transcribing..." : "Start voice recording"}
-          disabled={(disabled && !isListening) || isTranscribing}
-        >
-          {isTranscribing ? (
-            <Mic size={20} color="#ffaa00" />
-          ) : isListening ? (
-            <span ref={micIconRef} style={{ display: 'inline-flex', transition: 'transform 0.08s ease' }}>
-              <Mic className="pulse-icon" size={20} color="#ff4a4a" />
-            </span>
-          ) : <MicOff size={20} />}
-        </button>
-        <button
-          id="send-button"
-          className={`send-btn${isSending ? ' loading' : ''}`}
-          onClick={handleSubmit}
-          disabled={!text.trim() || disabled || isSending}
-          title="Send message"
-          aria-label="Send message"
-        >
-          {isSending ? <div className="send-btn-spinner" /> : <Send size={20} />}
-        </button>
+    <>
+      <div className="message-input-container">
+        {isListening && (
+          <canvas ref={waveformCanvasRef} className="waveform-canvas" />
+        )}
+        {activeScreenshot && (
+          <div className="screenshot-preview">
+            <img src={activeScreenshot} alt="Screen capture preview" className="screenshot-preview-img" />
+            <button
+              className="screenshot-preview-remove"
+              onClick={onClearScreenshot}
+              title="Remove screenshot"
+              aria-label="Remove screenshot"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        )}
+        <div className="message-input-wrapper">
+          <textarea
+            ref={textareaRef}
+            id="message-input"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={activeScreenshot ? "Ask about what's on your screen..." : placeholder}
+            disabled={disabled}
+            rows={1}
+          />
+          <button
+            className={`screenshot-btn${activeScreenshot ? ' has-screenshot' : ''}`}
+            onClick={() => onCaptureScreenshot?.()}
+            title={activeScreenshot ? 'Replace screenshot' : 'Capture screen (Ctrl+Shift+S)'}
+            aria-label="Capture screen"
+            disabled={disabled}
+          >
+            <ScanEye size={20} />
+          </button>
+          <button
+            className={`mic-btn ${isListening ? 'listening' : ''} ${isTranscribing ? 'transcribing' : ''}`}
+            onClick={toggleVoiceMode}
+            title={isListening ? "Stop recording" : isTranscribing ? "Transcribing..." : "Start recording"}
+            aria-label={isListening ? "Stop recording" : isTranscribing ? "Transcribing..." : "Start voice recording"}
+            disabled={(disabled && !isListening) || isTranscribing}
+          >
+            {isTranscribing ? (
+              <Mic size={20} color="#ffaa00" />
+            ) : isListening ? (
+              <span ref={micIconRef} style={{ display: 'inline-flex', transition: 'transform 0.08s ease' }}>
+                <Mic className="pulse-icon" size={20} color="#ff4a4a" />
+              </span>
+            ) : <MicOff size={20} />}
+          </button>
+          <button
+            id="send-button"
+            className={`send-btn${isSending ? ' loading' : ''}`}
+            onClick={handleSubmit}
+            disabled={(!text.trim() && !activeScreenshot) || disabled || isSending}
+            title="Send message"
+            aria-label="Send message"
+          >
+            {isSending ? <div className="send-btn-spinner" /> : <Send size={20} />}
+          </button>
+        </div>
       </div>
-      {sttError && (
-        <div className="error-toast" style={{ position: 'fixed', top: 72 }} role="alert">
-          {sttError}
+      {(sttError || screenshotError) && (
+        <div className="error-toast" role="alert">
+          {sttError || screenshotError}
         </div>
       )}
-    </div>
+    </>
   );
 });
 

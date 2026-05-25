@@ -1,12 +1,173 @@
 {
-  "duration": 2.2,
+  "duration": 2,
   "loop": true,
-  "blendSpeed": 6,
+  "blendSpeed": 8,
+  "materialReset": {
+    "N00_000_00_Face_00_SKIN (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "emissive": [
+        0,
+        0,
+        0
+      ],
+      "shadeColorFactor": [
+        1,
+        1,
+        1
+      ],
+      "emissiveIntensity": 1,
+      "map": null
+    },
+    "N00_000_00_EyeHighlight_00_EYE (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
   "keyframes": [
-    { "time": 0.0, "expressions": { "happy": 0.5, "surprised": 0.3, "relaxed": 0.2, "Joy": 0.5, "Surprised": 0.3 } },
-    { "time": 0.5, "expressions": { "happy": 0.6, "surprised": 0.4, "relaxed": 0.1, "Joy": 0.6, "Surprised": 0.4 } },
-    { "time": 1.1, "expressions": { "happy": 0.4, "surprised": 0.2, "relaxed": 0.3, "Joy": 0.4, "Surprised": 0.2 } },
-    { "time": 1.7, "expressions": { "happy": 0.55, "surprised": 0.35, "relaxed": 0.15, "Joy": 0.55, "Surprised": 0.35 } },
-    { "time": 2.2, "expressions": { "happy": 0.5, "surprised": 0.3, "relaxed": 0.2, "Joy": 0.5, "Surprised": 0.3 } }
+    {
+      "time": 0,
+      "expressions": {
+        "Surprised": 0.4,
+        "sad": 0.2
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.06,
+            0.01,
+            0.01
+          ],
+          "shadeColorFactor": [
+            0.12,
+            0.04,
+            0.04
+          ],
+          "emissiveIntensity": 0.5,
+          "map": "face_blush_3"
+        }
+      }
+    },
+    {
+      "time": 0.3,
+      "expressions": {
+        "Surprised": 0.55,
+        "sad": 0.35
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.06,
+            0.01,
+            0.01
+          ],
+          "shadeColorFactor": [
+            0.18,
+            0.06,
+            0.06
+          ],
+          "emissiveIntensity": 0.5,
+          "map": "face_blush_3"
+        }
+      }
+    },
+    {
+      "time": 0.7,
+      "expressions": {
+        "Surprised": 0.35,
+        "sad": 0.2
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.06,
+            0.01,
+            0.01
+          ],
+          "shadeColorFactor": [
+            0.1,
+            0.03,
+            0.03
+          ],
+          "emissiveIntensity": 0.5,
+          "map": "face_blush_3"
+        }
+      }
+    },
+    {
+      "time": 1.1,
+      "expressions": {
+        "Surprised": 0.45,
+        "sad": 0.3
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.06,
+            0.01,
+            0.01
+          ],
+          "shadeColorFactor": [
+            0.15,
+            0.05,
+            0.05
+          ],
+          "emissiveIntensity": 0.5,
+          "map": "face_blush_3"
+        }
+      }
+    },
+    {
+      "time": 1.6,
+      "expressions": {
+        "Surprised": 0.3,
+        "sad": 0.15
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.06,
+            0.01,
+            0.01
+          ],
+          "shadeColorFactor": [
+            0.08,
+            0.02,
+            0.02
+          ],
+          "emissiveIntensity": 0.5,
+          "map": "face_blush_3"
+        }
+      }
+    },
+    {
+      "time": 2,
+      "expressions": {
+        "Surprised": 0.35,
+        "sad": 0.2
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.06,
+            0.01,
+            0.01
+          ],
+          "shadeColorFactor": [
+            0.12,
+            0.04,
+            0.04
+          ],
+          "emissiveIntensity": 0.5,
+          "map": "face_blush_3"
+        }
+      }
+    }
   ]
 }

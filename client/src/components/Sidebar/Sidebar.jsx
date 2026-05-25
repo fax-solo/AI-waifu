@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { MessageSquare, Plus, Trash2, Settings, Pin, PinOff, Search } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
@@ -12,7 +12,7 @@ function savePinned(ids) {
   localStorage.setItem('waifu-pinned-convs', JSON.stringify(ids));
 }
 
-export default function Sidebar({
+function Sidebar({
   conversations,
   activeConversationId,
   isOpen,
@@ -168,3 +168,5 @@ export default function Sidebar({
     </>
   );
 }
+
+export default memo(Sidebar);

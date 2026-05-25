@@ -19,6 +19,13 @@ export default function MessageBubble({ message }) {
                 p: ({ children }) => <p>{children}</p>,
                 strong: ({ children }) => <strong>{children}</strong>,
                 em: ({ children }) => <em>{children}</em>,
+                ul: ({ children }) => <ul>{children}</ul>,
+                ol: ({ children }) => <ol>{children}</ol>,
+                li: ({ children }) => <li>{children}</li>,
+                code: ({ children }) => <code>{children}</code>,
+                pre: ({ children }) => <pre>{children}</pre>,
+                a: ({ children, href }) => <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>,
+                blockquote: ({ children }) => <blockquote>{children}</blockquote>,
               }}
             >
               {message.content}

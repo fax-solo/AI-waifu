@@ -1,12 +1,161 @@
 {
-  "duration": 2.0,
+  "duration": 2,
   "loop": true,
-  "blendSpeed": 7,
+  "blendSpeed": 10,
+  "materialReset": {
+    "N00_000_00_Face_00_SKIN (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "emissive": [
+        0,
+        0,
+        0
+      ],
+      "shadeColorFactor": [
+        1,
+        1,
+        1
+      ],
+      "emissiveIntensity": 1,
+      "map": null
+    },
+    "N00_000_00_EyeHighlight_00_EYE (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
   "keyframes": [
-    { "time": 0.0, "expressions": { "sad": 0.3, "surprised": 0.4, "Sorrow": 0.3, "Surprised": 0.3 } },
-    { "time": 0.4, "expressions": { "sad": 0.4, "surprised": 0.5, "Sorrow": 0.4, "Surprised": 0.4 } },
-    { "time": 1.0, "expressions": { "sad": 0.25, "surprised": 0.3, "Sorrow": 0.25, "Surprised": 0.25 } },
-    { "time": 1.5, "expressions": { "sad": 0.35, "surprised": 0.45, "Sorrow": 0.35, "Surprised": 0.35 } },
-    { "time": 2.0, "expressions": { "sad": 0.3, "surprised": 0.4, "Sorrow": 0.3, "Surprised": 0.3 } }
+    {
+      "time": 0,
+      "expressions": {
+        "sad": 0.2,
+        "Surprised": 0.3
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissiveIntensity": 0.15,
+          "emissive": [
+            0,
+            0,
+            0.008
+          ],
+          "map": "face_sweat"
+        }
+      }
+    },
+    {
+      "time": 0.3,
+      "expressions": {
+        "sad": 0.2,
+        "Surprised": 0.55
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissiveIntensity": 0.15,
+          "emissive": [
+            0,
+            0,
+            0.008
+          ],
+          "map": "face_sweat"
+        }
+      }
+    },
+    {
+      "time": 0.6,
+      "expressions": {
+        "sad": 0.2,
+        "Surprised": 0.3
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissiveIntensity": 0.15,
+          "emissive": [
+            0,
+            0,
+            0.008
+          ],
+          "map": "face_sweat"
+        }
+      }
+    },
+    {
+      "time": 0.9,
+      "expressions": {
+        "sad": 0.2,
+        "Surprised": 0.5
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissiveIntensity": 0.15,
+          "emissive": [
+            0,
+            0,
+            0.008
+          ],
+          "map": "face_sweat"
+        }
+      }
+    },
+    {
+      "time": 1.3,
+      "expressions": {
+        "sad": 0.2,
+        "Surprised": 0.25
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissiveIntensity": 0.15,
+          "emissive": [
+            0,
+            0,
+            0.008
+          ],
+          "map": "face_sweat"
+        }
+      }
+    },
+    {
+      "time": 1.7,
+      "expressions": {
+        "sad": 0.2,
+        "Surprised": 0.45
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissiveIntensity": 0.15,
+          "emissive": [
+            0,
+            0,
+            0.008
+          ],
+          "map": "face_sweat"
+        }
+      }
+    },
+    {
+      "time": 2,
+      "expressions": {
+        "sad": 0.2,
+        "Surprised": 0.3
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissiveIntensity": 0.15,
+          "emissive": [
+            0,
+            0,
+            0.008
+          ],
+          "map": "face_sweat"
+        }
+      }
+    }
   ]
 }

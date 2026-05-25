@@ -70,6 +70,15 @@ No test, lint, or typecheck scripts exist. Ad-hoc test scripts live in `server/s
 - **i18n**: English + Arabic with RTL support in `client/src/translations/`.
 - **Client loads via `file:` protocol** in production — API client detects this and sets base URL to `http://127.0.0.1:3005`.
 - **Animation system**: BVH files in `server/data/animations/body/` resolved by `animationResolver.js` based on AI response sentiment + tags.
+- **Animation hooks** (`client/src/animations/`):
+  - `useExpressionTextures.js` — loads & composites face overlays (blush, sweat) and eye replacement textures. Auto-detects face sub-region on body atlases via `detectFaceRegion()` and applies alignment offset (dx/dy/sx/sy) so overlays land at the correct UV position. Supports VRoid and non-VRoid models.
+  - `useMaterialFix.js` — fixes material rendering issues on model load: enforces FrontSide culling for skin, sets Cutout/Transparent modes for overlays/eyes/mouth, sets `premultipliedAlpha=true`, and runs `auditSkinTextures()` to detect data texture (lightmap/AO/normal) misassigned as `mainTex` on skin materials — swaps it with the real diffuse from another slot or falls back to neutral skin color. Also resets `shadeColorFactor` if pitch-black. May need tuning for edge cases.
+  - `useRenderQueue.js` — 5-layer render order via `renderOrder` (Opaque Skin → Transparent Overlays → Cutout → Eyes → Mouth), each layer gets `renderOrder += 100`, and when any overlay is active the whole model bumps +200 to stay above scene geometry.
+  - `useWindowAnchor.js` — window-jump damping: detects sudden z-position changes (>0.02 delta) and applies a lerp factor to smooth the transition, reducing jank during window-size-triggered repositioning.
+  - `useVRMColliders.js` — collider setup: scales collider radii by 2× for collision responsiveness, calls `initFromVRM` for SpringBone metadata. Patches the SpringBoneManager `colliderGroups` setter to accept plain arrays.
+  - `useAnimator.js` — central animation driver: integrates window anchor for smooth transitions, keyword expansion (blush → blush_1/2/3 + sick_1), alpha fade support, and triggers `useMaterialFix.apply()` on model load.
+  - `useSpringBonePresets.js` — config collection for spring bone physics.
+- **Burnt/black skin fix** (`auditSkinTextures` in `useMaterialFix.js`): scans all scene textures via `collectAllTextures()` to find real diffuse maps vs data textures. Resets `shadeColorFactor` if too dark. Uses filename heuristics (`DATA_TEX_PATTERNS`/`DIFFUSE_TEX_PATTERNS`) + pixel luminance sampling. If no real diffuse found, clears mainTex and applies `#ffe0c0` fallback. Not 100% reliable — some MToon adapters from pixiv three-vrm expose uniforms differently, may need further coverage.
 - **Auto-updater**: `electron-updater` with GitHub releases — triggered from settings UI via IPC.
 
 ## Conventions

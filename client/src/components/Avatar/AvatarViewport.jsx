@@ -9,10 +9,18 @@
  * - Lip sync (Phase 4)
  */
 
-import { useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef } from 'react';
+import { useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef, memo } from 'react';
 import * as THREE from 'three';
 import { useVRM } from './useVRM.js';
 import { useAnimator } from '../../animations/useAnimator.js';
+import { useExpressionTextures, setModelHeight } from '../../animations/useExpressionTextures.js';
+import { useSpringBonePresets } from '../../animations/useSpringBonePresets.js';
+import { useVRMColliders } from '../../animations/useVRMColliders.js';
+import { useMaterialFix } from '../../animations/useMaterialFix.js';
+import { useRenderQueue } from '../../animations/useRenderQueue.js';
+import { useColorSpace } from '../../animations/useColorSpace.js';
+import { useEmissiveGlow } from '../../animations/useEmissiveGlow.js';
+import { useRimLighting } from '../../animations/useRimLighting.js';
 import * as api from '../../utils/api.js';
 
 const DEFAULT_SETTINGS = {
@@ -21,7 +29,7 @@ const DEFAULT_SETTINGS = {
   positionY: 0,
   positionZ: 0,
   rotationY: 0,
-  cameraZoom: 1.6,
+  cameraZoom: 2.9,
   cameraHeight: 1.3,
   autoAnimate: true,
 };
@@ -45,7 +53,9 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   visemeData, 
   isThinking = false, 
   isTalking = false,
-  analyser
+  analyser,
+  mouthExpression,
+  eyeExpression,
 }, ref) {
   const canvasRef = useRef(null);
   const rendererRef = useRef(null);
@@ -58,7 +68,15 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   const updateAnimationsRef = useRef(null);
 
   const { vrm, loading, progress, error, loadVRM, loadVRMFromFile, dispose, restPose } = useVRM();
-  const animator = useAnimator();
+  const tex = useExpressionTextures(vrm);
+  const animator = useAnimator({ getTexture: tex.getTexture });
+  const springPresets = useSpringBonePresets();
+  const vrmColliders = useVRMColliders();
+  const materialFix = useMaterialFix();
+  const renderQueue = useRenderQueue();
+  const colorSpace = useColorSpace();
+  const emissiveGlow = useEmissiveGlow();
+  const rimLighting = useRimLighting();
 
   // Keep refs in sync so the render loop always sees current values
   vrmRef.current = vrm;
@@ -77,6 +95,66 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   const [animCategory, setAnimCategory] = useState('all');
 
   const currentEmotion = emotion || 'neutral';
+  const testingRef = useRef(false);
+
+  // Auto-mapping: emotion → default mouth + eye overlays
+  const EMOTION_TO_FACIAL = {
+    happy: { mouth: 'smile', eye: 'happy' },
+    sad: { mouth: 'frown', eye: 'sad' },
+    angry: { mouth: 'angry', eye: 'angry' },
+    surprised: { mouth: 'surprised', eye: 'surprised' },
+    excited: { mouth: 'open', eye: 'wide' },
+    embarrassed: { mouth: 'smile', eye: 'happy' },
+    nervous: { mouth: 'pucker', eye: 'sad' },
+    affectionate: { mouth: 'smile', eye: 'happy' },
+    playful: { mouth: 'smile', eye: 'wide' },
+    tired: { mouth: 'neutral', eye: 'sad' },
+    thoughtful: { mouth: 'neutral', eye: 'neutral' },
+    smug: { mouth: 'smile', eye: 'happy' },
+    loving: { mouth: 'smile', eye: 'happy' },
+    grateful: { mouth: 'smile', eye: 'happy' },
+    annoyed: { mouth: 'frown', eye: 'angry' },
+    curious: { mouth: 'neutral', eye: 'wide' },
+    worried: { mouth: 'frown', eye: 'sad' },
+    proud: { mouth: 'smile', eye: 'happy' },
+    disgust: { mouth: 'frown', eye: 'angry' },
+    fear: { mouth: 'surprised', eye: 'wide' },
+    relaxed: { mouth: 'neutral', eye: 'neutral' },
+    neutral: { mouth: 'neutral', eye: 'neutral' },
+  };
+
+  function playFacialWithOverlays(emotion) {
+    testingRef.current = true;
+    const file = `${emotion}.json`;
+    animator.playFacial(file, { blendSpeed: 10 });
+    const mapped = EMOTION_TO_FACIAL[emotion];
+    if (mapped) {
+      if (mapped.mouth) animator.playFacialOverlay(`mouth_${mapped.mouth}.json`, { blendSpeed: 8, category: 'mouth' });
+      if (mapped.eye) animator.playFacialOverlay(`eye_${mapped.eye}.json`, { blendSpeed: 8, category: 'eye' });
+    }
+  }
+
+  function stopTesting() {
+    testingRef.current = false;
+    animator.stopAll();
+  }
+
+  const FACIAL_EMOTIONS = [
+    'neutral', 'happy', 'sad', 'angry', 'surprised', 'excited',
+    'embarrassed', 'nervous', 'affectionate', 'playful', 'tired',
+    'thoughtful', 'smug', 'loving', 'grateful', 'annoyed',
+    'curious', 'worried', 'proud', 'disgust', 'fear', 'relaxed',
+  ];
+
+  const MOUTH_SHAPES = [
+    'neutral', 'smile', 'frown', 'angry', 'surprised', 'open',
+    'wide', 'pucker', 'a', 'i', 'u', 'e', 'o',
+  ];
+
+  const EYE_EXPRESSIONS = [
+    'neutral', 'happy', 'sad', 'angry', 'surprised', 'wide',
+    'wink_left', 'wink_right',
+  ];
 
   function categorizeAnim(filename) {
     if (!filename) return 'other';
@@ -127,6 +205,8 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     isTalking, 
     analyser,
     emotion: currentEmotion,
+    mouthExpression: null,
+    eyeExpression: null,
     autoAnimate: avatarSettings.autoAnimate,
     isTesting: false,
     mouseX: 0,
@@ -164,14 +244,23 @@ const AvatarViewport = forwardRef(function AvatarViewport({
       isTalking: avatarSettings.autoAnimate ? isTalking : false, 
       analyser,
       emotion: currentEmotion,
+      mouthExpression: mouthExpression || null,
+      eyeExpression: eyeExpression || null,
       autoAnimate: avatarSettings.autoAnimate,
-      isTesting: false,
+      isTesting: testingRef.current,
       mouseX: mousePosRef.current.x,
       mouseY: mousePosRef.current.y,
       mouseMoving: mouseMovingRef.current,
       restPose,
     };
-  }, [isThinking, isTalking, analyser, avatarSettings.autoAnimate, currentEmotion, restPose]);
+  }, [isThinking, isTalking, analyser, avatarSettings.autoAnimate, currentEmotion, mouthExpression, eyeExpression, restPose]);
+
+  // Wire emotion changes → spring bone physics
+  useEffect(() => {
+    if (vrm?.humanoid && currentEmotion) {
+      springPresets.applyEmotionPhysics(currentEmotion);
+    }
+  }, [currentEmotion, vrm]);
 
   // ─── Three.js Scene Setup (React StrictMode Safe) ───────────
   // CRITICAL: React StrictMode in dev does mount → unmount → mount.
@@ -326,6 +415,9 @@ const AvatarViewport = forwardRef(function AvatarViewport({
             elapsedTime 
           });
         }
+
+        // Spring bone emotion physics
+        springPresets.update(delta, currentVrm);
       }
 
       // ── Dynamic Camera: Auto-Zoom & Parallax ────────────────
@@ -520,7 +612,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     cameraY = Math.min(cameraY, rawSize.y * 0.95);
     
     // Zoom logic: based on camera height
-    cameraDist = Math.max(cameraY * 0.55, 0.7);
+    cameraDist = Math.max(cameraY * 0.55, 2.9);
 
     console.log('[Avatar] Final Auto-framing:', { cameraY, cameraDist });
 
@@ -545,6 +637,32 @@ const AvatarViewport = forwardRef(function AvatarViewport({
       camera.lookAt(0, cameraY * 0.9, 0); // Look slightly below camera for natural angle
       console.log('[Avatar] Camera set to:', `pos(0, ${cameraY.toFixed(2)}, ${cameraDist.toFixed(2)})`,
                   `lookAt(0, ${(cameraY * 0.9).toFixed(2)}, 0)`);
+    }
+
+    // ── Step 7: Auto-init — full optimization pipeline ──
+    // Order: spring bones → colliders → materials → color space →
+    // render queue → height normalization → rim lighting → emissive glow
+    if (vrm.humanoid) {
+      springPresets.init(vrm);
+      vrmColliders.initFromVRM(vrm);
+
+      materialFix.reset();
+      materialFix.apply(vrm);
+
+      colorSpace.reset();
+      colorSpace.enforceSRGB(vrm);
+      colorSpace.gammaCorrect(vrm);
+
+      renderQueue.apply(vrm);
+
+      setModelHeight(rawSize.y);
+
+      rimLighting.apply(vrm, { color: 0xff88aa, intensity: 0.4, power: 3.5 });
+      rimLighting.applyMatCapToHair(vrm);
+
+      emissiveGlow.applyToAllEyes(vrm, 0.6);
+
+      console.log('[Avatar] Auto-init: full pipeline (materials + color space + render queue + rim + glow)');
     }
 
     setHasModel(true);
@@ -577,7 +695,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
             </svg>
             <div className="loading-percentage">{progress}%</div>
           </div>
-          <div className="loading-text">Summoning Companion...</div>
+          <div className="loading-text">Summoning Companion…</div>
         </div>
       )}
 
@@ -626,7 +744,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                 <div className="avatar-drawer-nowplaying-bar">
                   <div className="avatar-drawer-nowplaying-bar-fill" />
                 </div>
-                <button className="avatar-nowplaying-stop" onClick={() => animator.stopAll()} title="Stop">■</button>
+                <button className="avatar-nowplaying-stop" onClick={stopTesting} title="Stop">■</button>
                 <button className="avatar-drawer-close" onClick={() => setShowControls(false)} title="Close controls">✕</button>
               </div>
             ) : (
@@ -645,6 +763,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
             {[
               { key: 'avatar', label: 'Adjust', icon: '⚙️' },
               { key: 'animate', label: 'Animate', icon: '🎭' },
+              { key: 'expressions', label: 'Expressions', icon: '😊' },
               { key: 'about', label: 'About', icon: 'ℹ️' },
             ].map(tab => (
               <button
@@ -665,54 +784,75 @@ const AvatarViewport = forwardRef(function AvatarViewport({
               <div className="avatar-drawer-scroll">
                 <div className="avatar-section-title">Transform</div>
                 <div className="avatar-control-row">
-                  <label>Scale</label>
+                  <label id="slider-scale-label">Scale</label>
                   <input type="range" min="0.3" max="3.0" step="0.05"
                     value={avatarSettings.scale}
-                    onChange={(e) => updateSetting('scale', parseFloat(e.target.value))} />
+                    onChange={(e) => updateSetting('scale', parseFloat(e.target.value))}
+                    aria-labelledby="slider-scale-label"
+                    aria-valuenow={avatarSettings.scale}
+                    aria-valuemin="0.3" aria-valuemax="3.0" />
                   <span className="avatar-control-value">{avatarSettings.scale.toFixed(2)}</span>
                 </div>
                 <div className="avatar-control-row">
-                  <label>Height</label>
+                  <label id="slider-height-label">Height</label>
                   <input type="range" min="-2.0" max="2.0" step="0.05"
                     value={avatarSettings.positionY}
-                    onChange={(e) => updateSetting('positionY', parseFloat(e.target.value))} />
+                    onChange={(e) => updateSetting('positionY', parseFloat(e.target.value))}
+                    aria-labelledby="slider-height-label"
+                    aria-valuenow={avatarSettings.positionY}
+                    aria-valuemin="-2.0" aria-valuemax="2.0" />
                   <span className="avatar-control-value">{avatarSettings.positionY.toFixed(2)}</span>
                 </div>
                 <div className="avatar-control-row">
-                  <label>Rotate</label>
+                  <label id="slider-rotate-label">Rotate</label>
                   <input type="range" min={-Math.PI} max={Math.PI} step="0.01"
                     value={avatarSettings.rotationY ?? 0}
-                    onChange={(e) => updateSetting('rotationY', parseFloat(e.target.value))} />
+                    onChange={(e) => updateSetting('rotationY', parseFloat(e.target.value))}
+                    aria-labelledby="slider-rotate-label"
+                    aria-valuenow={+(avatarSettings.rotationY ?? 0).toFixed(2)}
+                    aria-valuemin={-Math.PI} aria-valuemax={Math.PI} />
                   <span className="avatar-control-value">{Math.round((avatarSettings.rotationY ?? 0) * (180/Math.PI))}°</span>
                 </div>
                 <div className="avatar-control-row">
-                  <label>Pos X</label>
+                  <label id="slider-posx-label">Pos X</label>
                   <input type="range" min="-1.0" max="1.0" step="0.01"
                     value={avatarSettings.positionX ?? 0}
-                    onChange={(e) => updateSetting('positionX', parseFloat(e.target.value))} />
+                    onChange={(e) => updateSetting('positionX', parseFloat(e.target.value))}
+                    aria-labelledby="slider-posx-label"
+                    aria-valuenow={avatarSettings.positionX ?? 0}
+                    aria-valuemin="-1.0" aria-valuemax="1.0" />
                   <span className="avatar-control-value">{(avatarSettings.positionX ?? 0).toFixed(2)}</span>
                 </div>
                 <div className="avatar-control-row">
-                  <label>Pos Z</label>
+                  <label id="slider-posz-label">Pos Z</label>
                   <input type="range" min="-1.0" max="1.0" step="0.01"
                     value={avatarSettings.positionZ ?? 0}
-                    onChange={(e) => updateSetting('positionZ', parseFloat(e.target.value))} />
+                    onChange={(e) => updateSetting('positionZ', parseFloat(e.target.value))}
+                    aria-labelledby="slider-posz-label"
+                    aria-valuenow={avatarSettings.positionZ ?? 0}
+                    aria-valuemin="-1.0" aria-valuemax="1.0" />
                   <span className="avatar-control-value">{(avatarSettings.positionZ ?? 0).toFixed(2)}</span>
                 </div>
 
                 <div className="avatar-section-title">Camera</div>
                 <div className="avatar-control-row">
-                  <label>Height</label>
+                  <label id="slider-camh-label">Height</label>
                   <input type="range" min="0" max="3.0" step="0.05"
                     value={avatarSettings.cameraHeight}
-                    onChange={(e) => updateSetting('cameraHeight', parseFloat(e.target.value))} />
+                    onChange={(e) => updateSetting('cameraHeight', parseFloat(e.target.value))}
+                    aria-labelledby="slider-camh-label"
+                    aria-valuenow={avatarSettings.cameraHeight}
+                    aria-valuemin="0" aria-valuemax="3.0" />
                   <span className="avatar-control-value">{avatarSettings.cameraHeight.toFixed(2)}</span>
                 </div>
                 <div className="avatar-control-row">
-                  <label>Zoom</label>
+                  <label id="slider-zoom-label">Zoom</label>
                   <input type="range" min="0.5" max="5.0" step="0.1"
                     value={avatarSettings.cameraZoom}
-                    onChange={(e) => updateSetting('cameraZoom', parseFloat(e.target.value))} />
+                    onChange={(e) => updateSetting('cameraZoom', parseFloat(e.target.value))}
+                    aria-labelledby="slider-zoom-label"
+                    aria-valuenow={avatarSettings.cameraZoom}
+                    aria-valuemin="0.5" aria-valuemax="5.0" />
                   <span className="avatar-control-value">{avatarSettings.cameraZoom.toFixed(1)}</span>
                 </div>
 
@@ -764,7 +904,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
 
                 <div className="avatar-section-title">
                   Browse All
-                  {animListLoading && <span className="avatar-browse-loading">loading...</span>}
+                  {animListLoading && <span className="avatar-browse-loading">loading…</span>}
                 </div>
                 <div className="avatar-browse-filters">
                   {CATEGORIES.map(cat => (
@@ -804,6 +944,64 @@ const AvatarViewport = forwardRef(function AvatarViewport({
               </div>
             )}
 
+            {/* ─── Expressions Tab ─── */}
+            {activeTab === 'expressions' && (
+              <div className="avatar-drawer-scroll">
+                <div className="avatar-section-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span>Emotions</span>
+                  <button className="avatar-btn" style={{ fontSize: '0.75rem', padding: '2px 8px' }} onClick={stopTesting}>■ Stop All</button>
+                </div>
+                <div className="avatar-btn-grid cols-4">
+                  {FACIAL_EMOTIONS.map(em => (
+                    <button
+                      key={em}
+                      className="avatar-btn"
+                      onClick={() => playFacialWithOverlays(em)}
+                      title={em}
+                    >
+                      {em.charAt(0).toUpperCase() + em.slice(1)}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="avatar-section-title">Mouth Shapes</div>
+                <div className="avatar-btn-grid cols-4">
+                  {MOUTH_SHAPES.map(m => (
+                    <button
+                      key={m}
+                      className="avatar-btn"
+                      onClick={() => { testingRef.current = true; animator.playFacialOverlay(`mouth_${m}.json`, { blendSpeed: 8, category: 'mouth' }); }}
+                      title={m}
+                    >
+                      Mouth {m.charAt(0).toUpperCase() + m.slice(1)}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="avatar-section-title">Eye Expressions</div>
+                <div className="avatar-btn-grid cols-4">
+                  {EYE_EXPRESSIONS.map(e => (
+                    <button
+                      key={e}
+                      className="avatar-btn"
+                      onClick={() => { testingRef.current = true; animator.playFacialOverlay(`eye_${e}.json`, { blendSpeed: 8, category: 'eye' }); }}
+                      title={e}
+                    >
+                      Eye {e.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                    </button>
+                  ))}
+                </div>
+
+
+
+                {testingRef.current && (
+                  <div className="avatar-actions-row" style={{ marginTop: 8 }}>
+                    <button className="avatar-btn" onClick={stopTesting}>End Testing (resume AI)</button>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ─── About Tab ─── */}
             {activeTab === 'about' && (
               <div className="avatar-drawer-scroll">
@@ -836,4 +1034,4 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   );
 });
 
-export default AvatarViewport;
+export default memo(AvatarViewport);

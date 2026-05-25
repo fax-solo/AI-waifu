@@ -1,6 +1,6 @@
 export default function TypingIndicator({ isSearching }) {
   return (
-    <div className="typing-indicator" style={{ flexDirection: 'column', alignItems: 'flex-start' }}>
+    <div className="typing-indicator" style={{ flexDirection: 'column', alignItems: 'flex-start' }} role="status" aria-live="polite" aria-label={isSearching ? 'Searching the web and typing' : 'Companion is typing'}>
       <div style={{ display: 'flex', gap: 12 }}>
         <div className="message-avatar" style={{
           background: 'linear-gradient(135deg, var(--color-companion-dark), var(--color-companion))',

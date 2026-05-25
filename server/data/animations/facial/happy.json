@@ -1,12 +1,120 @@
 {
-  "duration": 2.0,
+  "duration": 2,
   "loop": true,
   "blendSpeed": 8,
+  "materialReset": {
+    "N00_000_00_Face_00_SKIN (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "emissive": [
+        0,
+        0,
+        0
+      ],
+      "shadeColorFactor": [
+        1,
+        1,
+        1
+      ],
+      "emissiveIntensity": 1,
+      "map": null
+    },
+    "N00_000_00_EyeHighlight_00_EYE (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
   "keyframes": [
-    { "time": 0.0, "expressions": { "happy": 0.95, "Joy": 0.95 } },
-    { "time": 0.4, "expressions": { "happy": 1.0, "Joy": 1.0 } },
-    { "time": 1.0, "expressions": { "happy": 0.92, "Joy": 0.92 } },
-    { "time": 1.5, "expressions": { "happy": 1.0, "Joy": 1.0 } },
-    { "time": 2.0, "expressions": { "happy": 0.95, "Joy": 0.95 } }
+    {
+      "time": 0,
+      "expressions": {
+        "happy": 0.6
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.03,
+            0.005,
+            0.005
+          ],
+          "emissiveIntensity": 0.3,
+          "map": "face_blush_1"
+        }
+      }
+    },
+    {
+      "time": 0.2,
+      "expressions": {
+        "happy": 0.9
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.03,
+            0.005,
+            0.005
+          ],
+          "emissiveIntensity": 0.3,
+          "map": "face_blush_1"
+        }
+      }
+    },
+    {
+      "time": 0.6,
+      "expressions": {
+        "happy": 0.75
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.03,
+            0.005,
+            0.005
+          ],
+          "emissiveIntensity": 0.3,
+          "map": "face_blush_1"
+        }
+      }
+    },
+    {
+      "time": 1.2,
+      "expressions": {
+        "happy": 0.7
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.03,
+            0.005,
+            0.005
+          ],
+          "emissiveIntensity": 0.3,
+          "map": "face_blush_1"
+        }
+      }
+    },
+    {
+      "time": 2,
+      "expressions": {
+        "happy": 0.7
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0.03,
+            0.005,
+            0.005
+          ],
+          "emissiveIntensity": 0.3,
+          "map": "face_blush_1"
+        }
+      }
+    }
   ]
 }

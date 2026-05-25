@@ -19,9 +19,8 @@ out/
 .webpack/
 
 # Python Virtual Environments
-python/venv/
+python/venv*/
 python/.venv/
-python/venv_py311/
 python/runtime/
 python/tts_cache/
 venv/
@@ -36,11 +35,17 @@ __pycache__/
 *.pth
 *.weights
 *.h5
+python/*.onnx
+python/*.bin
 
 # Local Databases
 server/data/*.sqlite
 server/data/*.sqlite-journal
 *.db
+
+# Data folders (textures, assets, etc.)
+Assets/
+server/data/textures/
 
 # IDEs and System
 .vscode/
@@ -48,3 +53,4 @@ server/data/*.sqlite-journal
 .DS_Store
 Thumbs.db
 desktop.ini
+tts_cache/

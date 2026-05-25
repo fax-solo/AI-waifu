@@ -6,6 +6,7 @@ export const DEFAULT_SHORTCUTS = {
   newChat: 'Ctrl+Shift+N',
   toggleSettings: 'Ctrl+,',
   toggleTTS: 'Ctrl+Shift+V',
+  captureScreenshot: 'Ctrl+Shift+S',
 };
 
 const SHORTCUT_LABELS = {
@@ -14,6 +15,7 @@ const SHORTCUT_LABELS = {
   newChat: 'New Chat',
   toggleSettings: 'Toggle Settings',
   toggleTTS: 'Toggle Voice Output',
+  captureScreenshot: 'Capture Screen',
 };
 
 export { SHORTCUT_LABELS };

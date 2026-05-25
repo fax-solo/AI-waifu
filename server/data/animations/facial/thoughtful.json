@@ -1,12 +1,75 @@
 {
-  "duration": 2.5,
+  "duration": 2,
   "loop": true,
-  "blendSpeed": 5,
+  "blendSpeed": 6,
+  "materialReset": {
+    "N00_000_00_Face_00_SKIN (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "emissive": [
+        0,
+        0,
+        0
+      ],
+      "shadeColorFactor": [
+        1,
+        1,
+        1
+      ]
+    },
+    "N00_000_00_EyeHighlight_00_EYE (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
   "keyframes": [
-    { "time": 0.0, "expressions": { "sad": 0.15, "surprised": 0.15, "Surprised": 0.15 } },
-    { "time": 0.8, "expressions": { "sad": 0.2, "surprised": 0.2, "Surprised": 0.2 } },
-    { "time": 1.5, "expressions": { "sad": 0.1, "surprised": 0.1, "Surprised": 0.1 } },
-    { "time": 2.0, "expressions": { "sad": 0.2, "surprised": 0.2, "Surprised": 0.2 } },
-    { "time": 2.5, "expressions": { "sad": 0.15, "surprised": 0.15, "Surprised": 0.15 } }
+    {
+      "time": 0,
+      "expressions": {
+        "Surprised": 0.3
+      },
+      "materials": {},
+      "vfx": [
+        "thought"
+      ]
+    },
+    {
+      "time": 0.4,
+      "expressions": {
+        "Surprised": 0.35
+      }
+    },
+    {
+      "time": 0.8,
+      "expressions": {
+        "Surprised": 0.15,
+        "neutral": 0
+      }
+    },
+    {
+      "time": 1.2,
+      "expressions": {
+        "Surprised": 0.25
+      }
+    },
+    {
+      "time": 1.6,
+      "expressions": {
+        "Surprised": 0.1,
+        "neutral": 0
+      }
+    },
+    {
+      "time": 2,
+      "expressions": {
+        "Surprised": 0.2
+      }
+    }
   ]
 }

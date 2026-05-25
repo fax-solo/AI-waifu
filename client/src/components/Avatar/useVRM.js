@@ -17,6 +17,14 @@ import { BONE_MAPPING } from '../../animations/useBVH.js';
 function tuneSpringBones(vrm) {
   if (!vrm?.springBoneManager?.joints) return;
   let tuned = 0;
+
+  // Check colliders first — models without any colliders are prone to spring bone explosions
+  const colliderGroups = vrm.springBoneManager?.colliderGroups;
+  const hasColliders = colliderGroups && colliderGroups.length > 0;
+  if (!hasColliders) {
+    console.warn('[VRM] Model has NO spring bone colliders — setting tiny hit radius to prevent bones popping out');
+  }
+
   for (const joint of vrm.springBoneManager.joints) {
     const s = joint.settings;
     if (!s) continue;
@@ -26,28 +34,38 @@ function tuneSpringBones(vrm) {
     // Per-group defaults
     let stiffness = 0.55, drag = 0.6, gravity = 0.15, radius = 0.1;
 
-    if (name.includes('Hair') || name.includes('Skirt') || name.includes('Coat')) {
-      // Skip — use model's original settings
-      continue;
-    } else if (name.includes('Bust')) {
-      // Bust: softer, natural bounce
-      stiffness = 0.45;
-      drag = 0.55;
-      gravity = 0.12;
-    } else if (name.includes('Skirt') && !name.includes('Coat')) {
+    if (name.includes('Hair')) {
+      // Hair: keep original settings, only apply safety clamping below
+      stiffness = s.stiffness ?? 0.4;
+      drag = s.dragForce ?? 0.5;
+      gravity = s.gravityPower ?? 0.08;
+      radius = s.hitRadius ?? 0.06;
+    } else if (name.includes('CoatSkirt')) {
+      // Coat skirt: firm, large collision
+      stiffness = 0.65;
+      drag = 0.65;
+      gravity = 0.1;
+      radius = 0.12;
+    } else if (name.includes('Coat')) {
+      // Coat: firm
+      stiffness = 0.65;
+      drag = 0.65;
+      gravity = 0.1;
+      radius = 0.12;
+    } else if (name.includes('Skirt')) {
       // Skirt: stiffer, larger collision to prevent leg clipping & flipping up
       stiffness = 0.6;
       drag = 0.65;
       gravity = 0.12;
       radius = 0.14;
-    } else if (name.includes('CoatSkirt') || name.includes('Coat')) {
-      // Coat / coat-skirt: firm, large collision
-      stiffness = 0.65;
-      drag = 0.65;
-      gravity = 0.1;
-      radius = 0.12;
+    } else if (name.includes('Bust')) {
+      // Bust: softer, natural bounce
+      stiffness = 0.45;
+      drag = 0.55;
+      gravity = 0.12;
     }
 
+    // Apply per-group defaults (with tolerance to avoid unnecessary overrides)
     if (s.stiffness == null || Math.abs(s.stiffness - stiffness) > 0.15) {
       s.stiffness = stiffness; changed = true;
     }
@@ -57,20 +75,19 @@ function tuneSpringBones(vrm) {
     if (s.gravityPower == null || Math.abs(s.gravityPower - gravity) > 0.1) {
       s.gravityPower = gravity; changed = true;
     }
-    if (s.hitRadius == null || s.hitRadius < 0.06 || s.hitRadius > 0.2) {
-      s.hitRadius = radius; changed = true;
+
+    // Safety clamping for ALL joints — prevents NaN physics explosions
+    if (s.hitRadius == null || s.hitRadius < 0.02 || (!hasColliders && s.hitRadius > 0.05)) {
+      s.hitRadius = hasColliders ? Math.min(Math.max(s.hitRadius ?? 0.06, 0.02), 0.2) : 0.02;
+      changed = true;
     }
+    if (s.stiffness > 0.95) { s.stiffness = 0.95; changed = true; }
+    if (s.dragForce < 0.05 || s.dragForce > 0.98) { s.dragForce = Math.min(Math.max(s.dragForce, 0.05), 0.95); changed = true; }
 
     if (changed) {
       tuned++;
       console.log(`[VRM] Spring bone "${name}" → stiffness=${s.stiffness.toFixed(2)} drag=${s.dragForce.toFixed(2)} gravity=${s.gravityPower.toFixed(2)} radius=${s.hitRadius.toFixed(3)}`);
     }
-  }
-  const colliderGroups = vrm.springBoneManager?.colliderGroups;
-  if (!colliderGroups || colliderGroups.length === 0) {
-    console.warn('[VRM] Model has NO spring bone colliders — hair/skirt will clip through body');
-  } else {
-    console.log(`[VRM] Model has ${colliderGroups.length} collider group(s)`);
   }
   if (tuned > 0) console.log(`[VRM] Tuned ${tuned} spring bone joints`);
 }
@@ -173,17 +190,22 @@ export function useVRM() {
       if (isVRM) {
         console.log('[Model] VRM data found:', loadedVRM.meta?.name || 'Unnamed');
 
-        // Optimize: remove unnecessary vertices and joints before creating skeleton
+        // Optimize: remove unnecessary vertices (safe)
         try {
           VRMUtils.removeUnnecessaryVertices(gltf.scene);
-          VRMUtils.removeUnnecessaryJoints(gltf.scene);
-          console.log('[Model] Removed unnecessary vertices and joints');
+          console.log('[Model] Removed unnecessary vertices');
         } catch (e) {
           console.warn('[Model] Optimization skipped:', e.message);
         }
+        // SKIP removeUnnecessaryJoints — it removes leaf bones that spring
+        // bones reference, causing dangling nodes and bone pop-out.
 
         // Rotate model to face the camera (VRM 0.x faces +Z, needs 180deg flip)
         VRMUtils.rotateVRM0(loadedVRM);
+
+        // Reset spring bones after rotation so their initial state matches the
+        // new orientation — prevents them fighting the 180° flip every frame
+        loadedVRM.springBoneManager?.reset();
 
         // Capture rest pose after rotation but before any animation
         captureRestPose(loadedVRM);

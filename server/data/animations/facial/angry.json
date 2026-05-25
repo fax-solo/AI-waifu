@@ -1,12 +1,172 @@
 {
-  "duration": 1.8,
+  "duration": 2,
   "loop": true,
-  "blendSpeed": 9,
+  "blendSpeed": 10,
+  "materialReset": {
+    "N00_000_00_Face_00_SKIN (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "emissive": [
+        0,
+        0,
+        0
+      ],
+      "shadeColorFactor": [
+        1,
+        1,
+        1
+      ],
+      "emissiveIntensity": 1,
+      "map": null
+    },
+    "N00_000_00_EyeHighlight_00_EYE (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "map": null
+    }
+  },
   "keyframes": [
-    { "time": 0.0, "expressions": { "angry": 0.9, "Angry": 0.9 } },
-    { "time": 0.3, "expressions": { "angry": 1.0, "Angry": 1.0 } },
-    { "time": 0.9, "expressions": { "angry": 0.85, "Angry": 0.85 } },
-    { "time": 1.4, "expressions": { "angry": 1.0, "Angry": 1.0 } },
-    { "time": 1.8, "expressions": { "angry": 0.9, "Angry": 0.9 } }
+    {
+      "time": 0,
+      "expressions": {
+        "angry": 0.5
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0,
+            0,
+            0.005
+          ],
+          "emissiveIntensity": 0.2,
+          "map": "face_shade"
+        }
+      }
+    },
+    {
+      "time": 0.15,
+      "expressions": {
+        "angry": 0.95
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0,
+            0,
+            0.005
+          ],
+          "emissiveIntensity": 0.2,
+          "map": "face_shade"
+        }
+      }
+    },
+    {
+      "time": 0.4,
+      "expressions": {
+        "angry": 0.7
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0,
+            0,
+            0.005
+          ],
+          "emissiveIntensity": 0.2,
+          "map": "face_shade"
+        }
+      }
+    },
+    {
+      "time": 0.7,
+      "expressions": {
+        "angry": 0.9
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0,
+            0,
+            0.005
+          ],
+          "emissiveIntensity": 0.2,
+          "map": "face_shade"
+        }
+      }
+    },
+    {
+      "time": 1,
+      "expressions": {
+        "angry": 0.65
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0,
+            0,
+            0.005
+          ],
+          "emissiveIntensity": 0.2,
+          "map": "face_shade"
+        }
+      }
+    },
+    {
+      "time": 1.4,
+      "expressions": {
+        "angry": 0.85
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0,
+            0,
+            0.005
+          ],
+          "emissiveIntensity": 0.2,
+          "map": "face_shade"
+        }
+      }
+    },
+    {
+      "time": 1.8,
+      "expressions": {
+        "angry": 0.6
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0,
+            0,
+            0.005
+          ],
+          "emissiveIntensity": 0.2,
+          "map": "face_shade"
+        }
+      }
+    },
+    {
+      "time": 2,
+      "expressions": {
+        "angry": 0.7
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "emissive": [
+            0,
+            0,
+            0.005
+          ],
+          "emissiveIntensity": 0.2,
+          "map": "face_shade"
+        }
+      }
+    }
   ]
 }

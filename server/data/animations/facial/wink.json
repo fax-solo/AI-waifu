@@ -1,12 +1,43 @@
 {
+  "name": "wink",
+  "type": "facial",
   "duration": 0.3,
   "loop": false,
   "blendSpeed": 15,
   "keyframes": [
-    { "time": 0.0, "expressions": {} },
-    { "time": 0.05, "expressions": { "blinkLeft": 1.0 } },
-    { "time": 0.15, "expressions": { "blinkLeft": 1.0, "happy": 0.3 } },
-    { "time": 0.25, "expressions": { "blinkLeft": 1.0 } },
-    { "time": 0.3, "expressions": {} }
+    {
+      "time": 0,
+      "expressions": {}
+    },
+    {
+      "time": 0.05,
+      "expressions": {
+        "Blink_R": 1
+      }
+    },
+    {
+      "time": 0.1,
+      "expressions": {
+        "Blink_R": 1,
+        "Fun": 0.25
+      }
+    },
+    {
+      "time": 0.2,
+      "expressions": {
+        "Blink_R": 1,
+        "Fun": 0.25
+      }
+    },
+    {
+      "time": 0.25,
+      "expressions": {
+        "Blink_R": 1
+      }
+    },
+    {
+      "time": 0.3,
+      "expressions": {}
+    }
   ]
 }

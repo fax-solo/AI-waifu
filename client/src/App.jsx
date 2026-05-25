@@ -1,9 +1,9 @@
 import { useLanguage } from './contexts/LanguageContext.jsx';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { useChat } from './hooks/useChat.js';
 import Sidebar from './components/Sidebar/Sidebar.jsx';
 import ChatWindow from './components/Chat/ChatWindow.jsx';
-import Settings from './components/Settings/Settings.jsx';
+const Settings = lazy(() => import('./components/Settings/Settings.jsx'));
 import AvatarViewport from './components/Avatar/AvatarViewport.jsx';
 import SetupUI from './components/Setup/SetupUI.jsx';
 import { useTTS } from './hooks/useTTS.js';
@@ -49,16 +49,22 @@ export default function App() {
     shortcuts: DEFAULT_SHORTCUTS
   });
   const [currentEmotion, setCurrentEmotion] = useState('neutral');
+  const [mouthExpression, setMouthExpression] = useState(null);
+  const [eyeExpression, setEyeExpression] = useState(null);
+  const [screenshot, setScreenshot] = useState(null);
+  const [screenshotError, setScreenshotError] = useState('');
   const [avatarCollapsed, setAvatarCollapsed] = useState(false);
   const { speak, isPlaying, analyser } = useTTS();
   const messageInputRef = useRef(null);
   
-  // Resizing state
+  // Resizing state — use ref during drag to avoid re-renders
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = localStorage.getItem('waifu-panel-width');
     return saved ? parseInt(saved, 10) : DEFAULT_PANEL_WIDTH;
   });
   const [isResizing, setIsResizing] = useState(false);
+  const panelWidthRef = useRef(panelWidth);
+  const pendingWidthRef = useRef(null);
   
   const avatarRef = useRef(null);
   const settingsReqId = useRef(0);
@@ -146,25 +152,29 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Resizing logic
+  // Resizing logic — updates ref during drag, commits to state + localStorage on mouseup
   const startResizing = useCallback((e) => {
     e.preventDefault();
+    panelWidthRef.current = panelWidth;
     setIsResizing(true);
-  }, []);
+  }, [panelWidth]);
 
   const stopResizing = useCallback(() => {
     setIsResizing(false);
+    if (pendingWidthRef.current !== null) {
+      setPanelWidth(pendingWidthRef.current);
+      localStorage.setItem('waifu-panel-width', pendingWidthRef.current.toString());
+      pendingWidthRef.current = null;
+    }
   }, []);
 
   const resize = useCallback((e) => {
     if (!isResizing) return;
-    
-    // Calculate new width
     const sidebarWidth = sidebarOpen ? 300 : 0;
     const newWidth = e.clientX - sidebarWidth;
-    
     if (newWidth >= MIN_PANEL_WIDTH && newWidth <= window.innerWidth * 0.7) {
-      setPanelWidth(newWidth);
+      panelWidthRef.current = newWidth;
+      pendingWidthRef.current = newWidth;
     }
   }, [isResizing, sidebarOpen]);
 
@@ -178,12 +188,6 @@ export default function App() {
       setPanelWidth(prev => Math.min(window.innerWidth * 0.7, prev + step));
     }
   }, []);
-
-  useEffect(() => {
-    if (!isResizing) {
-      localStorage.setItem('waifu-panel-width', panelWidth.toString());
-    }
-  }, [isResizing, panelWidth]);
 
   useEffect(() => {
     if (isResizing) {
@@ -221,7 +225,12 @@ export default function App() {
   };
 
   const handleSendMessage = async (message) => {
-    const result = await sendMessage(message);
+    const currentScreenshot = screenshot;
+    if (currentScreenshot) {
+      clearScreenshot();
+    }
+
+    const result = await sendMessage(message, currentScreenshot);
 
     if (result?.animation && avatarRef.current) {
       avatarRef.current.triggerAnimation('body', result.animation, { loop: result.loopAnimation ?? false });
@@ -229,6 +238,12 @@ export default function App() {
     
     if (result?.emotion) {
       setCurrentEmotion(result.emotion);
+    }
+    if (result?.mouthExpression) {
+      setMouthExpression(result.mouthExpression);
+    }
+    if (result?.eyeExpression) {
+      setEyeExpression(result.eyeExpression);
     }
 
     if (result?.message) {
@@ -246,6 +261,86 @@ export default function App() {
       }
     }
   };
+
+  const captureScreenshot = useCallback(async (dataUrl) => {
+    if (typeof dataUrl === 'string') {
+      setScreenshot(dataUrl);
+      return;
+    }
+
+    try {
+      setScreenshotError('');
+
+      // Try Electron main-process capturePage via IPC
+      if (typeof window.electronAPI?.captureScreenshot === 'function') {
+        const result = await window.electronAPI.captureScreenshot();
+        if (!result.error) {
+          setScreenshot(`data:image/png;base64,${result.data}`);
+          return;
+        }
+      }
+
+      // Fallback: use the standard Screen Capture API
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: false,
+      });
+
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.play();
+
+      // Wait a frame for the video to load
+      await new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          video.currentTime = 0;
+          video.onseeked = resolve;
+        };
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+
+      // Stop all tracks to dismiss the screen picker
+      stream.getTracks().forEach((t) => t.stop());
+
+      canvas.toBlob((blob) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          setScreenshot(e.target.result);
+        };
+        reader.readAsDataURL(blob);
+      }, 'image/png');
+    } catch (err) {
+      if (err.name === 'NotAllowedError' || err.message?.includes('cancel')) {
+        setScreenshotError('Screen capture cancelled.');
+      } else {
+        setScreenshotError('Failed to capture screen: ' + err.message);
+      }
+      setTimeout(() => setScreenshotError(''), 4000);
+    }
+  }, []);
+
+  const clearScreenshot = useCallback(() => {
+    setScreenshot(null);
+    setScreenshotError('');
+  }, []);
+
+  // Listen for global shortcut screenshots from the main process
+  useEffect(() => {
+    const cleanup = window.electronAPI?.onScreenshot?.((result) => {
+      if (result.data) {
+        setScreenshot(`data:image/png;base64,${result.data}`);
+      } else if (result.error) {
+        setScreenshotError(result.error);
+        setTimeout(() => setScreenshotError(''), 4000);
+      }
+    });
+    return () => cleanup?.();
+  }, []);
 
   const handleToggleTTS = async () => {
     const newState = !companionSettings.ttsEnabled;
@@ -267,6 +362,7 @@ export default function App() {
       newChat: handleNewChat,
       toggleSettings: () => setShowSettings(prev => !prev),
       toggleTTS: handleToggleTTS,
+      captureScreenshot,
     }
   );
 
@@ -325,6 +421,8 @@ export default function App() {
           <AvatarViewport
             ref={avatarRef}
             emotion={currentEmotion}
+            mouthExpression={mouthExpression}
+            eyeExpression={eyeExpression}
             isThinking={isSending}
             isTalking={isPlaying}
             analyser={analyser}
@@ -375,20 +473,26 @@ export default function App() {
           ttsEnabled={companionSettings.ttsEnabled}
           onToggleTTS={handleToggleTTS}
           audioInputDevice={companionSettings.audioInputDevice}
+          screenshot={screenshot}
+          screenshotError={screenshotError}
+          onCaptureScreenshot={captureScreenshot}
+          onClearScreenshot={clearScreenshot}
         />
       </div>
 
       {showSettings && (
-        <Settings
-          onClose={handleSettingsClose}
-          onVRMFileSelected={handleVRMFileSelected}
-          avatarRef={avatarRef}
-          onShortcutsChange={handleShortcutsChange}
-          onTriggerSetup={() => {
-            setShowSettings(false);
-            setShowSetup(true);
-          }}
-        />
+        <Suspense fallback={null}>
+          <Settings
+            onClose={handleSettingsClose}
+            onVRMFileSelected={handleVRMFileSelected}
+            avatarRef={avatarRef}
+            onShortcutsChange={handleShortcutsChange}
+            onTriggerSetup={() => {
+              setShowSettings(false);
+              setShowSetup(true);
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );

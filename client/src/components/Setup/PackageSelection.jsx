@@ -179,7 +179,7 @@ export default function PackageSelection({ onNext, onPackagesSelected, systemInf
                 <div className="package-icon">{pkg.icon}</div>
                 <span className="package-size">{pkg.size}</span>
               </div>
-              <h3>{pkg.name} {pkg.required && <span style={{fontSize: '0.75rem', color: 'var(--setup-text-muted)', fontWeight: 'normal'}}>(Required)</span>}</h3>
+              <h3>{pkg.name} {pkg.required && <span style={{fontSize: '0.75rem', color: 'var(--color-text-muted)', fontWeight: 'normal'}}>(Required)</span>}</h3>
               <p>{pkg.description}</p>
 
               <div className="checkbox-indicator">

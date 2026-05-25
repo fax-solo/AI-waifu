@@ -1,0 +1,45 @@
+{
+  "duration": 2,
+  "loop": true,
+  "blendSpeed": 4,
+  "materialReset": {
+    "N00_000_00_Face_00_SKIN (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "emissive": [
+        0,
+        0,
+        0
+      ],
+      "shadeColorFactor": [
+        1,
+        1,
+        1
+      ]
+    },
+    "N00_000_00_EyeHighlight_00_EYE (Instance)": {
+      "color": [
+        1,
+        1,
+        1
+      ]
+    }
+  },
+  "keyframes": [
+    {
+      "time": 0,
+      "expressions": {
+        "neutral": 0
+      }
+    },
+    {
+      "time": 2,
+      "expressions": {
+        "neutral": 0
+      }
+    }
+  ]
+}

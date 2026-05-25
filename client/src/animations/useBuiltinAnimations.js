@@ -1,4 +1,5 @@
 import { useRef, useCallback } from 'react';
+import { LookAtController } from './LookAtController.js';
 
 function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 function easeInCubic(t) { return t * t * t; }
@@ -41,86 +42,130 @@ export function useBuiltinAnimations() {
     'leftClavicle', 'rightClavicle',
   ];
 
-  const updateBuiltins = useCallback((vrm, deltaTime, { mouseX = 0, mouseY = 0, mouseMoving = false } = {}) => {
+  const updateBuiltins = useCallback((vrm, deltaTime, {
+    mouseX = 0,
+    mouseY = 0,
+    mouseMoving = false,
+    proxy = null,
+    queue = null,
+    lookAtController = null,
+  } = {}) => {
     if (!vrm) return;
     if (isNaN(deltaTime) || deltaTime <= 0 || !isFinite(deltaTime)) return;
 
-    updateBlink(vrm, deltaTime);
-    updateEyes(vrm, deltaTime, mouseX, mouseY, mouseMoving);
+    updateBlink(vrm, deltaTime, proxy, queue);
+    updateEyes(vrm, deltaTime, mouseX, mouseY, mouseMoving, lookAtController);
     updateBreathing(vrm, deltaTime);
     applyBlendBuffer(vrm, deltaTime);
   }, []);
 
-  function updateBlink(vrm, deltaTime) {
+  function updateBlink(vrm, deltaTime, proxy, queue) {
     const em = vrm.expressionManager || vrm.blendShapeProxy;
     if (!em) return;
     const s = blinkState.current;
 
-    const eyeClosingExpressions = ['blinkLeft', 'blinkRight', 'Blink_L', 'Blink_R', 'happy', 'Joy', 'sad', 'Sorrow'];
-    for (const expr of eyeClosingExpressions) {
-      try {
-        const val = em.getValue(expr);
-        if (val && val > 0.3) {
-          s.phase = 'waiting'; s.progress = 0; s.timer = 0; s.holdTimer = 0; s.doubleBlink = false;
-          s.nextBlinkAt = 1 + Math.random() * 2;
-          return;
-        }
-      } catch (e) {}
+    const eyeClosingPresets = ['blinkLeft', 'blinkRight', 'joy', 'sorrow'];
+    const shouldSm = proxy
+      ? eyeClosingPresets.some(p => proxy.getWeight(p) > 0.3)
+      : false;
+    if (shouldSm) {
+      s.phase = 'waiting'; s.progress = 0; s.timer = 0; s.holdTimer = 0; s.doubleBlink = false;
+      s.nextBlinkAt = 1 + Math.random() * 2;
+      if (queue && s.phase !== 'waiting') queue.onBlinkEnd();
+      return;
     }
 
     s.timer += deltaTime;
 
-    if (s.phase === 'waiting') {
-      if (s.timer >= s.nextBlinkAt) {
-        s.phase = 'closing'; s.progress = 0; s.holdTimer = 0;
-        s.doubleBlink = Math.random() < 0.12;
-      }
-    } else if (s.phase === 'closing') {
+    if (s.phase === 'waiting' && s.timer >= s.nextBlinkAt) {
+      if (queue) queue.onBlinkStart();
+      s.phase = 'closing'; s.progress = 0; s.holdTimer = 0;
+      s.doubleBlink = Math.random() < 0.12;
+    }
+
+    const setBlink = (val) => {
+      if (proxy) proxy.setWeight('blink', val);
+      else em.setValue('blink', val);
+    };
+
+    if (s.phase === 'closing') {
       s.progress += deltaTime / BLINK_CLOSE_DURATION;
       if (s.progress >= 1.0) { s.progress = 1.0; s.phase = 'hold'; }
-      em.setValue('blink', easeOutCubic(s.progress));
+      setBlink(easeOutCubic(s.progress));
     } else if (s.phase === 'hold') {
       s.holdTimer += deltaTime;
       if (s.holdTimer >= BLINK_HOLD_DURATION) s.phase = 'opening';
-      em.setValue('blink', 1.0);
-    } else {
+      setBlink(1.0);
+    } else if (s.phase === 'opening') {
       s.progress -= deltaTime / BLINK_OPEN_DURATION;
       if (s.progress <= 0) {
         s.progress = 0;
-        if (s.doubleBlink) { s.doubleBlink = false; s.phase = 'closing'; s.timer = 0; }
-        else { s.phase = 'waiting'; s.timer = 0; s.nextBlinkAt = 2.5 + Math.random() * 5; }
+        if (queue) queue.onBlinkEnd();
+        if (s.doubleBlink) {
+          s.doubleBlink = false;
+          if (queue) queue.onBlinkStart();
+          s.phase = 'closing'; s.timer = 0;
+        } else {
+          s.phase = 'waiting'; s.timer = 0; s.nextBlinkAt = 2.5 + Math.random() * 5;
+        }
       }
-      em.setValue('blink', easeInCubic(s.progress));
+      setBlink(easeInCubic(s.progress));
     }
+
+    if (queue) queue.update(deltaTime);
   }
 
-  function updateEyes(vrm, deltaTime, mouseX, mouseY, mouseMoving) {
+  function updateEyes(vrm, deltaTime, mouseX, mouseY, mouseMoving, lookAtController) {
     const lookAt = vrm.lookAt;
     if (!lookAt) return;
     const s = eyeState.current;
 
     if (mouseMoving) {
-      s.currentX += (mouseX * 6 - s.currentX) * deltaTime * 8;
-      s.currentY += (mouseY * 4 - s.currentY) * deltaTime * 8;
-      lookAt.yaw = s.currentX;
-      lookAt.pitch = s.currentY;
+      if (lookAtController) {
+        lookAtController.update(deltaTime, mouseX, mouseY, true, lookAt);
+      } else {
+        s.currentX += (mouseX * 6 - s.currentX) * deltaTime * 8;
+        s.currentY += (mouseY * 4 - s.currentY) * deltaTime * 8;
+        lookAt.yaw = s.currentX;
+        lookAt.pitch = s.currentY;
+      }
+      s.timer = 0;
     } else {
       s.timer += deltaTime;
       if (s.timer >= s.nextEyeMove) {
         s.timer = 0;
-        if (Math.random() < 0.7) {
-          s.targetX = 0; s.targetY = 0;
-          s.nextEyeMove = 1.5 + Math.random() * 3;
+        if (lookAtController) {
+          if (Math.random() < 0.7) {
+            lookAtController.setTarget(0, 0);
+            s.nextEyeMove = 1.5 + Math.random() * 3;
+          } else {
+            const rangeYaw = lookAtController.getMaxYaw() * 0.4;
+            const rangePitch = lookAtController.getMaxPitch() * 0.4;
+            lookAtController.setTarget(
+              (Math.random() - 0.5) * rangeYaw * 2,
+              (Math.random() - 0.5) * rangePitch * 2
+            );
+            s.nextEyeMove = 0.3 + Math.random() * 0.6;
+          }
         } else {
-          s.targetX = (Math.random() - 0.5) * 5;
-          s.targetY = (Math.random() - 0.5) * 3;
-          s.nextEyeMove = 0.3 + Math.random() * 0.6;
+          if (Math.random() < 0.7) {
+            s.targetX = 0; s.targetY = 0;
+            s.nextEyeMove = 1.5 + Math.random() * 3;
+          } else {
+            s.targetX = (Math.random() - 0.5) * 5;
+            s.targetY = (Math.random() - 0.5) * 3;
+            s.nextEyeMove = 0.3 + Math.random() * 0.6;
+          }
         }
       }
-      s.currentX += (s.targetX - s.currentX) * deltaTime * 10;
-      s.currentY += (s.targetY - s.currentY) * deltaTime * 10;
-      lookAt.yaw = s.currentX;
-      lookAt.pitch = s.currentY;
+      if (lookAtController) {
+        lookAtController.update(deltaTime, 0, 0, false, lookAt);
+      } else {
+        s.currentX += (s.targetX - s.currentX) * deltaTime * 10;
+        s.currentY += (s.targetY - s.currentY) * deltaTime * 10;
+        lookAt.yaw = s.currentX;
+        lookAt.pitch = s.currentY;
+      }
     }
   }
 

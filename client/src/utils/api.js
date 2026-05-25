@@ -105,11 +105,30 @@ export function getUploadUrl(path) {
 
 // ─── Chat API ──────────────────────────────────────────────────
 
-export async function sendMessage(conversationId, message) {
-  return request('/chat', {
-    method: 'POST',
-    body: JSON.stringify({ conversationId, message }),
-  });
+export async function sendMessage(conversationId, message, screenshot) {
+  const body = {
+    conversationId: String(conversationId || ''),
+    message: String(message || ''),
+  };
+  if (screenshot) {
+    body.screenshot = String(screenshot);
+  }
+  try {
+    return request('/chat', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    if (err.message?.includes('circular')) {
+      console.error('[API] Circular structure in sendMessage body:', {
+        conversationIdType: typeof conversationId,
+        messageType: typeof message,
+        screenshotType: typeof screenshot,
+        screenshotTrunc: String(screenshot).slice(0, 80),
+      });
+    }
+    throw err;
+  }
 }
 
 // ─── Conversations API ─────────────────────────────────────────
@@ -250,4 +269,13 @@ export async function getTTS(text, voice = 'af_bella', speed = 1.0) {
   }
 
   return response.blob();
+}
+
+// ─── Textures API ───────────────────────────────────────────────
+const TEXTURE_BASE = window.location.protocol === 'file:'
+  ? 'http://127.0.0.1:3005/textures'
+  : '/textures';
+
+export function getTextureURL(category, name) {
+  return `${TEXTURE_BASE}/${category}/${name}`;
 }

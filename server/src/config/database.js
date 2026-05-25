@@ -55,6 +55,8 @@ async function initDb() {
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
       title TEXT DEFAULT 'New Chat',
+      summary TEXT DEFAULT '',
+      last_summary_msg_count INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
@@ -90,6 +92,7 @@ async function initDb() {
       user_id TEXT NOT NULL,
       category TEXT NOT NULL DEFAULT 'general',
       content TEXT NOT NULL,
+      embedding BLOB,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
@@ -124,20 +127,17 @@ async function initDb() {
   `);
 
   // Migration: Add missing columns for existing databases
-  const tableInfo = db.prepare('PRAGMA table_info(companion_settings)');
-  const existingCols = [];
-  while (tableInfo.step()) {
-    existingCols.push(tableInfo.getAsObject().name);
+  const tablesToCheck = ['companion_settings', 'rate_limits', 'conversations', 'user_memories'];
+  const tableColumnCache = {};
+  for (const t of tablesToCheck) {
+    const info = db.prepare(`PRAGMA table_info(${t})`);
+    const cols = [];
+    while (info.step()) {
+      cols.push(info.getAsObject().name);
+    }
+    info.free();
+    tableColumnCache[t] = cols;
   }
-  tableInfo.free();
-
-  // Check rate_limits columns too
-  const rateLimitInfo = db.prepare('PRAGMA table_info(rate_limits)');
-  const rateLimitCols = [];
-  while (rateLimitInfo.step()) {
-    rateLimitCols.push(rateLimitInfo.getAsObject().name);
-  }
-  rateLimitInfo.free();
 
   const requiredCols = [
     { table: 'companion_settings', name: 'tts_enabled', type: 'INTEGER DEFAULT 1' },
@@ -153,12 +153,15 @@ async function initDb() {
     { table: 'companion_settings', name: 'llm_provider', type: 'TEXT DEFAULT "gemini"' },
     { table: 'companion_settings', name: 'groq_api_key_encrypted', type: 'TEXT' },
     { table: 'companion_settings', name: 'shortcuts', type: 'TEXT' },
+    { table: 'conversations', name: 'summary', type: 'TEXT DEFAULT ""' },
+    { table: 'conversations', name: 'last_summary_msg_count', type: 'INTEGER DEFAULT 0' },
+    { table: 'user_memories', name: 'embedding', type: 'BLOB' },
     { table: 'rate_limits', name: 'search_count', type: 'INTEGER DEFAULT 0' }
   ];
 
   let migrationsApplied = false;
   for (const col of requiredCols) {
-    const checkCols = col.table === 'companion_settings' ? existingCols : rateLimitCols;
+    const checkCols = tableColumnCache[col.table] || [];
     if (!checkCols.includes(col.name)) {
       console.log(`[Database] Migrating: Adding ${col.name} to ${col.table}...`);
       try {
@@ -223,7 +226,6 @@ const dbWrapper = {
     return {
       run(...params) {
         self._db.run(sql, params);
-        saveDb();
         return { changes: self._db.getRowsModified() };
       },
       get(...params) {
@@ -255,7 +257,6 @@ const dbWrapper = {
    */
   exec(sql) {
     this._db.run(sql);
-    saveDb();
   },
 
   /**

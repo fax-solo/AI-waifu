@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut } from 'electron';
 import path from 'path';
 import os from 'os';
 import isDev from 'electron-is-dev';
@@ -15,96 +15,74 @@ autoUpdater.autoInstallOnAppQuit = false;
 // Only import the server if we are NOT in dev mode
 // In dev, the 'concurrently' command handles the server
 if (!isDev) {
-  import('../server/src/index.js');
+  import('../server/src/index.js').catch(err => {
+    console.error('[Server] Failed to start:', err);
+  });
 }
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-let ttsProcess = null;
+const sidecarProcesses = [];
 
-function startTTSSidecar() {
+function startSidecar(port, scriptName, serviceName) {
   const isPackaged = app.isPackaged;
-  
-  // Resolve python path
+  const tag = `[${serviceName}]`;
+
   let pythonPath;
   if (!isPackaged) {
     const py311Path = process.platform === 'win32'
       ? path.join(__dirname, '../python/venv_py311/Scripts/python.exe')
       : path.join(__dirname, '../python/venv_py311/bin/python');
-      
-    if (fs.existsSync(py311Path)) {
-      pythonPath = py311Path;
-    } else {
-      pythonPath = process.platform === 'win32'
+    pythonPath = fs.existsSync(py311Path) ? py311Path
+      : (process.platform === 'win32'
         ? path.join(__dirname, '../python/venv/Scripts/python.exe')
-        : path.join(__dirname, '../python/venv/bin/python');
-    }
+        : path.join(__dirname, '../python/venv/bin/python'));
   } else {
-    // In production, check for venv in the resources folder
     const py311Path = process.platform === 'win32'
       ? path.join(process.resourcesPath, 'python/venv_py311/Scripts/python.exe')
       : path.join(process.resourcesPath, 'python/venv_py311/bin/python');
-      
-    if (fs.existsSync(py311Path)) {
-      pythonPath = py311Path;
-    } else {
-      pythonPath = process.platform === 'win32'
+    pythonPath = fs.existsSync(py311Path) ? py311Path
+      : (process.platform === 'win32'
         ? path.join(process.resourcesPath, 'python/venv/Scripts/python.exe')
-        : path.join(process.resourcesPath, 'python/venv/bin/python');
-    }
+        : path.join(process.resourcesPath, 'python/venv/bin/python'));
   }
 
   const scriptPath = !isPackaged
-    ? path.join(__dirname, '../python/tts_server.py')
-    : path.join(process.resourcesPath, 'python/tts_server.py');
+    ? path.join(__dirname, '../python', scriptName)
+    : path.join(process.resourcesPath, 'python', scriptName);
 
   if (!fs.existsSync(pythonPath)) {
-    console.warn('[TTS] Sidecar Python not found at:', pythonPath);
-    // If venv is missing, check for a portable runtime bootstrap
+    console.warn(`${tag} Python not found at:`, pythonPath);
     const runtimePath = !isPackaged
       ? path.join(__dirname, '../python/runtime/python.exe')
       : path.join(process.resourcesPath, 'python/runtime/python.exe');
-    
     if (fs.existsSync(runtimePath)) {
       pythonPath = runtimePath;
-      console.log('[TTS] Found portable runtime, using it for sidecar.');
+      console.log(`${tag} Found portable runtime.`);
     } else {
-      console.error('[TTS] No Python environment found. Sidecar will not start until setup is complete.');
-      return; // Exit and let the UI handle setup
+      console.error(`${tag} No Python environment found.`);
+      return;
     }
   }
 
-  console.log('[TTS] Starting sidecar server...');
-  console.log(`[TTS] Command: ${pythonPath} ${scriptPath}`);
+  console.log(`${tag} Starting sidecar on port ${port}...`);
 
-  // Kill any stale TTS process on port 5000 before starting
+  // Kill stale process on target port
   try {
     if (process.platform === 'win32') {
-      // Windows: find and kill process on port 5000
       try {
-        const out = execSync('netstat -ano | findstr :5000 | findstr LISTENING', { encoding: 'utf8' });
+        const out = execSync(`netstat -ano | findstr :${port} | findstr LISTENING`, { encoding: 'utf8' });
         const pid = out.trim().split(/\s+/).pop();
-        if (pid && pid !== '0') {
-          execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' });
-          console.log(`[TTS] Killed stale process ${pid} on port 5000`);
-        }
-      } catch (e) { /* no process on port */ }
+        if (pid && pid !== '0') execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' });
+      } catch {}
     } else {
-      // Linux/macOS: use fuser or lsof
-      try {
-        execSync('fuser -k 5000/tcp 2>/dev/null || true', { stdio: 'ignore' });
-        console.log('[TTS] Cleared port 5000');
-      } catch (e) { /* no process on port */ }
+      try { execSync(`fuser -k ${port}/tcp 2>/dev/null || true`, { stdio: 'ignore' }); } catch {}
     }
-  } catch (e) { /* ignore cleanup errors */ }
+  } catch {}
 
-  // NOTE: Do not auto-run pip install here — it reinstalls base onnxruntime
-  // which conflicts with onnxruntime-directml. Run pip manually if needed.
-
-  // Pass OMP/MKL thread counts so ONNX uses all available CPU cores
   const cpuCount = os.cpus().length;
-  ttsProcess = spawn(pythonPath, [scriptPath], {
+  const proc = spawn(pythonPath, [scriptPath], {
     cwd: path.dirname(scriptPath),
     env: {
       ...process.env,
@@ -115,17 +93,12 @@ function startTTSSidecar() {
     }
   });
 
-  ttsProcess.stdout.on('data', (data) => {
-    console.log(`[TTS] ${data}`);
-  });
+  proc.stdout.on('data', (d) => console.log(`${tag} ${d}`));
+  proc.stderr.on('data', (d) => console.error(`${tag} Error: ${d}`));
+  proc.on('close', (code) => console.log(`${tag} Exited with code ${code}`));
 
-  ttsProcess.stderr.on('data', (data) => {
-    console.error(`[TTS Error] ${data}`);
-  });
-
-  ttsProcess.on('close', (code) => {
-    console.log(`[TTS] Process exited with code ${code}`);
-  });
+  sidecarProcesses.push(proc);
+  return proc;
 }
 
 function createWindow() {
@@ -199,20 +172,93 @@ ipcMain.handle('install-update', () => {
 });
 
 // ─── GPU Fix: NVIDIA + Wayland/Hyprland + Electron ──────────────────────────
-// Root cause: Chromium's Ozone layer uses DMA-BUF to share GPU textures between
-// its internal processes. NVIDIA's Wayland EGL implementation does NOT support
-// the DMA-BUF formats Ozone expects, causing eglCreateImage failures and
-// OzoneImageBacking crashes.
-//
-// Fix: Force XWayland mode (where NVIDIA's GL stack is battle-tested) and run
-// the GPU in-process to bypass the broken inter-process texture sharing entirely.
-app.commandLine.appendSwitch('ozone-platform', 'x11');
-app.commandLine.appendSwitch('in-process-gpu');
+// Only apply Linux-specific workarounds on Linux (NVIDIA + Wayland).
+// On Windows/macOS these flags may degrade performance or security.
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('ozone-platform', 'x11');
+  app.commandLine.appendSwitch('in-process-gpu');
+}
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('enable-webgl');
+// Allow getDisplayMedia() from file: protocol (production builds)
+app.commandLine.appendSwitch('unsafely-treat-insecure-origin-as-secure', 'file://');
+
+// ─── Global Screenshot Capture ──────────────────────────────────────
+const SCREENSHOT_TOOLS = [
+  { cmd: 'gnome-screenshot', args: ['-f'] },
+  { cmd: 'grim', args: [] },
+  { cmd: 'spectacle', args: ['-b', '-n', '-o'] },
+  { cmd: 'flameshot', args: ['full', '-p'] },
+  { cmd: 'import', args: ['-window', 'root'] },
+  { cmd: 'scrot', args: ['-z'] },
+];
+
+const INSTALL_HINTS = {
+  'gnome-screenshot': `sudo apt install gnome-screenshot  # or your distro's package manager`,
+  'grim': `sudo apt install grim  # Wayland screenshot tool`,
+  'spectacle': `sudo apt install spectacle  # KDE`,
+  'flameshot': `sudo apt install flameshot  # Cross-desktop`,
+  'import': `sudo apt install imagemagick  # X11 fallback`,
+  'scrot': `sudo apt install scrot  # lightweight X11 fallback`,
+};
+
+function takeDesktopScreenshot() {
+  const tmpPath = path.join(app.getPath('temp'), `waifu-screenshot-${Date.now()}.png`);
+  const tool = SCREENSHOT_TOOLS.find(t => {
+    try {
+      execSync(`which ${t.cmd}`, { stdio: 'ignore' });
+      return true;
+    } catch { return false; }
+  });
+  if (!tool) {
+    const hints = Object.values(INSTALL_HINTS).join('\n');
+    return { error: `No screenshot tool found. Install one:\n${hints}` };
+  }
+  try {
+    execSync(`${tool.cmd} ${tool.args.join(' ')} ${tmpPath}`, { stdio: 'ignore', timeout: 10000 });
+    const buffer = fs.readFileSync(tmpPath);
+    fs.unlinkSync(tmpPath);
+    return { data: buffer.toString('base64') };
+  } catch (err) {
+    try { fs.unlinkSync(tmpPath); } catch {}
+    // Remove path details from the error message for brevity
+    const msg = err.message.replace(/\/[^\s]+\/([^\s]+\.png)/g, '$1');
+    return { error: `Screenshot tool '${tool.cmd}' failed: ${msg}` };
+  }
+}
+
+function sendScreenshotToWindow(data) {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('screenshot-captured', data);
+  }
+}
 
 app.whenReady().then(() => {
-  startTTSSidecar();
+  // Register global shortcut (works across workspaces / when app unfocused)
+  const registered = globalShortcut.register('CmdOrCtrl+Shift+S', () => {
+    if (!BrowserWindow.getAllWindows().length) return;
+    const result = takeDesktopScreenshot();
+    sendScreenshotToWindow(result);
+  });
+  if (!registered) {
+    console.warn('[Main] Failed to register global shortcut CmdOrCtrl+Shift+S');
+  }
+
+  // IPC for renderer-triggered capture (app window fallback)
+  ipcMain.handle('capture-screenshot', async () => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return { error: 'No window found' };
+    try {
+      const image = await win.webContents.capturePage();
+      return { data: image.toPNG().toString('base64') };
+    } catch (err) {
+      return { error: err.message };
+    }
+  });
+
+  startSidecar(5000, 'tts_server.py', 'TTS');
+  startSidecar(5001, 'stt_server.py', 'STT');
   createWindow();
 
   app.on('activate', () => {
@@ -222,17 +268,23 @@ app.whenReady().then(() => {
   });
 });
 
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
+
 app.on('window-all-closed', () => {
-  if (ttsProcess) {
-    console.log('[TTS] Killing sidecar server...');
-    ttsProcess.kill();
+  for (const proc of sidecarProcesses) {
+    console.log(`[Main] Killing sidecar (pid ${proc.pid})...`);
+    proc.kill();
   }
   if (process.platform !== 'darwin') {
     app.quit();
   }
 });
 
-// Ensure TTS is killed even on unexpected exits
+// Ensure sidecars are killed even on unexpected exits
 process.on('exit', () => {
-  if (ttsProcess) ttsProcess.kill();
+  for (const proc of sidecarProcesses) {
+    if (proc.exitCode === null) proc.kill();
+  }
 });

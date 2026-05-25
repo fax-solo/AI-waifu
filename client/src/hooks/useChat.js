@@ -80,8 +80,11 @@ export function useChat() {
   }, []);
 
   // Send a message
-  const sendMessage = useCallback(async (text) => {
-    if (!text.trim() || isSending) return;
+  const sendMessage = useCallback(async (text, screenshot) => {
+    if ((!text.trim() && !screenshot) || isSending) return;
+
+    // If there's no text but there's a screenshot, send a default prompt
+    const messageText = text.trim() || 'What do you see on my screen?';
 
     let conversationId = activeConversationId;
 
@@ -96,10 +99,12 @@ export function useChat() {
     setError(null);
 
     // Optimistically add user message
+    const userContent = text.trim() + (screenshot ? '\n\n[📷 Screenshot attached]' : '');
     const userMessage = {
       id: Date.now(),
       role: 'user',
-      content: text.trim(),
+      content: userContent,
+      hasScreenshot: !!screenshot,
       created_at: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMessage]);
@@ -107,11 +112,11 @@ export function useChat() {
 
     // Reset searching state and check if search might be needed (for immediate indicator)
     const searchKeywords = ['latest', 'news', 'today', '2025', '2026', 'recent', 'current', 'weather', 'stock', 'price', 'what happened'];
-    const mightNeedSearch = searchKeywords.some(keyword => text.toLowerCase().includes(keyword));
+    const mightNeedSearch = searchKeywords.some(keyword => messageText.toLowerCase().includes(keyword));
     setIsSearching(mightNeedSearch);
 
     try {
-      const response = await api.sendMessage(conversationId, text.trim());
+      const response = await api.sendMessage(conversationId, messageText, screenshot);
 
       // Add AI response
       const aiMessage = {
