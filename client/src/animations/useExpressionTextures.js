@@ -17,6 +17,8 @@ const FACE_OVERLAYS = [
   { name: 'sick_2', file: 'sick_2.png' },
   { name: 'sick_3', file: 'sick_3.png' },
   { name: 'sweat', file: 'sweat.png' },
+  { name: 'eyebags', file: 'eyebags_1.png' },
+  { name: 'shade', file: 'shade_1.png' },
 ];
 
 
@@ -68,7 +70,8 @@ function findEyeMaterials(materials) {
   if (seen.size === 0) {
     for (const mat of materials) {
       if (!mat.name || seen.has(mat)) continue;
-      if (mat.name.toLowerCase().includes('eye')) seen.add(mat);
+      const n = mat.name.toLowerCase();
+      if (n.includes('eye') && !n.includes('lash') && !n.includes('brow')) seen.add(mat);
     }
   }
 
@@ -458,8 +461,12 @@ export function useExpressionTextures(vrm) {
   const [ready, setReady] = useState(false);
   const alignmentRef = useRef(null); // detected face region alignment
 
+  const loadedRef = useRef(false);
+
   useEffect(() => {
     if (!vrm?.scene || !vrm.materials) return;
+    if (loadedRef.current) return;
+    loadedRef.current = true;
     let cancelled = false;
 
     if (!ready) setReady(true);
@@ -550,7 +557,7 @@ export function useExpressionTextures(vrm) {
 
     loadAll();
     return () => { cancelled = true; };
-  }, [vrm, ready]);
+  }, [vrm]);
 
   const getTexture = useCallback((name) => {
     return cacheRef.current.get(name) || null;

@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect } from 'react';
-import { X, Search, User, Sparkles, Image, Volume2, Key, Keyboard, Brain, Film, Download, Info, Database } from 'lucide-react';
+import { X, Search, User, Sparkles, Image, Volume2, Key, Keyboard, Brain, Download, Info, Database } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import useSettings from './useSettings.js';
 import Toast from './Toast.jsx';
@@ -9,7 +9,6 @@ import VoiceTab from './VoiceTab.jsx';
 import ApiKeyTab from './ApiKeyTab.jsx';
 import ShortcutsTab from './ShortcutsTab.jsx';
 import MemoriesTab from './MemoriesTab.jsx';
-import AnimationsTab from './AnimationsTab.jsx';
 import UpdatesTab from './UpdatesTab.jsx';
 import AvatarTab from './AvatarTab.jsx';
 import AboutTab from './AboutTab.jsx';
@@ -24,7 +23,6 @@ const TAB_CONFIG = [
   { id: 'apikey', icon: Key, labelKey: 'settings.tabs.apikey' },
   { id: 'shortcuts', icon: Keyboard, labelKey: 'settings.shortcuts.title' },
   { id: 'memories', icon: Brain, labelKey: 'settings.tabs.memories' },
-  { id: 'animations', icon: Film, labelKey: 'settings.tabs.animations' },
   { id: 'updates', icon: Download, labelKey: 'settings.tabs.updates' },
   { id: 'about', icon: Info, labelKey: 'settings.about.title' },
   { id: 'data', icon: Database, labelKey: 'settings.data.title' },
@@ -39,10 +37,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
     dirty, saving, toast, showToast, handleSave,
     handleExport, handleImport, handleClearMemories, handleClearConversations,
     memories, shortcuts, setShortcuts, recordingAction, setRecordingAction,
-    handleDeleteMemory, loadMemories, loadAnimations,
-    animations, animLoading, animSearch, setAnimSearch,
-    handleTestAnimation, handleDeleteAnimation, handleUploadAnimation,
-    testStatus, animFileInputRef,
+    handleDeleteMemory, loadMemories,
     avatars, loadAvatars, currentVRMName, handleSelectAvatar, handleDeleteAvatar,
     showUploadForm, setShowUploadForm, uploadForm, setUploadForm, isUploading, handleUploadAvatar,
     showGallery, setShowGallery, galleryAvatars, downloadingGalleryId, handleDownloadGalleryAvatar,
@@ -137,12 +132,6 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
           recordingAction={recordingAction} setRecordingAction={setRecordingAction} />;
       case 'memories':
         return <MemoriesTab memories={memories} handleDeleteMemory={handleDeleteMemory} />;
-      case 'animations':
-        return <AnimationsTab animations={animations} animLoading={animLoading}
-          animSearch={animSearch} setAnimSearch={setAnimSearch}
-          loadAnimations={loadAnimations} handleTestAnimation={handleTestAnimation}
-          handleDeleteAnimation={handleDeleteAnimation} handleUploadAnimation={handleUploadAnimation}
-          testStatus={testStatus} animFileInputRef={animFileInputRef} />;
       case 'avatar':
         return <AvatarTab avatars={avatars} loadAvatars={loadAvatars}
           currentVRMName={currentVRMName} handleSelectAvatar={handleSelectAvatar}

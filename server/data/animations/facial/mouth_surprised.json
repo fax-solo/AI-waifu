@@ -27,14 +27,14 @@
       "time": 0,
       "expressions": {
         "aa": 0.6,
-        "Surprised": 0.2
+        "surprised": 0.2
       }
     },
     {
       "time": 1.5,
       "expressions": {
         "aa": 0.6,
-        "Surprised": 0.2
+        "surprised": 0.2
       }
     }
   ]

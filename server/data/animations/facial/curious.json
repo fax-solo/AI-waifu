@@ -32,7 +32,7 @@
     {
       "time": 0,
       "expressions": {
-        "Surprised": 0.3
+        "surprised": 0.3
       },
       "materials": {},
       "vfx": [
@@ -42,31 +42,31 @@
     {
       "time": 0.3,
       "expressions": {
-        "Surprised": 0.45
+        "surprised": 0.45
       }
     },
     {
       "time": 0.7,
       "expressions": {
-        "Surprised": 0.25
+        "surprised": 0.25
       }
     },
     {
       "time": 1.1,
       "expressions": {
-        "Surprised": 0.35
+        "surprised": 0.35
       }
     },
     {
       "time": 1.6,
       "expressions": {
-        "Surprised": 0.2
+        "surprised": 0.2
       }
     },
     {
       "time": 2,
       "expressions": {
-        "Surprised": 0.25
+        "surprised": 0.25
       }
     }
   ]

@@ -34,22 +34,23 @@ function getFixMode(mat) {
   if (!mat?.name) return null;
   const n = mat.name.toLowerCase();
 
-  for (const kw of OPAQUE_BASE) {
-    if (n.includes(kw)) return 'opaque_base';
-  }
-  for (const kw of SOFT_ALPHA) {
-    if (n.includes(kw)) return 'transparent';
-  }
+  // Check specific categories FIRST before broad OPAQUE_BASE
+  // to prevent FaceBrow/FaceMouth being misclassified as opaque
   for (const kw of SHARP_ALPHA) {
     if (n.includes(kw)) return 'cutout';
   }
   for (const kw of EYE_ALPHA) {
-    // 'eye' is a common substring — use strict matching to avoid false positives
     const strict = kw === 'eye';
     if (strict ? (n === kw || n.endsWith(kw)) : n.includes(kw)) return 'eye';
   }
   for (const kw of MOUTH_INTERIOR) {
     if (n.includes(kw)) return 'mouth';
+  }
+  for (const kw of OPAQUE_BASE) {
+    if (n.includes(kw)) return 'opaque_base';
+  }
+  for (const kw of SOFT_ALPHA) {
+    if (n.includes(kw)) return 'transparent';
   }
 
   return null;
@@ -64,8 +65,9 @@ function isTransparentMode(mode) { return mode === 'transparent'; }
 function getTexName(tex) {
   if (!tex) return '';
   return tex.name?.toLowerCase()
-    || tex.source?.url?.toLowerCase?.()?.split('/')?.pop?.()?.split('?')?.[0]
+    || tex.source?.url?.toLowerCase?.()?.split('/')?.pop()?.split('?')?.[0]
     || tex.image?.src?.toLowerCase?.()
+    || tex.source?.toJSON?.()?.url?.toLowerCase?.()
     || '';
 }
 
@@ -178,19 +180,23 @@ function generateLuminanceAlphaTexture(tex) {
 
 function isDataTexturePixels(tex) {
   const px = readTexturePixels(tex);
-  if (!px) return null; // can't determine
+  if (!px) return null;
   const d = px.data;
   let maxL = 0, minL = 1, sum = 0;
   const count = d.length / 4;
+  const vals = [];
   for (let i = 0; i < d.length; i += 4) {
     const l = (0.299 * d[i] + 0.587 * d[i+1] + 0.114 * d[i+2]) / 255;
+    vals.push(l);
     if (l > maxL) maxL = l;
     if (l < minL) minL = l;
     sum += l;
   }
   const avg = sum / count;
-  // Data textures: low max luminance (< 0.35), narrow range (< 0.3), low avg (< 0.2)
-  return maxL < 0.35 && (maxL - minL) < 0.3 && avg < 0.2;
+  const variance = vals.reduce((sumV, v) => sumV + (v - avg) ** 2, 0) / vals.length;
+  // Data textures: very low max luminance, narrow range, low avg, near-zero variance
+  // Higher thresholds and variance check prevents false-flagging dark skin
+  return maxL < 0.25 && (maxL - minL) < 0.25 && avg < 0.15 && variance < 0.02;
 }
 
 function isSuspectTexture(tex) {
@@ -278,18 +284,9 @@ function auditSkinTextures(vrm, logPrefix) {
       if (mainTexSuspect) {
         console.log(`[${logPrefix}] ${mat.name}: mainTex suspect (${getTexName(mainTex) || 'unnamed'})`);
 
-        // Priority: other slots on THIS material → named diffuse in scene → any non-suspect in scene
+        // Only use other texture slots on THIS material — never swap from other materials
         const thisMatSlots = allTextures.filter(t => t.mat === mat && t.key !== 'map' && isProperDiffuse(t.tex));
         let replacement = thisMatSlots[0];
-
-        if (!replacement) {
-          const named = namedDiffuse.find(t => t.mat !== mat);
-          if (named) replacement = named;
-        }
-        if (!replacement) {
-          const anyDiffuse = diffuseCandidates.find(t => t.mat !== mat && t.tex !== mainTex);
-          if (anyDiffuse) replacement = anyDiffuse;
-        }
 
         if (replacement) {
           mat.map = replacement.tex;
@@ -338,40 +335,10 @@ function auditSkinTextures(vrm, logPrefix) {
         }
       }
 
-      // Step 3b: Ensure MToon _ShadeTexture / _SphereAdd slots don't
-      // hold AO data textures either
-      for (const prop of ['_ShadeTexture', '_SphereAdd', '_RimTexture', '_ShadingGradeTexture']) {
-        const tex = mat.uniforms?.[prop]?.value;
-        if (tex && tex.isTexture && isSuspectTexture(tex)) {
-          mat.uniforms[prop].value = null;
-          changes.push(`cleared uniform ${prop}`);
-        }
-      }
-
-      // Step 4: Null out stray data textures in non-mainTex slots
-      if (mat.uniforms) {
-        for (const [uname, uniform] of Object.entries(mat.uniforms)) {
-          const tex = uniform?.value;
-          if (tex && tex.isTexture && uname !== '_MainTex' && isSuspectTexture(tex)) {
-            uniform.value = null;
-            changes.push(`cleared uniform ${uname}`);
-          }
-        }
-      }
-      for (const mapKey of ['aoMap', 'lightMap', 'specularMap', 'bumpMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap']) {
-        const tex = mat[mapKey];
-        if (tex && isSuspectTexture(tex)) {
-          mat[mapKey] = null;
-          changes.push(`cleared ${mapKey}`);
-        }
-      }
-      for (const prop of MTOON_MAP_PROPS) {
-        const tex = mat[prop];
-        if (tex && tex.isTexture && isSuspectTexture(tex)) {
-          mat[prop] = null;
-          changes.push(`cleared ${prop}`);
-        }
-      }
+      // Note: MToon-specific maps (_ShadeTexture, _SphereAdd, _RimTexture, _ShadingGradeTexture)
+      // are intentionally NOT checked — they are supposed to look like data textures.
+      // Normal maps, roughness maps, etc. are also left intact — they are data textures by design.
+      // Only the mainTex slot is audited above.
 
       if (changes.length > 0) {
         fixed++;
@@ -521,7 +488,8 @@ export function useMaterialFix() {
 
         // Cutout → premultiply=false (white halo prevention)
         // Eye → premultiply=true (proper color blending)
-        // Opaque/transparent → premultiply=true
+        // Opaque → leave at default (false) to avoid color shifts
+        // Transparent → premultiply=true
         if (isCutoutMode(mode)) {
           if (mat.premultipliedAlpha !== false) {
             mat.premultipliedAlpha = false;
@@ -532,7 +500,7 @@ export function useMaterialFix() {
             mat.premultipliedAlpha = true;
             changed.push('premultipliedAlpha');
           }
-        } else {
+        } else if (mat.transparent) {
           if (mat.premultipliedAlpha !== true) {
             mat.premultipliedAlpha = true;
             changed.push('premultipliedAlpha');

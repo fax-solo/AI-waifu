@@ -28,8 +28,8 @@ import settingsRoutes from './routes/settings.js';
 import ttsRoutes from './routes/tts.js';
 import avatarRoutes, { UPLOADS_BASE } from './routes/avatars.js';
 import setupRoutes from './routes/setup.js';
-import animationRoutes from './routes/animations.js';
 import sttRoutes from './routes/stt.js';
+import animationRoutes from './routes/animations.js';
 
 const app = express();
 const PORT = process.env.PORT || 3005;

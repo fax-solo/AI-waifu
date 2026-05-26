@@ -32,7 +32,7 @@
     {
       "time": 0,
       "expressions": {
-        "Surprised": 0.3
+        "surprised": 0.3
       },
       "materials": {},
       "vfx": [
@@ -42,33 +42,33 @@
     {
       "time": 0.4,
       "expressions": {
-        "Surprised": 0.35
+        "surprised": 0.35
       }
     },
     {
       "time": 0.8,
       "expressions": {
-        "Surprised": 0.15,
-        "neutral": 0
+        "neutral": 0,
+        "surprised": 0.15
       }
     },
     {
       "time": 1.2,
       "expressions": {
-        "Surprised": 0.25
+        "surprised": 0.25
       }
     },
     {
       "time": 1.6,
       "expressions": {
-        "Surprised": 0.1,
-        "neutral": 0
+        "neutral": 0,
+        "surprised": 0.1
       }
     },
     {
       "time": 2,
       "expressions": {
-        "Surprised": 0.2
+        "surprised": 0.2
       }
     }
   ]

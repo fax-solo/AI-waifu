@@ -48,7 +48,6 @@
       "server/src/**/*",
       "server/node_modules/**/*",
       "!server/data/waifu.db",
-      "server/data/animations/**/*",
       "server/data/gallery/**/*",
       "electron/**/*",
       "python/*.py",

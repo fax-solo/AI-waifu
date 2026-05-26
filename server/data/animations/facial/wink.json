@@ -12,27 +12,27 @@
     {
       "time": 0.05,
       "expressions": {
-        "Blink_R": 1
+        "blinkRight": 1
       }
     },
     {
       "time": 0.1,
       "expressions": {
-        "Blink_R": 1,
-        "Fun": 0.25
+        "fun": 0.25,
+        "blinkRight": 1
       }
     },
     {
       "time": 0.2,
       "expressions": {
-        "Blink_R": 1,
-        "Fun": 0.25
+        "fun": 0.25,
+        "blinkRight": 1
       }
     },
     {
       "time": 0.25,
       "expressions": {
-        "Blink_R": 1
+        "blinkRight": 1
       }
     },
     {

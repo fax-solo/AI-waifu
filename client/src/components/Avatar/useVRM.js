@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 import * as THREE from 'three';
-import { BONE_MAPPING } from '../../animations/useBVH.js';
+import { BONE_MAPPING } from '../../animations/boneMapping.js';
 
 /**
  * Tune spring bone parameters for better physics (anti-clipping, natural motion).

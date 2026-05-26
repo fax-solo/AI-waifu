@@ -34,8 +34,8 @@
     {
       "time": 0,
       "expressions": {
-        "sad": 0.2,
-        "Surprised": 0.3
+        "sorrow": 0.2,
+        "surprised": 0.3
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
@@ -52,8 +52,8 @@
     {
       "time": 0.3,
       "expressions": {
-        "sad": 0.2,
-        "Surprised": 0.55
+        "sorrow": 0.2,
+        "surprised": 0.55
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
@@ -70,8 +70,8 @@
     {
       "time": 0.6,
       "expressions": {
-        "sad": 0.2,
-        "Surprised": 0.3
+        "sorrow": 0.2,
+        "surprised": 0.3
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
@@ -88,8 +88,8 @@
     {
       "time": 0.9,
       "expressions": {
-        "sad": 0.2,
-        "Surprised": 0.5
+        "sorrow": 0.2,
+        "surprised": 0.5
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
@@ -106,8 +106,8 @@
     {
       "time": 1.3,
       "expressions": {
-        "sad": 0.2,
-        "Surprised": 0.25
+        "sorrow": 0.2,
+        "surprised": 0.25
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
@@ -124,8 +124,8 @@
     {
       "time": 1.7,
       "expressions": {
-        "sad": 0.2,
-        "Surprised": 0.45
+        "sorrow": 0.2,
+        "surprised": 0.45
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
@@ -142,8 +142,8 @@
     {
       "time": 2,
       "expressions": {
-        "sad": 0.2,
-        "Surprised": 0.3
+        "sorrow": 0.2,
+        "surprised": 0.3
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {

@@ -4,24 +4,44 @@
   "blendSpeed": 8,
   "materialReset": {
     "N00_000_00_Face_00_SKIN (Instance)": {
-      "color": [1, 1, 1],
-      "emissive": [0, 0, 0],
-      "shadeColorFactor": [1, 1, 1]
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "emissive": [
+        0,
+        0,
+        0
+      ],
+      "shadeColorFactor": [
+        1,
+        1,
+        1
+      ]
     },
     "N00_000_00_EyeHighlight_00_EYE (Instance)": {
-      "color": [1, 1, 1]
+      "color": [
+        1,
+        1,
+        1
+      ]
     }
   },
   "keyframes": [
     {
       "time": 0,
       "expressions": {
-        "happy": 0.4,
-        "Fun": 0.2
+        "joy": 0.4,
+        "fun": 0.2
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
-          "emissive": [0.03, 0.008, 0.005],
+          "emissive": [
+            0.03,
+            0.008,
+            0.005
+          ],
           "emissiveIntensity": 0.25,
           "map": "face_blush_1"
         }
@@ -30,12 +50,16 @@
     {
       "time": 0.25,
       "expressions": {
-        "happy": 0.6,
-        "Fun": 0.35
+        "joy": 0.6,
+        "fun": 0.35
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
-          "emissive": [0.03, 0.008, 0.005],
+          "emissive": [
+            0.03,
+            0.008,
+            0.005
+          ],
           "emissiveIntensity": 0.25,
           "map": "face_blush_1"
         }
@@ -44,44 +68,48 @@
     {
       "time": 0.6,
       "expressions": {
-        "happy": 0.5,
-        "Fun": 0.25
+        "joy": 0.5,
+        "fun": 0.25
       },
       "materials": {}
     },
     {
       "time": 0.9,
       "expressions": {
-        "happy": 0.55,
-        "Fun": 0.3
+        "joy": 0.55,
+        "fun": 0.3
       },
       "materials": {}
     },
     {
       "time": 1.3,
       "expressions": {
-        "happy": 0.4,
-        "Fun": 0.2
+        "joy": 0.4,
+        "fun": 0.2
       },
       "materials": {}
     },
     {
       "time": 1.7,
       "expressions": {
-        "happy": 0.5,
-        "Fun": 0.25
+        "joy": 0.5,
+        "fun": 0.25
       },
       "materials": {}
     },
     {
       "time": 2,
       "expressions": {
-        "happy": 0.45,
-        "Fun": 0.25
+        "joy": 0.45,
+        "fun": 0.25
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
-          "emissive": [0.03, 0.008, 0.005],
+          "emissive": [
+            0.03,
+            0.008,
+            0.005
+          ],
           "emissiveIntensity": 0.25,
           "map": "face_blush_1"
         }

@@ -195,7 +195,7 @@ export default {
     },
     animations: {
       title: 'Animations',
-      hint: 'Drop .json (facial) and .bvh (body motion capture) files into the data/animations folder to add custom animations.',
+      hint: 'Drop .json (facial) and .vrma (body motion) files into the data/animations folder to add custom animations.',
       facial: 'Facial Expressions',
       body: 'Body Animations',
       refresh: 'Refresh',

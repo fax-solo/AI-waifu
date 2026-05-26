@@ -4,122 +4,62 @@
   "blendSpeed": 4,
   "materialReset": {
     "N00_000_00_Face_00_SKIN (Instance)": {
-      "color": [
-        1,
-        1,
-        1
-      ],
-      "emissive": [
-        0,
-        0,
-        0
-      ],
-      "shadeColorFactor": [
-        1,
-        1,
-        1
-      ],
+      "color": [1,1,1],
+      "emissive": [0,0,0],
+      "shadeColorFactor": [1,1,1],
       "emissiveIntensity": 1,
       "map": null
     },
     "N00_000_00_EyeHighlight_00_EYE (Instance)": {
-      "color": [
-        1,
-        1,
-        1
-      ]
+      "color": [1,1,1]
     }
   },
   "keyframes": [
     {
       "time": 0,
-      "expressions": {
-        "sad": 0.05
-      },
+      "expressions": { "sorrow": 0.05 },
       "materials": {
-        "N00_000_00_EyeHighlight_00_EYE (Instance)": {
-          "color": [
-            0.9,
-            0.9,
-            0.95
-          ]
-        },
+        "N00_000_00_EyeHighlight_00_EYE (Instance)": { "color": [0.9,0.9,0.95] },
         "N00_000_00_Face_00_SKIN (Instance)": {
           "emissiveIntensity": 0.2,
-          "emissive": [
-            0.002,
-            0,
-            0.002
-          ]
+          "emissive": [0.002,0,0.002],
+          "map": "face_eyebags"
         }
       }
     },
     {
       "time": 0.6,
-      "expressions": {
-        "sad": 0.2
-      },
+      "expressions": { "sorrow": 0.2 },
       "materials": {
-        "N00_000_00_EyeHighlight_00_EYE (Instance)": {
-          "color": [
-            0.8,
-            0.8,
-            0.9
-          ]
-        },
+        "N00_000_00_EyeHighlight_00_EYE (Instance)": { "color": [0.8,0.8,0.9] },
         "N00_000_00_Face_00_SKIN (Instance)": {
           "emissiveIntensity": 0.2,
-          "emissive": [
-            0.002,
-            0,
-            0.002
-          ]
+          "emissive": [0.002,0,0.002],
+          "map": "face_eyebags"
         }
       }
     },
     {
       "time": 1.2,
-      "expressions": {
-        "sad": 0.3
-      },
+      "expressions": { "sorrow": 0.3 },
       "materials": {
-        "N00_000_00_EyeHighlight_00_EYE (Instance)": {
-          "color": [
-            0.7,
-            0.7,
-            0.85
-          ]
-        },
+        "N00_000_00_EyeHighlight_00_EYE (Instance)": { "color": [0.7,0.7,0.85] },
         "N00_000_00_Face_00_SKIN (Instance)": {
           "emissiveIntensity": 0.2,
-          "emissive": [
-            0.002,
-            0,
-            0.002
-          ]
+          "emissive": [0.002,0,0.002],
+          "map": "face_eyebags"
         }
       }
     },
     {
       "time": 2,
-      "expressions": {
-        "sad": 0.25
-      },
+      "expressions": { "sorrow": 0.25 },
       "materials": {
-        "N00_000_00_EyeHighlight_00_EYE (Instance)": {
-          "color": [
-            0.75,
-            0.75,
-            0.88
-          ]
-        },
+        "N00_000_00_EyeHighlight_00_EYE (Instance)": { "color": [0.75,0.75,0.88] },
         "N00_000_00_Face_00_SKIN (Instance)": {
           "emissiveIntensity": 0.2,
-          "emissive": [
-            0.002,
-            0,
-            0.002
-          ]
+          "emissive": [0.002,0,0.002],
+          "map": "face_eyebags"
         }
       }
     }

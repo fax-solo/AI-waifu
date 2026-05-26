@@ -18,7 +18,7 @@ const BODY_DIR = path.join(DATA_DIR, 'body');
 
 const router = Router();
 
-const ALLOWED_EXTENSIONS = ['.json', '.bvh', '.vrma'];
+const ALLOWED_EXTENSIONS = ['.json', '.vrma'];
 
 function isAllowed(file) {
   const ext = path.extname(file).toLowerCase();
@@ -62,22 +62,6 @@ function getVrmaDuration(fullPath) {
   } catch { return 0; }
 }
 
-function getBvhDuration(fullPath) {
-  try {
-    const content = fs.readFileSync(fullPath, 'utf-8');
-    const framesMatch = content.match(/Frames:\s*(\d+)/i);
-    const frameTimeMatch = content.match(/Frame\s+Time:\s*([\d.]+)/i);
-    if (framesMatch && frameTimeMatch) {
-      const frames = parseInt(framesMatch[1], 10);
-      const frameTime = parseFloat(frameTimeMatch[1]);
-      return frames * frameTime;
-    }
-  } catch (e) {
-    console.error('Error reading BVH duration:', e);
-  }
-  return 0;
-}
-
 function listAnimationFiles(dir) {
   try {
     if (!fs.existsSync(dir)) return [];
@@ -86,20 +70,8 @@ function listAnimationFiles(dir) {
       .map(f => {
         const fullPath = path.join(dir, f);
         const ext = path.extname(f).toLowerCase();
-        const isBvh = ext === '.bvh';
         const isVrma = ext === '.vrma';
         try {
-          if (isBvh) {
-            return {
-              filename: f,
-              name: f.replace('.bvh', ''),
-              type: 'body',
-              format: 'bvh',
-              duration: getBvhDuration(fullPath),
-              loop: false,
-              blendSpeed: 8,
-            };
-          }
           if (isVrma) {
             return {
               filename: f,
@@ -123,7 +95,7 @@ function listAnimationFiles(dir) {
             blendSpeed: meta.blendSpeed || 8,
           };
         } catch {
-          return { filename: f, name: f.replace(ext, ''), type: isBvh ? 'body' : 'unknown', format: isBvh ? 'bvh' : 'json', duration: 1, loop: false, error: 'parse failed' };
+          return { filename: f, name: f.replace(ext, ''), type: 'unknown', format: 'json', duration: 1, loop: false, error: 'parse failed' };
         }
       });
   } catch {
@@ -152,7 +124,7 @@ const upload = multer({
     if (ALLOWED_EXTENSIONS.includes(ext) && file.fieldname === 'animation') {
       cb(null, true);
     } else {
-      cb(new Error('Only .json, .bvh, and .vrma files are allowed'), false);
+      cb(new Error('Only .json and .vrma files are allowed'), false);
     }
   }
 });
@@ -173,12 +145,10 @@ router.post('/upload/:type', upload.single('animation'), (req, res) => {
   }
   
   const ext = path.extname(req.file.originalname).toLowerCase();
-  const format = ext === '.bvh' ? 'bvh' : ext === '.vrma' ? 'vrma' : 'json';
+  const format = ext === '.vrma' ? 'vrma' : 'json';
   
   let duration = 1;
-  if (format === 'bvh') {
-    duration = getBvhDuration(req.file.path);
-  } else if (format === 'vrma') {
+  if (format === 'vrma') {
     duration = getVrmaDuration(req.file.path);
   } else {
     try {
@@ -216,10 +186,6 @@ router.get('/:type/:filename', (req, res) => {
       const buffer = fs.readFileSync(filePath);
       res.set('Content-Type', 'model/gltf-binary');
       res.send(buffer);
-    } else if (ext === '.bvh') {
-      const raw = fs.readFileSync(filePath, 'utf-8');
-      res.set('Content-Type', 'text/plain');
-      res.send(raw);
     } else {
       const raw = fs.readFileSync(filePath, 'utf-8');
       res.json(JSON.parse(raw));

@@ -21,7 +21,7 @@ import { useRenderQueue } from '../../animations/useRenderQueue.js';
 import { useColorSpace } from '../../animations/useColorSpace.js';
 import { useEmissiveGlow } from '../../animations/useEmissiveGlow.js';
 import { useRimLighting } from '../../animations/useRimLighting.js';
-import * as api from '../../utils/api.js';
+
 
 const DEFAULT_SETTINGS = {
   scale: 1.15,
@@ -88,11 +88,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   const avatarSettingsRef = useRef(avatarSettings);
   const [webglError, setWebglError] = useState(null);
 
-  const [animationList, setAnimationList] = useState([]);
-  const [animListLoading, setAnimListLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('avatar');
-  const [animSearch, setAnimSearch] = useState('');
-  const [animCategory, setAnimCategory] = useState('all');
 
   const currentEmotion = emotion || 'neutral';
   const testingRef = useRef(false);
@@ -156,23 +152,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     'wink_left', 'wink_right',
   ];
 
-  function categorizeAnim(filename) {
-    if (!filename) return 'other';
-    if (/^(neutral_idle|sit_idle|kneel_idle|laying_idle)/.test(filename)) return 'idle';
-    if (filename.startsWith('action_')) return 'action';
-    if (filename.startsWith('dance_')) return 'dance';
-    if (/^(joy|sadness|anger|surprise|fear|love|confusion)\./.test(filename)) return 'emotion';
-    return 'other';
-  }
 
-  const CATEGORIES = [
-    { key: 'all', label: 'All' },
-    { key: 'emotion', label: 'Emotion' },
-    { key: 'idle', label: 'Idle' },
-    { key: 'action', label: 'Action' },
-    { key: 'dance', label: 'Dance' },
-    { key: 'other', label: 'Other' },
-  ];
 
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -491,16 +471,6 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     return () => clearTimeout(timer);
   }, [avatarSettings]);
 
-  // Fetch animation list when VRM loads
-  useEffect(() => {
-    if (!vrm) return;
-    setAnimListLoading(true);
-    api.getAnimations().then(data => {
-      setAnimationList(data.body || []);
-      setAnimListLoading(false);
-    }).catch(() => setAnimListLoading(false));
-  }, [vrm]);
-
   // ─── Load VRM into scene when it changes ────────────────────
   useEffect(() => {
     if (!vrm || !sceneRef.current) return;
@@ -740,7 +710,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
               <div className="avatar-drawer-nowplaying">
                 <span className="avatar-drawer-nowplaying-dot" />
                 <span className="avatar-drawer-nowplaying-label">Now:</span>
-                <span className="avatar-drawer-nowplaying-name">{cur.filename.replace(/\.bvh$/, '').replace(/_/g, ' ')}</span>
+                <span className="avatar-drawer-nowplaying-name">{cur.filename.replace(/\.(bvh|vrma)$/, '').replace(/_/g, ' ')}</span>
                 <div className="avatar-drawer-nowplaying-bar">
                   <div className="avatar-drawer-nowplaying-bar-fill" />
                 </div>
@@ -871,75 +841,13 @@ const AvatarViewport = forwardRef(function AvatarViewport({
             {/* ─── Animate Tab ─── */}
             {activeTab === 'animate' && (
               <div className="avatar-drawer-scroll">
-                <div className="avatar-section-title">Emotions</div>
-                <div className="avatar-btn-grid cols-4">
-                  <button className="avatar-btn" onClick={() => animator.playBVH('joy.bvh', { loop: true })}>😊 Joy</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('sadness.bvh', { loop: true })}>😢 Sad</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('anger.bvh', { loop: true })}>😤 Anger</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('surprise.bvh', { loop: true })}>😲 Surprise</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('fear.bvh', { loop: true })}>😨 Fear</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('love.bvh', { loop: true })}>😍 Love</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('neutral_idle.bvh', { loop: true })}>😐 Idle</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('confusion.bvh', { loop: true })}>😕 Confused</button>
-                </div>
-
-                <div className="avatar-section-title">Actions</div>
-                <div className="avatar-btn-grid cols-4">
-                  <button className="avatar-btn" onClick={() => animator.playBVH('action_greeting.bvh', { loop: false })}>Greeting</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('action_jump.bvh', { loop: false })}>Jump</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('action_walk.bvh', { loop: true })}>Walk</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('dance_1.bvh', { loop: true })}>Dance 1</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('dance_gangnam_style.bvh', { loop: true })}>Gangnam</button>
-                  <button className="avatar-btn" onClick={() => animator.playBVH('dance_rumba.bvh', { loop: true })}>Rumba</button>
-                </div>
-
-                <div className="avatar-section-title">Expressions</div>
+                <div className="avatar-section-title">Expressions (Facial)</div>
                 <div className="avatar-btn-grid cols-4">
                   <button className="avatar-btn" onClick={() => animator.playFacial('happy.json', { blendSpeed: 10 })}>Happy</button>
                   <button className="avatar-btn" onClick={() => animator.playFacial('sad.json', { blendSpeed: 8 })}>Sad</button>
                   <button className="avatar-btn" onClick={() => animator.playFacial('angry.json', { blendSpeed: 10 })}>Angry</button>
                   <button className="avatar-btn" onClick={() => animator.playFacial('surprised.json', { blendSpeed: 12 })}>Surprised</button>
                   <button className="avatar-btn" onClick={() => animator.playFacial('wink.json', { blendSpeed: 12 })}>Wink</button>
-                </div>
-
-                <div className="avatar-section-title">
-                  Browse All
-                  {animListLoading && <span className="avatar-browse-loading">loading…</span>}
-                </div>
-                <div className="avatar-browse-filters">
-                  {CATEGORIES.map(cat => (
-                    <button
-                      key={cat.key}
-                      className={`avatar-chip${animCategory === cat.key ? ' active' : ''}`}
-                      onClick={() => setAnimCategory(cat.key)}
-                    >
-                      {cat.label}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  className="avatar-browse-search"
-                  type="text"
-                  placeholder="Search animations..."
-                  value={animSearch}
-                  onChange={(e) => setAnimSearch(e.target.value)}
-                />
-                <div className="avatar-browse-list">
-                  {animationList
-                    .filter(a => a.format === 'bvh')
-                    .filter(a => animCategory === 'all' || categorizeAnim(a.filename) === animCategory)
-                    .filter(a => !animSearch || a.name.toLowerCase().includes(animSearch.toLowerCase()))
-                    .map(anim => (
-                      <button
-                        key={anim.filename}
-                        className="avatar-browse-item"
-                        onClick={() => animator.playBVH(anim.filename, { loop: true })}
-                        title={`${anim.duration?.toFixed(1) ?? '?'}s`}
-                      >
-                        <span className="avatar-browse-item-name">{anim.name.replace(/_/g, ' ')}</span>
-                        <span className="avatar-browse-item-meta">{anim.duration?.toFixed(1) ?? '?'}s</span>
-                      </button>
-                    ))}
                 </div>
               </div>
             )}
@@ -1014,10 +922,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                     <span className="avatar-about-label">Format</span>
                     <span className="avatar-about-value">VRM {vrm?.meta?.version ?? '0.x'}</span>
                   </div>
-                  <div className="avatar-about-row">
-                    <span className="avatar-about-label">Animations</span>
-                    <span className="avatar-about-value">{animationList.filter(a => a.format === 'bvh').length} BVH</span>
-                  </div>
+
                   {vrm?.meta?.author && (
                     <div className="avatar-about-row">
                       <span className="avatar-about-label">Author</span>

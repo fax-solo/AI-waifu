@@ -36,7 +36,7 @@
     {
       "time": 0,
       "expressions": {
-        "Surprised": 0.95
+        "surprised": 0.95
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
@@ -57,7 +57,7 @@
     {
       "time": 0.25,
       "expressions": {
-        "Surprised": 0.85
+        "surprised": 0.85
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
@@ -78,25 +78,25 @@
     {
       "time": 0.6,
       "expressions": {
-        "Surprised": 0.6
+        "surprised": 0.6
       }
     },
     {
       "time": 1,
       "expressions": {
-        "Surprised": 0.45
+        "surprised": 0.45
       }
     },
     {
       "time": 1.5,
       "expressions": {
-        "Surprised": 0.35
+        "surprised": 0.35
       }
     },
     {
       "time": 2,
       "expressions": {
-        "Surprised": 0.3
+        "surprised": 0.3
       }
     }
   ]

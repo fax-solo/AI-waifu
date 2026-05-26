@@ -152,13 +152,13 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
 
 function parseResponse(fullText) {
   const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i);
-  const animMatch = fullText.match(/\[animation:([\w.\-]+?\.bvh)\]/i);
+  const animMatch = fullText.match(/\[animation:([\w.\-]+?(?:\.vrma|\.bvh)?)\]/i);
 
   let text = emotionMatch ? emotionMatch[2].trim() : fullText.trim();
   let animation = animMatch ? animMatch[1].toLowerCase() : null;
 
   if (animation) {
-    text = text.replace(/\[animation:[\w.\-]+?\.bvh\]/gi, '').trim();
+    text = text.replace(/\[animation:[\w.\-]+?(?:\.vrma|\.bvh)?\]/gi, '').trim();
   }
 
   if (emotionMatch) {

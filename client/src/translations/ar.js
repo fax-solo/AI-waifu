@@ -195,7 +195,7 @@ export default {
     },
     animations: {
       title: 'الرسوم المتحركة',
-      hint: 'قم بإسقاط ملفات .json (لتعابير الوجه) و.bvh (لحركات الجسم) في مجلد data/animations.',
+      hint: 'قم بإسقاط ملفات .json (لتعابير الوجه) و.vrma (لحركات الجسم) في مجلد data/animations.',
       facial: 'تعابير الوجه',
       body: 'حركات الجسم',
       refresh: 'تحديث',

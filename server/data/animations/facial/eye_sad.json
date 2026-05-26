@@ -26,13 +26,13 @@
     {
       "time": 0,
       "expressions": {
-        "sad": 0.2
+        "sorrow": 0.2
       }
     },
     {
       "time": 1.5,
       "expressions": {
-        "sad": 0.2
+        "sorrow": 0.2
       }
     }
   ]

@@ -26,13 +26,13 @@
     {
       "time": 0,
       "expressions": {
-        "happy": 0.25
+        "joy": 0.25
       }
     },
     {
       "time": 1.5,
       "expressions": {
-        "happy": 0.25
+        "joy": 0.25
       }
     }
   ]

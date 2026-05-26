@@ -13,7 +13,7 @@ const RENDER_LAYERS = {
   INNER_CAVITIES: {
     order: 2400,
     label: 'Inner Cavities',
-    match: ['mouth', 'lip', 'kuchi', 'teeth', 'tongue', 'tooth', 'haguki', 'inner', 'gums'],
+    match: ['mouth', 'lip', 'kuchi', 'teeth', 'tongue', 'tooth', 'haguki', 'gums'],
     castShadow: false,
     receiveShadow: false,
     depthWrite: false,
@@ -49,13 +49,20 @@ function classifyMesh(mesh) {
   const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
   const matName = mat?.name?.toLowerCase() || '';
 
+  const LAYER_BONUS = {
+    FACIAL_LINEWORK: 1,
+    OCULAR_ELEMENTS: 1,
+    INNER_CAVITIES: 1,
+  };
+
   let bestLayer = null;
   let bestScore = 0;
 
   for (const [key, layer] of Object.entries(RENDER_LAYERS)) {
+    const bonus = LAYER_BONUS[key] || 0;
     for (const kw of layer.match) {
       if (name.includes(kw) || matName.includes(kw)) {
-        const score = kw.length;
+        const score = kw.length + bonus;
         if (score > bestScore) {
           bestScore = score;
           bestLayer = key;
@@ -85,6 +92,7 @@ export function useRenderQueue() {
 
     vrm.scene.traverse((child) => {
       if (!child.isMesh && !child.isSkinnedMesh) return;
+      child.frustumCulled = false;
       const layerKey = classifyMesh(child);
       if (!layerKey) return;
 

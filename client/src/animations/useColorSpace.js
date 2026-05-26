@@ -52,30 +52,14 @@ export function useColorSpace() {
 
         const changes = [];
 
+        // Only gamma-correct mat.color — MToon properties (shadeColorFactor etc.)
+        // manage their own color space; gamma-applying them causes over-darkening
         if (mat.color) {
           gammaCorrectColor(mat.color, 2.2);
           changes.push('color^2.2');
           if (manualOverride) {
             gammaCorrectColor(mat.color, 0.4545);
             changes.push('manual override ^0.4545');
-          }
-        }
-
-        const scf = mat.shadeColorFactor;
-        if (scf) {
-          gammaCorrectColor(scf, 2.2);
-          changes.push('shadeColorFactor^2.2');
-          if (manualOverride) {
-            gammaCorrectColor(scf, 0.4545);
-            changes.push('shade manual override');
-          }
-        }
-
-        if (mat.uniforms?._ShadeColorFactor?.value) {
-          gammaCorrectColor(mat.uniforms._ShadeColorFactor.value, 2.2);
-          changes.push('uniform shadeColorFactor');
-          if (manualOverride) {
-            gammaCorrectColor(mat.uniforms._ShadeColorFactor.value, 0.4545);
           }
         }
 

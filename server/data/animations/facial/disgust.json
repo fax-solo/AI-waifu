@@ -31,89 +31,89 @@
   },
   "keyframes": [
     {
-        "time": 0,
-        "expressions": {
-          "angry": 0.6,
-          "sad": 0.2
-        },
-        "materials": {
-          "N00_000_00_Face_00_SKIN (Instance)": {
-            "shadeColorFactor": [
-              0.08,
-              0.08,
-              0.06
-            ],
-            "map": "face_sick_1"
-          }
-        }
+      "time": 0,
+      "expressions": {
+        "angry": 0.6,
+        "sorrow": 0.2
       },
-      {
-        "time": 0.4,
-        "expressions": {
-          "angry": 0.75,
-          "sad": 0.3
-        },
-        "materials": {
-          "N00_000_00_Face_00_SKIN (Instance)": {
-            "shadeColorFactor": [
-              0.1,
-              0.1,
-              0.08
-            ],
-            "map": "face_sick_1"
-          }
-        }
-      },
-      {
-        "time": 0.9,
-        "expressions": {
-          "angry": 0.5,
-          "sad": 0.2
-        },
-        "materials": {
-          "N00_000_00_Face_00_SKIN (Instance)": {
-            "shadeColorFactor": [
-              0.06,
-              0.06,
-              0.05
-            ],
-            "map": "face_sick_1"
-          }
-        }
-      },
-      {
-        "time": 1.5,
-        "expressions": {
-          "angry": 0.65,
-          "sad": 0.25
-        },
-        "materials": {
-          "N00_000_00_Face_00_SKIN (Instance)": {
-            "shadeColorFactor": [
-              0.09,
-              0.09,
-              0.07
-            ],
-            "map": "face_sick_1"
-          }
-        }
-      },
-      {
-        "time": 2,
-        "expressions": {
-          "angry": 0.6,
-          "sad": 0.2
-        },
-        "materials": {
-          "N00_000_00_Face_00_SKIN (Instance)": {
-            "shadeColorFactor": [
-              0.08,
-              0.08,
-              0.06
-            ],
-            "map": "face_sick_1"
-          }
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "shadeColorFactor": [
+            0.08,
+            0.08,
+            0.06
+          ],
+          "map": "face_sick_1"
         }
       }
+    },
+    {
+      "time": 0.4,
+      "expressions": {
+        "angry": 0.75,
+        "sorrow": 0.3
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "shadeColorFactor": [
+            0.1,
+            0.1,
+            0.08
+          ],
+          "map": "face_sick_1"
+        }
+      }
+    },
+    {
+      "time": 0.9,
+      "expressions": {
+        "angry": 0.5,
+        "sorrow": 0.2
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "shadeColorFactor": [
+            0.06,
+            0.06,
+            0.05
+          ],
+          "map": "face_sick_1"
+        }
+      }
+    },
+    {
+      "time": 1.5,
+      "expressions": {
+        "angry": 0.65,
+        "sorrow": 0.25
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "shadeColorFactor": [
+            0.09,
+            0.09,
+            0.07
+          ],
+          "map": "face_sick_1"
+        }
+      }
+    },
+    {
+      "time": 2,
+      "expressions": {
+        "angry": 0.6,
+        "sorrow": 0.2
+      },
+      "materials": {
+        "N00_000_00_Face_00_SKIN (Instance)": {
+          "shadeColorFactor": [
+            0.08,
+            0.08,
+            0.06
+          ],
+          "map": "face_sick_1"
+        }
+      }
+    }
   ]
 }

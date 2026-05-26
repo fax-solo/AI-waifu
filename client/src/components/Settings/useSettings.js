@@ -83,10 +83,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
   const originalRef = useRef(null);
   const [dirty, setDirty] = useState(false);
 
-  const [animations, setAnimations] = useState({ facial: [], body: [] });
-  const [animLoading, setAnimLoading] = useState(false);
-  const [animSearch, setAnimSearch] = useState('');
-
   const [currentVRMName, setCurrentVRMName] = useState(null);
   const [avatars, setAvatars] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -112,7 +108,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
 
   const fileInputRef = useRef(null);
   const pfpInputRef = useRef(null);
-  const animFileInputRef = useRef(null);
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type });
@@ -366,60 +361,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
       console.error('Failed to delete memory:', err);
     }
   };
-
-  const loadAnimations = useCallback(async () => {
-    setAnimLoading(true);
-    try {
-      const data = await api.getAnimations();
-      setAnimations(data);
-    } catch (e) {
-      console.error('Failed to load animations:', e);
-    }
-    setAnimLoading(false);
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'animations') loadAnimations();
-  }, [activeTab, loadAnimations]);
-
-  const handleTestAnimation = (type, filename, animAvatarRef) => {
-    const ref = animAvatarRef || extAvatarRef;
-    const key = `${type}/${filename}`;
-    setTestStatus((p) => ({ ...p, [key]: 'playing' }));
-    if (ref?.current?.triggerAnimation) {
-      ref.current.triggerAnimation(type, filename, { blendSpeed: 8 });
-    }
-    setTimeout(() => {
-      setTestStatus((p) => ({ ...p, [key]: 'idle' }));
-    }, 2000);
-  };
-
-  const handleDeleteAnimation = async (type, filename) => {
-    try {
-      await api.deleteAnimation(type, filename);
-      loadAnimations();
-    } catch (e) {
-      console.error('Failed to delete animation:', e);
-    }
-  };
-
-  const handleUploadAnimation = async (e) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    setAnimLoading(true);
-    for (const file of files) {
-      try {
-        await api.uploadAnimation('body', file);
-      } catch (err) {
-        console.error('Failed to upload animation:', err);
-      }
-    }
-    loadAnimations();
-    e.target.value = '';
-    setAnimLoading(false);
-  };
-
-  const [testStatus, setTestStatus] = useState({});
 
   const loadAvatars = async () => {
     try {
@@ -694,7 +635,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     apiKeyInput, groqApiKeyInput, hasCustomKey, hasGroqKey,
     saving, toast, memories, shortcuts, recordingAction,
     updateStatus, latestVersion, updateUrl, updateError, updateProgress,
-    animations, animLoading, animSearch, testStatus,
     currentVRMName, avatars, isUploading, showUploadForm, uploadForm,
     showGallery, galleryAvatars, downloadingGalleryId,
     audioDevices, testText, micTestStatus, ttsStatus, setupStatus,
@@ -702,14 +642,13 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     isTestingVoice,
 
     // Refs
-    fileInputRef, pfpInputRef, animFileInputRef,
+    fileInputRef, pfpInputRef,
 
     // Setters
     setDisplayName, setCompanion, setApiKeyInput, setGroqApiKeyInput,
-    setShortcuts, setRecordingAction, setAnimSearch,
+    setShortcuts, setRecordingAction,
     setShowUploadForm, setUploadForm, setShowGallery,
     setTestText, setActiveTab, setSettingsSearch,
-    setAnimLoading,
 
     // Constants
     VOICES, GEMINI_MODELS, GROQ_MODELS, GITHUB_REPO,
@@ -718,7 +657,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     showToast, markDirty, handleSave,
     handleSetApiKey, handleSetGroqKey, handleRemoveApiKey, handleRemoveGroqKey,
     loadMemories, handleDeleteMemory,
-    loadAnimations, handleTestAnimation, handleDeleteAnimation, handleUploadAnimation,
     loadAvatars, handleUploadAvatar, handleSelectAvatar, handleDeleteAvatar,
     loadGalleryAvatars, handleDownloadGalleryAvatar,
     handleRemoveVRM, checkForUpdates, downloadUpdate, installUpdate, handleTestMic, loadAudioDevices,

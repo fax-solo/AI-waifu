@@ -26,13 +26,13 @@
     {
       "time": 0,
       "expressions": {
-        "Surprised": 0.4
+        "surprised": 0.4
       }
     },
     {
       "time": 1.5,
       "expressions": {
-        "Surprised": 0.4
+        "surprised": 0.4
       }
     }
   ]

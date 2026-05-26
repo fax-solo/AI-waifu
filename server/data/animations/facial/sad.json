@@ -34,7 +34,7 @@
     {
       "time": 0,
       "expressions": {
-        "sad": 0.5
+        "sorrow": 0.5
       },
       "materials": {
         "N00_000_00_EyeHighlight_00_EYE (Instance)": {
@@ -58,7 +58,7 @@
     {
       "time": 0.5,
       "expressions": {
-        "sad": 0.85
+        "sorrow": 0.85
       },
       "materials": {
         "N00_000_00_EyeHighlight_00_EYE (Instance)": {
@@ -82,7 +82,7 @@
     {
       "time": 1.2,
       "expressions": {
-        "sad": 0.7
+        "sorrow": 0.7
       },
       "materials": {
         "N00_000_00_EyeHighlight_00_EYE (Instance)": {
@@ -106,7 +106,7 @@
     {
       "time": 2,
       "expressions": {
-        "sad": 0.8
+        "sorrow": 0.8
       },
       "materials": {
         "N00_000_00_EyeHighlight_00_EYE (Instance)": {

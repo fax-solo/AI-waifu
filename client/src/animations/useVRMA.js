@@ -10,8 +10,8 @@ export function useVRMA() {
     filename: null,
     mixer: null,
     action: null,
-    clip: null,
-    vrm: null,
+    duration: 0,
+    loop: false,
   });
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function useVRMA() {
       if (stateRef.current.mixer) {
         stateRef.current.mixer.stopAllAction();
       }
-      stateRef.current = { playing: false, filename: null, mixer: null, action: null, clip: null, vrm: null };
+      stateRef.current.playing = false;
     };
   }, []);
 
@@ -57,8 +57,11 @@ export function useVRMA() {
         return;
       }
 
+      console.log(`[VRMA] Playing ${filename} (${clip.duration.toFixed(2)}s, ${loop ? 'loop' : 'once'})`);
+
       const mixer = new THREE.AnimationMixer(vrm.scene);
       const action = mixer.clipAction(clip);
+
       action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, 1);
       if (!loop) action.clampWhenFinished = true;
       action.play();
@@ -68,8 +71,8 @@ export function useVRMA() {
         filename,
         mixer,
         action,
-        clip,
-        vrm,
+        duration: clip.duration,
+        loop,
       };
     } catch (err) {
       console.error('[VRMA] Failed to play:', filename, err);
@@ -80,15 +83,16 @@ export function useVRMA() {
     if (stateRef.current.mixer) {
       stateRef.current.mixer.stopAllAction();
     }
-    stateRef.current = { playing: false, filename: null, mixer: null, action: null, clip: null, vrm: null };
+    stateRef.current.playing = false;
   }, []);
 
   const update = useCallback((dt) => {
     const s = stateRef.current;
     if (!s.playing || !s.mixer) return;
     s.mixer.update(dt);
-    if (s.action && !s.action.loop && s.action.paused) {
+    if (s.action && !s.loop && s.action.time >= s.duration - 0.001) {
       s.playing = false;
+      console.log(`[VRMA] Finished: ${s.filename}`);
     }
   }, []);
 

@@ -1,7 +1,6 @@
 import { useRef, useCallback, useEffect } from 'react';
 import * as THREE from 'three';
 import * as api from '../utils/api.js';
-import { parseBVH, applyBVHFrame } from './useBVH.js';
 import { useBuiltinAnimations } from './useBuiltinAnimations.js';
 import { useWindowAnchor } from './useWindowAnchor.js';
 import { useVRMA } from './useVRMA.js';
@@ -92,26 +91,33 @@ const EMOTION_TO_OVERLAY = {
 };
 
 const EXPR_FALLBACK = {
-  love: ['happy'],
-  loving: ['happy'],
-  affectionate: ['happy'],
-  embarrassed: ['happy'],
-  playful: ['happy'],
-  excited: ['happy'],
-  proud: ['happy'],
-  smug: ['happy'],
-  annoyed: ['angry'],
-  worried: ['sad'],
-  nervous: ['sad'],
-  tired: ['sad'],
-  disgust: ['sad'],
-  fear: ['surprised', 'Surprised'],
-  curious: ['neutral'],
-  thoughtful: ['neutral'],
-  grateful: ['happy'],
-  sympathetic: ['sad'],
-  happy: ['happy', 'Joy'],
-  sad: ['sad', 'Sorrow'],
+  joy: ['joy', 'happy', 'Joy'],
+  sorrow: ['sorrow', 'sad', 'Sorrow'],
+  angry: ['angry', 'Angry'],
+  surprised: ['surprised', 'Surprised'],
+  neutral: ['neutral', 'Neutral'],
+  relaxed: ['relaxed', 'Relaxed', 'neutral'],
+  fun: ['fun', 'Fun', 'joy', 'happy'],
+  love: ['joy', 'happy'],
+  loving: ['joy', 'happy'],
+  affectionate: ['joy', 'happy'],
+  embarrassed: ['joy', 'happy'],
+  playful: ['joy', 'happy'],
+  excited: ['joy', 'surprised'],
+  proud: ['joy', 'angry'],
+  smug: ['joy', 'angry'],
+  annoyed: ['angry', 'sorrow'],
+  worried: ['sorrow', 'sad'],
+  nervous: ['sorrow', 'sad'],
+  tired: ['sorrow', 'sad'],
+  disgust: ['sorrow', 'angry'],
+  fear: ['surprised', 'sorrow'],
+  curious: ['surprised', 'neutral'],
+  thoughtful: ['surprised', 'neutral'],
+  grateful: ['joy', 'surprised'],
+  sympathetic: ['sorrow', 'sad'],
+  happy: ['joy', 'happy', 'Joy'],
+  sad: ['sorrow', 'sad', 'Sorrow'],
   angry: ['angry', 'Angry'],
   neutral: ['neutral', 'Neutral'],
   surprised: ['surprised', 'Surprised'],
@@ -126,10 +132,12 @@ const EXPR_FALLBACK = {
   Ou: ['ou', 'U', 'u'],
   Ee: ['ee', 'E', 'e'],
   Oh: ['oh', 'O', 'o'],
-  Blink_R: ['blinkRight', 'blink'],
-  Blink_L: ['blinkLeft', 'blink'],
+  blinkRight: ['blinkRight', 'Blink_R', 'blink'],
+  blinkLeft: ['blinkLeft', 'Blink_L', 'blink'],
+  Blink_R: ['blinkRight', 'Blink_R', 'blink'],
+  Blink_L: ['blinkLeft', 'Blink_L', 'blink'],
   Surprised: ['surprised'],
-  Fun: ['Fun', 'happy'],
+  Fun: ['fun', 'Fun', 'joy', 'happy'],
 };
 
 function getExpressionNames(em) {
@@ -172,8 +180,6 @@ const SKELETON_BONES = [
 function getBone(vrm, name) {
   if (vrm.humanoid) return vrm.humanoid.getNormalizedBoneNode?.(name) ?? null;
   if (vrm.boneMap?.[name]) return vrm.boneMap[name];
-  // Fallback: traverse scene, try exact match then endsWith
-  // (endsWith handles mixamorig:Spine, Head, etc. uniquely without prefix clashes)
   const lower = name.toLowerCase().replace(/[^a-z0-9]/g, '');
   let found = null;
   vrm.scene?.traverse?.((child) => {
@@ -181,18 +187,6 @@ function getBone(vrm, name) {
       const n = child.name.toLowerCase().replace(/[^a-z0-9]/g, '');
       if (n === lower || n.endsWith(lower)) found = child;
     }
-  });
-  return found;
-}
-
-function getRawBone(vrm, name) {
-  // For BVH: VRM uses getRawBoneNode, GLB uses direct bone lookup
-  if (vrm.humanoid) return vrm.humanoid.getRawBoneNode?.(name) ?? null;
-  // Try bone map first, then scene traversal
-  if (vrm.boneMap) return vrm.boneMap[name] ?? null;
-  let found = null;
-  vrm.scene?.traverse?.((child) => {
-    if (!found && child.isBone && child.name.toLowerCase() === name.toLowerCase()) found = child;
   });
   return found;
 }
@@ -260,73 +254,15 @@ function lerpKeyframes(keyframes, time) {
   return keyframes.at(-1);
 }
 
-// ── Hand clipping correction ─────────────────────────────────
-// After BVH animation applies a frame, hands from motion-capture
-// data may penetrate the torso (proportion mismatch). This detects
-// hand-inside-body and rotates the upper arm outward.
-const _hipPos = new THREE.Vector3();
-const _handPos = new THREE.Vector3();
-const _correctionQ = new THREE.Quaternion();
-const _axis = new THREE.Vector3();
-
-function correctArmClipping(vrm) {
-  const humanoid = vrm.humanoid;
-  if (!humanoid) return;
-
-  const getBone = (name) => humanoid.getRawBoneNode?.(name)
-    ?? humanoid.getNormalizedBoneNode?.(name);
-
-  const hips = getBone('hips');
-  const leftUpperArm = getBone('leftUpperArm');
-  const rightUpperArm = getBone('rightUpperArm');
-  const leftHand = getBone('leftHand');
-  const rightHand = getBone('rightHand');
-
-  if (!hips || !leftHand || !rightHand || !leftUpperArm || !rightUpperArm) return;
-
-  hips.getWorldPosition(_hipPos);
-  const minDist = 0.14; // minimum XZ distance from hand to hip center
-  const strength = 2.5; // rad/m — how aggressively to push outward
-
-  for (const side of ['left', 'right']) {
-    const hand = side === 'left' ? leftHand : rightHand;
-    const upperArm = side === 'left' ? leftUpperArm : rightUpperArm;
-
-    hand.getWorldPosition(_handPos);
-    const dx = _handPos.x - _hipPos.x;
-    const dz = _handPos.z - _hipPos.z;
-    const dist = Math.sqrt(dx * dx + dz * dz);
-
-    if (dist < minDist) {
-      // Proportional outward rotation: closer = stronger nudge
-      const correction = (minDist - dist) * strength;
-      const sign = side === 'left' ? 1 : -1;
-      // Rotate upper arm around world Y-axis to abduct the arm
-      _axis.set(0, 1, 0);
-      _correctionQ.setFromAxisAngle(_axis, sign * correction);
-      upperArm.quaternion.premultiply(_correctionQ);
-    }
-  }
-}
-
 export function useAnimator({ getTexture, onVFX } = {}) {
-  const { updateBuiltins } = useBuiltinAnimations();
+  const { updateBuiltins, updateBreathingRaw } = useBuiltinAnimations();
   const windowAnchor = useWindowAnchor();
   const vrma = useVRMA();
   const vrmRef = useRef(null);
-  const textCache = useRef({});
-  const parsedCache = useRef({});
-  const preloaded = useRef(false);
   const calibrationRef = useRef(null);
   const proxyRef = useRef(null);
   const blendQueueRef = useRef(null);
   const lookAtRef = useRef(null);
-
-  // BVH playback state — manually applied, no AnimationMixer
-  // { filename, data, elapsed, loop, done } or null
-  // done=true means non-looping animation finished — last frame is held until replaced
-  const bvh = useRef(null);
-  const pending = useRef(null);
 
   // Captured rest pose (synced from state.restPose each frame)
   const restPoseRef = useRef({});
@@ -351,6 +287,7 @@ export function useAnimator({ getTexture, onVFX } = {}) {
   const materialBlend = useRef({});
   const getTextureRef = useRef(getTexture || (() => null));
   const originalMapsRef = useRef({});
+  const materialLookup = useRef({}); // {matName: material} — stored references for correct restore
 
   // VFX effect state
   const vfxState = useRef({ effects: [], changed: false });
@@ -375,149 +312,32 @@ export function useAnimator({ getTexture, onVFX } = {}) {
   const lastMouth = useRef(null);
   const lastEye = useRef(null);
 
-  // Idle animation system categorized by stance
-  const IDLE_FILES = {
-    neutral: ['neutral_idle.bvh', 'neutral_idle2.bvh'],
-    sit: ['sit_idle.bvh', 'sit_idle2.bvh', 'sit_idle3.bvh'],
-    kneel: ['neutral_idle.bvh'],
-    laying: ['neutral_idle.bvh'],
-  };
-  const idleRef = useRef({ active: false, filename: null, timer: 0 });
-  const currentStance = useRef('neutral'); // Tracks posture so we don't randomly stand/sit
+  // Body animations disabled — all animation files removed
 
-  // ── Preload all BVH texts ────────────────────────────────
-  const preloadAll = useCallback(async () => {
-    try {
-      const { body } = await api.getAnimations();
-      const files = body.filter(a => a.format === 'bvh');
-      if (files.length === 0) return;
-      console.log(`[Anim] Preloading ${files.length} BVH files...`);
-      await Promise.all(files.map(async (anim) => {
-        try {
-          const text = await api.getAnimationText('body', anim.filename);
-          textCache.current[anim.filename] = text;
-        } catch { /* skip */ }
-      }));
-      console.log(`[Anim] Cached ${Object.keys(textCache.current).length} BVH texts`);
-    } catch { /* silent */ }
-  }, []);
+  // ── Play body animation (unified entry point) ────────
+  // Disabled — body animation files have been removed.
+  const playBodyAnimation = useCallback(async (_filename, _options = {}) => {}, []);
 
-  // ── Stop current BVH ─────────────────────────────────────
-  const stopBVH = useCallback(() => {
-    bvh.current = null;
-    pending.current = null;
-  }, []);
-
-  // ── Start BVH from parsed data ───────────────────────────
-  const startBVH = useCallback((filename, data, loop) => {
-    bvh.current = { filename, data, elapsed: 0, loop };
-    pending.current = null;
-    console.log(`[Anim] Playing ${filename} (${data.duration.toFixed(2)}s, ${loop ? 'loop' : 'once'})`);
-  }, []);
-
-  // ── Play body animation (unified: BVH or VRMA) ──────────
-  const playBVH = useCallback((filename, options = {}) => {
-    const loop = options.loop !== false;
-
-    // Route .vrma files to the VRMA animation system
-    if (filename.endsWith('.vrma')) {
-      vrma.stop();
-      stopBVH();
-      if (!vrmRef.current) return;
-      const serverBase = window.location.protocol === 'file:'
-        ? 'http://127.0.0.1:3005'
-        : '';
-      const url = `${serverBase}/api/animations/body/${filename}`;
-      vrma.play(vrmRef.current, filename, url, { loop });
-      const name = filename.toLowerCase();
-      if (name.includes('sit')) currentStance.current = 'sit';
-      else if (name.includes('kneel')) currentStance.current = 'kneel';
-      else if (name.includes('lay')) currentStance.current = 'laying';
-      else currentStance.current = 'neutral';
-      return;
-    }
-
-    // Stop any active VRMA
+  // ── Stop all animation (facial) ─────────────────────
+  const stopAll = useCallback(() => {
     vrma.stop();
+    facial.current = [];
+    auto.current = { talking: false, thinking: false };
+    lastEmotion.current = null;
+    lastMouth.current = null;
+    lastEye.current = null;
+  }, [vrma.stop]);
 
-    if (bvh.current?.filename === filename && !bvh.current?.done) return;
+  // ── Play VRMA animation (delegates to playBodyAnimation) ──
+  const playVRMA = useCallback((filename, options = {}) => {
+    return playBodyAnimation(filename, options);
+  }, [playBodyAnimation]);
 
-    let data = parsedCache.current[filename];
-
-    if (!data && textCache.current[filename] && vrmRef.current?.scene) {
-      data = parseBVH(textCache.current[filename], vrmRef.current);
-      if (data) parsedCache.current[filename] = data;
-    }
-
-    if (data) {
-      startBVH(filename, data, loop);
-      
-      // Update stance based on the filename being played
-      const name = filename.toLowerCase();
-      if (name.includes('sit')) currentStance.current = 'sit';
-      else if (name.includes('kneel')) currentStance.current = 'kneel';
-      else if (name.includes('lay')) currentStance.current = 'laying';
-      else if (name.includes('stand') || name.includes('walk') || name.includes('run') || name.includes('dance')) {
-        currentStance.current = 'neutral';
-      }
-      
-      return;
-    }
-
-    pending.current = { filename, loop };
-    loadAsync(filename, loop);
-  }, [startBVH, vrma.stop]);
-
-  // ── Async load + auto-play ───────────────────────────────
-  const loadAsync = useCallback(async (filename, loop) => {
-    try {
-      const text = await api.getAnimationText('body', filename);
-      textCache.current[filename] = text;
-      const data = parseBVH(text, vrmRef.current);
-      if (!data) { console.warn(`[Anim] Parse failed: ${filename}`); pending.current = null; return; }
-      parsedCache.current[filename] = data;
-      if (pending.current?.filename === filename) {
-        startBVH(filename, data, pending.current.loop);
-        
-        // Update stance based on the filename being played
-        const name = filename.toLowerCase();
-        if (name.includes('sit')) currentStance.current = 'sit';
-        else if (name.includes('kneel')) currentStance.current = 'kneel';
-        else if (name.includes('lay')) currentStance.current = 'laying';
-        else if (name.includes('stand') || name.includes('walk') || name.includes('run') || name.includes('dance')) {
-          currentStance.current = 'neutral';
-        }
-      }
-    } catch (e) {
-      console.error(`[Anim] Load failed: ${filename}`, e);
-      pending.current = null;
-    }
-  }, [startBVH]);
-
-  // ── Play VRMA animation ────────────────────────────────
-  const playVRMA = useCallback(async (filename, options = {}) => {
-    const loop = options.loop !== false;
-    stopBVH();
-    if (!vrmRef.current) return;
-    const serverBase = window.location.protocol === 'file:'
-      ? 'http://127.0.0.1:3005'
-      : '';
-    const url = `${serverBase}/api/animations/body/${filename}`;
-    await vrma.play(vrmRef.current, filename, url, { loop });
-    // Update stance based on filename
-    const name = filename.toLowerCase();
-    if (name.includes('sit')) currentStance.current = 'sit';
-    else if (name.includes('kneel')) currentStance.current = 'kneel';
-    else if (name.includes('lay')) currentStance.current = 'laying';
-    else currentStance.current = 'neutral';
-  }, [stopBVH, vrma.play]);
-
-  // ── Play facial animation ────────────────────────────────
+  // ── Play facial animation ───────────────────────────
   const playFacial = useCallback((filename, options = {}) => {
     api.getAnimation('facial', filename).then(data => {
       if (!data) { console.warn(`[Anim] Facial ${filename}: no data`); return; }
       console.log(`[Anim] Facial: ${filename}`, JSON.stringify(data.keyframes?.[0]?.expressions));
-      // Clear queue so old looping expressions don't override the new one
       facial.current = [];
       targetMaterials.current = data.materialReset || null;
       vfxState.current = { effects: [], changed: false };
@@ -538,7 +358,6 @@ export function useAnimator({ getTexture, onVFX } = {}) {
     api.getAnimation('facial', filename).then(data => {
       if (!data) { console.warn(`[Anim] Overlay ${filename}: no data`); return; }
       console.log(`[Anim] Overlay: ${filename}`, JSON.stringify(data.keyframes?.[0]?.expressions));
-      // Remove any existing overlays of the same category so they replace each other
       const category = options.category || 'default';
       const queue = facial.current;
       for (let i = queue.length - 1; i >= 0; i--) {
@@ -557,30 +376,16 @@ export function useAnimator({ getTexture, onVFX } = {}) {
     });
   }, []);
 
-  // ── Stop all animation (BVH + facial) ────────────────────
-  const stopAll = useCallback(() => {
-    stopBVH();
-    vrma.stop();
-    facial.current = [];
-    auto.current = { talking: false, thinking: false };
-    lastMouth.current = null;
-    lastEye.current = null;
-  }, [stopBVH, vrma.stop]);
-
-  // ── Main update loop (called every frame) ────────────────
+  // ── Main update loop (called every frame) ───────────
   const update = useCallback((vrm, deltaTime, state = {}) => {
     if (!vrm?.scene) return;
     const isVRM = !!vrm.humanoid;
 
-    // Clear caches when VRM changes (stale raw node references)
+    // Clear caches when VRM changes
     if (vrm !== vrmRef.current) {
       vrmRef.current = vrm;
       windowAnchor.init(vrm);
-      parsedCache.current = {};
-      textCache.current = {};
-      preloaded.current = false;
-      stopBVH();
-
+      vrma.stop();
       const modelId = vrm?.meta?.name || `vrm_${Date.now()}`;
       const em = isVRM ? (vrm.expressionManager || vrm.blendShapeProxy) : null;
       const cal = new ExpressionCalibrationMap(modelId);
@@ -597,19 +402,9 @@ export function useAnimator({ getTexture, onVFX } = {}) {
 
     if (isNaN(deltaTime) || deltaTime <= 0 || !isFinite(deltaTime)) return;
     const rawDt = Math.min(deltaTime, 0.05);
-    // Smooth dt via ring buffer + detect window-drag teleports (resets spring bone velocities)
     const dt = windowAnchor.update(rawDt, vrm);
 
-    // 1. Preload BVH texts on first frame
-    if (!preloaded.current) {
-      preloaded.current = true;
-      preloadAll();
-    }
-
-    // 1b. When VRMA switches to a new file, stop any ongoing BVH
-    //     (mutual exclusion — only one body animation system at a time)
-
-    // 2. Apply base pose to bones (VRM uses restPose, GLB resets to identity)
+    // 1. Apply base pose to bones (VRM uses restPose, GLB resets to identity)
     for (const name of SKELETON_BONES) {
       const node = getBone(vrm, name);
       if (!node) continue;
@@ -639,7 +434,9 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       }
     }
 
-    // 3. Builtin animations (blink, eyes, breathing) — VRM only for blink/eyes
+    // 2. Builtin animations (blink, eyes, breathing on normalized)
+    //    Blink sets blend → expressionManager state, eyes set lookAt.yaw/pitch,
+    //    breathing on normalized is overwritten by VRMA (harmless)
     updateBuiltins(vrm, dt, {
       mouseX: state.mouseX || 0,
       mouseY: state.mouseY || 0,
@@ -649,29 +446,20 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       lookAtController: lookAtRef.current,
     });
 
-    // 4. Propagate normalized → raw (VRM only)
-    vrm.humanoid?.update();
+    // 3. VRMA animation update (applies to normalized bones)
+    vrma.update(dt);
 
-    // 5. LookAt and expressions (VRM only)
+    // 4. LookAt and expressions — override VRMA for eyes on normalized
     vrm.lookAt?.update(dt);
     (vrm.expressionManager || vrm.blendShapeProxy)?.update();
 
-    // 5.5 VRMA animation update (runs independently, skipped when no VRMA active)
-    vrma.update(dt);
-
-    // 6. Apply BVH frames to bones (skipped while VRMA plays)
-    if (!vrma.stateRef.current.playing && bvh.current) {
-      const { data, loop, done } = bvh.current;
-      if (!done) {
-        bvh.current.elapsed += dt;
-      }
-      const currentTime = done ? data.duration : bvh.current.elapsed;
-      applyBVHFrame(vrm, data, currentTime, loop);
-
-      if (!loop && !done && bvh.current.elapsed >= data.duration) {
-        bvh.current.done = true;
-      }
+    // 5. Propagate normalized → raw — runs AFTER expressions so raw bones get final pose
+    if (vrm.humanoid) {
+      vrm.humanoid.update();
     }
+
+    // 6. Breathing on raw bones — additive offsets on top of final raw pose
+    updateBreathingRaw(vrm, dt);
 
     // 7. Material updates (MToon per-frame shader sync) — VRM only
     if (vrm.materials) {
@@ -681,15 +469,7 @@ export function useAnimator({ getTexture, onVFX } = {}) {
     // 8. Ensure world matrices are current
     vrm.scene.updateMatrixWorld(true);
 
-    // 8b. Hand clipping correction — after BVH animation, push hands outward if
-    //     they penetrate the torso. Runs every frame while a BVH animation plays.
-    //     Skipped when VRMA is active (VRMA clips are authored to avoid clipping).
-    if (!vrma.stateRef.current.playing && bvh.current && vrm.humanoid) {
-      correctArmClipping(vrm);
-    }
-
-    // 9. NaN guard — reset any bone with NaN/Infinity quaternions before spring bone physics
-    //     prevents spring bones from violently exploding after blend shape changes
+    // 9. NaN guard — reset any bone with NaN/Infinity quaternions
     vrm.scene?.traverse?.((child) => {
       if (!child.isBone) return;
       const q = child.quaternion;
@@ -710,7 +490,6 @@ export function useAnimator({ getTexture, onVFX } = {}) {
     const proxy = proxyRef.current;
     const rawEm = isVRM ? (vrm.expressionManager || vrm.blendShapeProxy) : null;
 
-    // Compute target expression values from the active facial animation queue
     const targetExpressions = {};
     const queue = facial.current;
     let hasActiveFacial = false;
@@ -761,7 +540,7 @@ export function useAnimator({ getTexture, onVFX } = {}) {
        }
      }
 
-     // 10b. Lip sync from audio analyser — drives mouth shapes when talking
+     // 10b. Lip sync from audio analyser
     if (state.isTalking && state.analyser) {
       const bins = state.analyser.frequencyBinCount;
       if (!lipWave.current || lipWave.current.length !== bins) {
@@ -934,7 +713,7 @@ export function useAnimator({ getTexture, onVFX } = {}) {
             const isEyeTex = Object.keys(props).some(k => k === 'map' || k === 'emissiveMap')
               && matName.toLowerCase().includes('eye');
             for (const kw of keywords) {
-              if (kw === 'n00' || kw === 'instance' || kw.length < 3) continue;
+              if (kw === 'n00' || kw === '000' || kw === 'instance' || kw.length < 3) continue;
               if (isEyeTex && kw === 'eye') continue;
               mat = vrm.materials?.find(m => m.name && m.name.toLowerCase().includes(kw));
               if (mat) break;
@@ -969,16 +748,12 @@ export function useAnimator({ getTexture, onVFX } = {}) {
             }
           }
           if (!mat) continue;
+          materialLookup.current[matName] = mat;
 
-          // Runtime alpha fix for overlay materials receiving texture swaps:
-          // - Blush/cheek → Transparent (soft alpha, depthWrite off)
-          // - Eyelash/eyebrow/eye → Cutout (sharp alpha, alphaTest 0.5, depthWrite on)
-          // - Mouth/lip → DoubleSide + Transparent
           const matLower = mat.name?.toLowerCase() || '';
-          const isOpaqueBase = ['face', 'head', 'skin', 'body', 'kao'].some(kw => matLower.includes(kw));
           const isBlush = ['blush', 'cheek', 'hoho'].some(kw => matLower.includes(kw));
 
-          const isSharpOverlay = ['eyelash', 'eyebrow', 'matsuge', 'mayu', 'eye_d', 'overlay', 'eye', 'iris', 'highlight', 'eyewhite', 'hitomi', 'pupil', 'sclera', 'lens', 'ganma', 'expression'].some(kw => matLower.includes(kw));
+          const isSharpOverlay = ['eyelash', 'eyebrow', 'matsuge', 'mayu', 'eye_d', 'overlay', 'lash', 'brow', 'eye00', 'eye01', 'eye02', '-eye', 'expression'].some(kw => matLower.includes(kw));
 
           const isMouth = ['mouth', 'lip', 'kuchi', 'teeth', 'tongue', 'tooth', 'haguki', 'inner', 'gums'].some(kw => matLower.includes(kw));
 
@@ -1056,13 +831,12 @@ export function useAnimator({ getTexture, onVFX } = {}) {
          }
        }
 
-        // Decay targetMaterials toward reset values when no active facial
         if (!hasActiveFacial) {
           for (const [matName, props] of Object.entries(tmat)) {
             for (const propKey of Object.keys(props)) {
               if (propKey === 'emissiveMap' || propKey === 'map') {
                 const orig = originalMapsRef.current[matName]?.[propKey];
-                const mat = vrm.materials?.find(m => m.name === matName);
+                const mat = materialLookup.current[matName];
                 if (orig !== undefined && mat) mat[propKey] = orig || null;
                 const origEm = originalMapsRef.current[matName]?.originalEmissive;
                 if (origEm && mat?.emissive) {
@@ -1091,10 +865,8 @@ export function useAnimator({ getTexture, onVFX } = {}) {
      }
 
      // 12. Auto-trigger: emotion → facial expression + animation lifecycle
-    // The server now handles deciding which BVH to play via aiAnimationActive
     const aiActive = state.aiAnimationActive;
     
-    // Always trigger facial expressions for the current emotion
     const emotion = state.emotion || 'neutral';
     if (emotion !== lastEmotion.current && state.autoAnimate && !state.isTesting) {
       lastEmotion.current = emotion;
@@ -1102,7 +874,6 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       lastEye.current = state.eyeExpression || null;
       const facialFile = EMOTION_FACIAL[emotion] || `${emotion}.json`;
       playFacial(facialFile, { blendSpeed: 10 });
-      // Auto-trigger matching mouth/eye overlays unless explicitly overridden
       if (!state.mouthExpression) {
         const overlay = EMOTION_TO_OVERLAY[emotion];
         if (overlay?.mouth) {
@@ -1119,8 +890,6 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       }
     }
 
-    // Mouth/eye expression overlays from server-side pattern detection
-    // These override the auto-mapped overlays when the AI text explicitly describes mouth/eye actions
     if (state.mouthExpression !== undefined && state.mouthExpression !== lastMouth.current) {
       lastMouth.current = state.mouthExpression;
       if (state.mouthExpression) {
@@ -1137,101 +906,25 @@ export function useAnimator({ getTexture, onVFX } = {}) {
     }
 
     if (aiActive) {
-      // Keep aiActive alive while loading or actively playing (not done)
-      const stillLoading = pending.current?.filename === aiActive;
-      const stillPlaying = bvh.current?.filename === aiActive && !bvh.current?.done;
+      const stillLoading = loadingBody.current;
+      const stillPlaying = vrma.stateRef.current.filename === aiActive && vrma.stateRef.current.playing;
       if (!stillLoading && !stillPlaying) {
         state.aiAnimationActive = null;
       }
     }
 
-    // 13. Auto-trigger: talking → neutral idle
-    if (!aiActive) {
-      const isFrozen = (!bvh.current || bvh.current?.done) && !pending.current;
-      if (state.isTalking && (!auto.current.talking || isFrozen)) {
-        auto.current.talking = true;
-        playBVH('neutral_idle.bvh', { loop: true });
-      } else if (!state.isTalking && auto.current.talking) {
-        auto.current.talking = false;
-      }
-    } else if (state.isTalking && !auto.current.talking) {
-      auto.current.talking = true;
-    } else if (!state.isTalking) {
-      auto.current.talking = false;
-    }
+    // 13-15. Body animation auto-trigger DISABLED (animation files removed)
 
-    // 14. Auto-trigger: thinking → confusion
-    if (!aiActive) {
-      const isFrozen = (!bvh.current || bvh.current?.done) && !pending.current;
-      if (state.isThinking && (!auto.current.thinking || isFrozen)) {
-        auto.current.thinking = true;
-        playBVH('confusion.bvh', { loop: true });
-      } else if (!state.isThinking && auto.current.thinking) {
-        auto.current.thinking = false;
-        if (bvh.current?.filename === 'confusion.bvh') stopBVH();
-      }
-    } else if (state.isThinking && !auto.current.thinking) {
-      auto.current.thinking = true;
-    } else if (!state.isThinking) {
-      auto.current.thinking = false;
-    }
-
-    // 15. Auto-idle: play random idle when nothing else is active
-    const currentIdleList = IDLE_FILES[currentStance.current] || IDLE_FILES['neutral'];
-    const isAnimDone = bvh.current?.done;
-    const idlePlaying = bvh.current && !isAnimDone && currentIdleList.includes(bvh.current.filename);
-    
-    const shouldIdle = !aiActive
-      && (!bvh.current || isAnimDone || idlePlaying)
-      && !state.isTalking
-      && !state.isThinking
-      && (state.emotion === 'neutral' || !state.autoAnimate);
-
-    if (shouldIdle) {
-      if (!idleRef.current.active) {
-        // Adopt current if it's already an idle in the correct stance, else start one
-        if (bvh.current && currentIdleList.includes(bvh.current.filename)) {
-          idleRef.current = { active: true, filename: bvh.current.filename, timer: 0 };
-        } else {
-          const fn = currentIdleList[Math.floor(Math.random() * currentIdleList.length)];
-          idleRef.current = { active: true, filename: fn, timer: 0 };
-          playBVH(fn, { loop: true });
-          if (bvh.current) applyBVHFrame(vrm, bvh.current.data, 0, true);
-        }
-      } else if (bvh.current && bvh.current.filename !== idleRef.current.filename) {
-        // Something else started playing, deactivate idle
-        idleRef.current = { active: false, filename: null, timer: 0 };
-      } else {
-        // Idle is still running — switch after 25-35 seconds
-        idleRef.current.timer += dt;
-        if (idleRef.current.timer > 25 + Math.random() * 10) {
-          const others = currentIdleList.filter(f => f !== idleRef.current.filename);
-          // If only 1 idle file in category, just keep playing it
-          if (others.length > 0) {
-            const fn = others[Math.floor(Math.random() * others.length)];
-            idleRef.current = { active: true, filename: fn, timer: 0 };
-            playBVH(fn, { loop: true });
-            if (bvh.current) applyBVHFrame(vrm, bvh.current.data, 0, true);
-          } else {
-            idleRef.current.timer = 0;
-          }
-        }
-      }
-    } else if (idleRef.current.active) {
-      // Something interrupted the idle
-      idleRef.current = { active: false, filename: null, timer: 0 };
-    }
-
-  }, [updateBuiltins, preloadAll, playBVH, playFacial, stopBVH]);
+  }, [updateBuiltins, updateBreathingRaw, playBodyAnimation, playFacial]);
 
   const currentAnimation = useCallback(() => {
-    if (!bvh.current) return null;
+    if (!vrma.stateRef.current.playing) return null;
     return {
-      filename: bvh.current.filename,
-      elapsed: bvh.current.elapsed,
-      duration: bvh.current.data?.duration ?? 0,
+      filename: vrma.stateRef.current.filename,
+      elapsed: 0,
+      duration: vrma.stateRef.current.duration ?? 0,
     };
-  }, []);
+  }, [vrma.stateRef]);
 
-  return { update, playBVH, playVRMA, playFacial, playFacialOverlay, stopAll, currentAnimation };
+  return { update, playBVH: playBodyAnimation, playVRMA, playFacial, playFacialOverlay, stopAll, currentAnimation };
 }

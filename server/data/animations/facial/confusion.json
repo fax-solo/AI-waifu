@@ -4,41 +4,63 @@
   "blendSpeed": 6,
   "materialReset": {
     "N00_000_00_Face_00_SKIN (Instance)": {
-      "color": [1, 1, 1],
-      "emissive": [0, 0, 0],
-      "shadeColorFactor": [1, 1, 1]
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "emissive": [
+        0,
+        0,
+        0
+      ],
+      "shadeColorFactor": [
+        1,
+        1,
+        1
+      ]
     },
     "N00_000_00_EyeHighlight_00_EYE (Instance)": {
-      "color": [1, 1, 1]
+      "color": [
+        1,
+        1,
+        1
+      ]
     }
   },
   "keyframes": [
     {
       "time": 0,
       "expressions": {
-        "Surprised": 0.3,
-        "sad": 0.1
+        "sorrow": 0.1,
+        "surprised": 0.3
       },
       "materials": {},
-      "vfx": ["thought"]
+      "vfx": [
+        "thought"
+      ]
     },
     {
       "time": 0.3,
       "expressions": {
-        "Surprised": 0.5,
-        "sad": 0.15
+        "sorrow": 0.15,
+        "surprised": 0.5
       },
       "materials": {}
     },
     {
       "time": 0.7,
       "expressions": {
-        "Surprised": 0.25,
-        "sad": 0.05
+        "sorrow": 0.05,
+        "surprised": 0.25
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
-          "emissive": [0, 0, 0.005],
+          "emissive": [
+            0,
+            0,
+            0.005
+          ],
           "emissiveIntensity": 0.1
         }
       }
@@ -46,36 +68,40 @@
     {
       "time": 1,
       "expressions": {
-        "Surprised": 0.4,
-        "sad": 0.1
+        "sorrow": 0.1,
+        "surprised": 0.4
       },
       "materials": {}
     },
     {
       "time": 1.4,
       "expressions": {
-        "Surprised": 0.2,
-        "sad": 0.05
+        "sorrow": 0.05,
+        "surprised": 0.2
       },
       "materials": {}
     },
     {
       "time": 1.8,
       "expressions": {
-        "Surprised": 0.35,
-        "sad": 0.1
+        "sorrow": 0.1,
+        "surprised": 0.35
       },
       "materials": {}
     },
     {
       "time": 2,
       "expressions": {
-        "Surprised": 0.3,
-        "sad": 0.1
+        "sorrow": 0.1,
+        "surprised": 0.3
       },
       "materials": {
         "N00_000_00_Face_00_SKIN (Instance)": {
-          "emissive": [0, 0, 0.005],
+          "emissive": [
+            0,
+            0,
+            0.005
+          ],
           "emissiveIntensity": 0.1
         }
       }

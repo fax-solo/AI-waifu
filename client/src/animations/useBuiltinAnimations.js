@@ -55,7 +55,6 @@ export function useBuiltinAnimations() {
 
     updateBlink(vrm, deltaTime, proxy, queue);
     updateEyes(vrm, deltaTime, mouseX, mouseY, mouseMoving, lookAtController);
-    updateBreathing(vrm, deltaTime);
     applyBlendBuffer(vrm, deltaTime);
   }, []);
 
@@ -183,6 +182,52 @@ export function useBuiltinAnimations() {
     return found;
   }
 
+  function getRawBone(vrm, name) {
+    if (vrm.humanoid) return vrm.humanoid.getRawBoneNode?.(name) ?? null;
+    return getBone(vrm, name);
+  }
+
+  function updateBreathingRaw(vrm, deltaTime) {
+    const s = breathState.current;
+    s.phase += deltaTime * 0.35 * Math.PI * 2;
+    const inhale = (Math.sin(s.phase) * 0.5 + 0.5);
+
+    const chest = getRawBone(vrm, 'chest');
+    const upperChest = getRawBone(vrm, 'upperChest') || chest;
+    if (upperChest && upperChest !== chest) {
+      upperChest.rotation.x += (inhale - 0.5) * 0.015;
+    } else if (chest) {
+      chest.rotation.x += (inhale - 0.5) * 0.015;
+    }
+
+    const leftClavicle = getRawBone(vrm, 'leftClavicle');
+    const rightClavicle = getRawBone(vrm, 'rightClavicle');
+    if (leftClavicle && rightClavicle) {
+      leftClavicle.rotation.x += -inhale * 0.035;
+      rightClavicle.rotation.x += -inhale * 0.035;
+    }
+
+    const leftShoulder = getRawBone(vrm, 'leftShoulder');
+    const rightShoulder = getRawBone(vrm, 'rightShoulder');
+    if (leftShoulder && rightShoulder) {
+      const shrug = inhale * 0.02;
+      leftShoulder.rotation.z += shrug;
+      rightShoulder.rotation.z -= shrug;
+      leftShoulder.rotation.x += (inhale - 0.5) * 0.01;
+      rightShoulder.rotation.x += (inhale - 0.5) * 0.01;
+    }
+
+    const spine = getRawBone(vrm, 'spine');
+    if (spine) {
+      spine.rotation.x += (inhale - 0.5) * 0.005;
+    }
+
+    const hips = getRawBone(vrm, 'hips');
+    if (hips) {
+      hips.position.y += (inhale - 0.5) * 0.001;
+    }
+  }
+
   function updateBreathing(vrm, deltaTime) {
     const s = breathState.current;
     s.phase += deltaTime * 0.35 * Math.PI * 2;
@@ -246,7 +291,7 @@ export function useBuiltinAnimations() {
     }
   }
 
-  return { updateBuiltins };
+  return { updateBuiltins, updateBreathingRaw };
 }
 
 export default useBuiltinAnimations;
