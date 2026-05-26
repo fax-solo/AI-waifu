@@ -1,13 +1,3 @@
-/**
- * useSpringBonePresets - Dynamic VRM Spring Bone Preset Manager
- *
- * Implements the first pillar:
- * - Distinct physics profiles for Long Hair, Short Hair, Soft Clothing
- * - Emotion-driven modifier system
- * - UpdateSpringProperties runtime API
- * - Smooth blending between physics states
- */
-
 import { useRef, useCallback } from 'react';
 
 export const BoneGroup = {
@@ -21,61 +11,77 @@ export const BoneGroup = {
   DEFAULT: 'default',
 };
 
+// These are TARGET values the system tries to reach by scaling the model's own original values.
+// Each model has different baseline physics — we compute multipliers to hit these targets.
 const SPRING_BONE_PRESETS = {
   [BoneGroup.LONG_HAIR_BACK]: {
-    stiffness: 0.18,
-    dragForce: 0.85,
-    gravityPower: 0.015,
+    stiffness: 0.20,
+    dragForce: 0.40,
+    gravityPower: 0.10,
     hitRadius: 0.06,
+    gravityDir: [0, -1, 0],
+    centerBone: 'head',
     label: 'Long/Back Hair',
   },
   [BoneGroup.SHORT_HAIR_BANGS]: {
-    stiffness: 0.68,
-    dragForce: 0.72,
-    gravityPower: 0.10,
+    stiffness: 0.35,
+    dragForce: 0.35,
+    gravityPower: 0.07,
     hitRadius: 0.05,
+    gravityDir: [0, -1, 0],
+    centerBone: 'head',
     label: 'Front Bangs / Short Hair',
   },
   [BoneGroup.SOFT_CLOTHING]: {
-    stiffness: 0.18,
-    dragForce: 0.62,
-    gravityPower: 0.40,
+    stiffness: 0.08,
+    dragForce: 0.30,
+    gravityPower: 0.10,
     hitRadius: 0.10,
+    gravityDir: [0, -1, 0],
+    centerBone: 'hips',
     label: 'Soft Clothing / Skirts',
   },
   [BoneGroup.BUST]: {
-    stiffness: 0.45,
-    dragForce: 0.55,
-    gravityPower: 0.12,
-    hitRadius: 0.10,
+    stiffness: 0.40,
+    dragForce: 0.45,
+    gravityPower: 0.06,
+    hitRadius: 0.08,
+    gravityDir: [0, -1, 0],
+    centerBone: 'chest',
     label: 'Bust/Chest',
   },
   [BoneGroup.SKIRT]: {
-    stiffness: 0.18,
-    dragForce: 0.65,
-    gravityPower: 0.45,
-    hitRadius: 0.14,
+    stiffness: 0.08,
+    dragForce: 0.30,
+    gravityPower: 0.12,
+    hitRadius: 0.12,
+    gravityDir: [0, -1, 0],
+    centerBone: 'hips',
     label: 'Skirt',
   },
   [BoneGroup.COAT]: {
-    stiffness: 0.55,
-    dragForce: 0.60,
-    gravityPower: 0.15,
-    hitRadius: 0.12,
+    stiffness: 0.18,
+    dragForce: 0.35,
+    gravityPower: 0.10,
+    hitRadius: 0.10,
+    gravityDir: [0, -1, 0],
+    centerBone: 'chest',
     label: 'Coat/Long Jacket',
   },
   [BoneGroup.ACCESSORIES]: {
-    stiffness: 0.40,
-    dragForce: 0.65,
-    gravityPower: 0.25,
+    stiffness: 0.25,
+    dragForce: 0.40,
+    gravityPower: 0.10,
     hitRadius: 0.04,
+    gravityDir: [0, -1, 0],
     label: 'Ribbons, Tails, Accessories',
   },
   [BoneGroup.DEFAULT]: {
-    stiffness: 0.55,
-    dragForce: 0.60,
-    gravityPower: 0.15,
-    hitRadius: 0.08,
+    stiffness: 0.40,
+    dragForce: 0.45,
+    gravityPower: 0.08,
+    hitRadius: 0.06,
+    gravityDir: [0, -1, 0],
     label: 'Default / Unmatched',
   },
 };
@@ -204,7 +210,7 @@ function classifyJointByBoneName(boneName) {
   }
 
   if (n.includes('coat') || n.includes('jacket')) {
-    return n.includes('skirt') ? BoneGroup.COAT : BoneGroup.COAT;
+    return BoneGroup.COAT;
   }
 
   if (n.includes('cloth') || n.includes('dress')) {
@@ -216,6 +222,10 @@ function classifyJointByBoneName(boneName) {
   }
 
   return BoneGroup.DEFAULT;
+}
+
+function clamp(val, min, max) {
+  return Math.min(Math.max(val, min), max);
 }
 
 export function useSpringBonePresets() {
@@ -235,6 +245,7 @@ export function useSpringBonePresets() {
   const blendSpeedRef = useRef(3.0);
   const pendingJolt = useRef(null);
   const joltState = useRef({ active: false, velocity: 0, displacement: 0, phase: 0 });
+  const unrecognizedBones = useRef(new Set());
 
   const init = useCallback((vrm) => {
     if (!vrm?.springBoneManager?.joints) {
@@ -245,62 +256,148 @@ export function useSpringBonePresets() {
     vrmRef.current = vrm;
     baseJointState.current.clear();
     groupToJoints.current.clear();
+    unrecognizedBones.current.clear();
 
-    for (const group of Object.values(BoneGroup)) {
-      groupToJoints.current.set(group, []);
-    }
+    // Step 1: Collect joints into groups, preserve original model values
+    const groupEntries = {};
+    let totalJoints = 0;
 
-    const joints = vrm.springBoneManager.joints;
-    let tunedCount = 0;
-    const groupStats = {};
-
-    for (const joint of joints) {
+    for (const joint of vrm.springBoneManager.joints) {
       const settings = joint.settings;
       const boneName = joint.bone?.name || 'unnamed';
       const group = classifyJointByBoneName(boneName);
-      const preset = SPRING_BONE_PRESETS[group];
 
-      groupStats[group] = (groupStats[group] || 0) + 1;
+      if (group === BoneGroup.DEFAULT) {
+        unrecognizedBones.current.add(boneName);
+      }
 
-      const originalStiffness = settings.stiffness ?? preset.stiffness;
-      const originalDrag = settings.dragForce ?? preset.dragForce;
-      const originalGravity = settings.gravityPower ?? preset.gravityPower;
-      const originalRadius = settings.hitRadius ?? preset.hitRadius;
-
-      settings.stiffness = preset.stiffness;
-      settings.dragForce = preset.dragForce;
-      settings.gravityPower = preset.gravityPower;
-      settings.hitRadius = preset.hitRadius;
-
-      baseJointState.current.set(joint, {
-        group,
-        baseStiffness: preset.stiffness,
-        baseDrag: preset.dragForce,
-        baseGravity: preset.gravityPower,
-        baseRadius: preset.hitRadius,
-        originalStiffness,
-        originalDrag,
-        originalGravity,
-        originalRadius,
+      if (!groupEntries[group]) groupEntries[group] = [];
+      groupEntries[group].push({
+        joint,
+        orig: {
+          stiffness: settings.stiffness ?? 0.3,
+          drag: settings.dragForce ?? 0.5,
+          gravity: settings.gravityPower ?? 0.1,
+          radius: settings.hitRadius ?? 0.05,
+        },
       });
+      totalJoints++;
+    }
 
-      const groupJoints = groupToJoints.current.get(group) || [];
-      groupJoints.push(joint);
-      groupToJoints.current.set(group, groupJoints);
+    // Step 2: For each group, compute multipliers relative to model's original values
+    for (const [group, entries] of Object.entries(groupEntries)) {
+      const preset = SPRING_BONE_PRESETS[group];
+      const n = entries.length;
 
-      tunedCount++;
+      // Compute group-wise averages of original values
+      const avg = entries.reduce((a, e) => ({
+        stiffness: a.stiffness + e.orig.stiffness / n,
+        drag: a.drag + e.orig.drag / n,
+        gravity: a.gravity + e.orig.gravity / n,
+        radius: a.radius + e.orig.radius / n,
+      }), { stiffness: 0, drag: 0, gravity: 0, radius: 0 });
+
+      // Derive multipliers to reach preset targets from model baseline.
+      // Clamp to reasonable range so we don't multiply a near-zero original to infinity.
+      const multStiffness = clamp(preset.stiffness / Math.max(avg.stiffness, 0.01), 0.1, 8.0);
+      const multDrag = clamp(preset.dragForce / Math.max(avg.drag, 0.01), 0.1, 8.0);
+      const multGravity = clamp(preset.gravityPower / Math.max(avg.gravity, 0.001), 0.1, 10.0);
+      const multRadius = clamp(preset.hitRadius / Math.max(avg.radius, 0.001), 0.1, 8.0);
+
+      // Pre-allocate array for this group
+      if (!groupToJoints.current.has(group)) {
+        groupToJoints.current.set(group, []);
+      }
+      const groupArray = groupToJoints.current.get(group);
+
+      for (const { joint, orig } of entries) {
+        // Apply: tuned_value = original_value * group_multiplier
+        const tunedStiffness = clamp(orig.stiffness * multStiffness, 0.01, 1.0);
+        const tunedDrag = clamp(orig.drag * multDrag, 0.01, 0.95);
+        const tunedGravity = clamp(orig.gravity * multGravity, 0.0, 2.0);
+        const tunedRadius = clamp(orig.radius * multRadius, 0.01, 0.3);
+
+        const settings = joint.settings;
+        settings.stiffness = tunedStiffness;
+        settings.dragForce = tunedDrag;
+        settings.gravityPower = tunedGravity;
+        settings.hitRadius = tunedRadius;
+
+        // Apply per-group gravity direction
+        if (preset.gravityDir) {
+          const gd = settings.gravityDir;
+          if (gd) {
+            gd.set(preset.gravityDir[0], preset.gravityDir[1], preset.gravityDir[2]);
+          }
+        }
+
+        // Set center bone for local-space physics stability
+        if (preset.centerBone && vrm.humanoid) {
+          const center = vrm.humanoid.getNormalizedBoneNode?.(preset.centerBone) ??
+                         vrm.humanoid.getRawBoneNode?.(preset.centerBone);
+          if (center && joint.center !== center) {
+            joint.center = center;
+          }
+        }
+
+        // Store tuned values as the base (emotion modifiers multiply on top)
+        baseJointState.current.set(joint, {
+          group,
+          baseStiffness: tunedStiffness,
+          baseDrag: tunedDrag,
+          baseGravity: tunedGravity,
+          baseRadius: tunedRadius,
+          originalStiffness: orig.stiffness,
+          originalDrag: orig.drag,
+          originalGravity: orig.gravity,
+          originalRadius: orig.radius,
+          stiffnessMult: multStiffness,
+          dragMult: multDrag,
+          gravityMult: multGravity,
+          radiusMult: multRadius,
+        });
+
+        groupArray.push(joint);
+      }
     }
 
     currentModifiers.current = { stiffnessMult: 1.0, dragMult: 1.0, gravityMult: 1.0 };
     targetModifiers.current = { stiffnessMult: 1.0, dragMult: 1.0, gravityMult: 1.0 };
     blendSpeedRef.current = 3.0;
 
-    console.log(`[SpringBonePresets] Initialized ${tunedCount} joints:`,
-      Object.entries(groupStats).map(([g, c]) => `${SPRING_BONE_PRESETS[g]?.label || g}: ${c}`).join(', '));
+    // Log unrecognized bones for debugging
+    if (unrecognizedBones.current.size > 0) {
+      console.log('[SpringBonePresets] Unrecognized spring bones (using DEFAULT):',
+        [...unrecognizedBones.current].join(', '));
+    }
+
+    // Log per-group stats
+    const stats = {};
+    for (const [group, joints] of groupToJoints.current.entries()) {
+      if (joints.length > 0) {
+        stats[group] = { count: joints.length, ...SPRING_BONE_PRESETS[group] };
+      }
+    }
+    console.log('[SpringBonePresets] Initialized', totalJoints, 'joints');
+    for (const [g, s] of Object.entries(stats)) {
+      const j = groupEntries[g];
+      if (!j || j.length === 0) continue;
+      const avg = j.reduce((a, e) => ({
+        stiffness: a.stiffness + e.orig.stiffness / j.length,
+        drag: a.drag + e.orig.drag / j.length,
+        gravity: a.gravity + e.orig.gravity / j.length,
+        radius: a.radius + e.orig.radius / j.length,
+      }), { stiffness: 0, drag: 0, gravity: 0, radius: 0 });
+      const mult = baseJointState.current.get(j[0].joint);
+      console.log(`  ${s.label}: ${j.length} joints | orig: s=${avg.stiffness.toFixed(3)} d=${avg.drag.toFixed(3)} g=${avg.gravity.toFixed(3)} r=${avg.radius.toFixed(3)} | mult: ${mult?.stiffnessMult?.toFixed(2)}x/d${mult?.dragMult?.toFixed(2)}x/g${mult?.gravityMult?.toFixed(2)}x/r${mult?.radiusMult?.toFixed(2)}x`);
+    }
 
     return { baseJointState: baseJointState.current, groupToJoints: groupToJoints.current };
   }, []);
 
+  // ── Runtime tuning: update base values for a specific group ──
+  // Instead of storing absolute target values, we update the baseStiffness/etc directly,
+  // so emotion modifiers still stack on top.
   const updateSpringProperties = useCallback((boneGroup, stiffness, dragForce, gravityPower, hitRadius) => {
     const joints = groupToJoints.current.get(boneGroup);
     if (!joints || joints.length === 0) {
@@ -312,28 +409,27 @@ export function useSpringBonePresets() {
     for (const joint of joints) {
       const state = baseJointState.current.get(joint);
       const settings = joint.settings;
+      if (!state) continue;
 
       if (stiffness != null && !isNaN(stiffness)) {
-        settings.stiffness = stiffness;
-        if (state) state.baseStiffness = stiffness;
+        state.baseStiffness = stiffness;
+        settings.stiffness = stiffness * currentModifiers.current.stiffnessMult;
       }
       if (dragForce != null && !isNaN(dragForce)) {
-        settings.dragForce = dragForce;
-        if (state) state.baseDrag = dragForce;
+        state.baseDrag = dragForce;
+        settings.dragForce = Math.min(0.95, dragForce * currentModifiers.current.dragMult);
       }
       if (gravityPower != null && !isNaN(gravityPower)) {
-        settings.gravityPower = gravityPower;
-        if (state) state.baseGravity = gravityPower;
+        state.baseGravity = gravityPower;
+        settings.gravityPower = gravityPower * currentModifiers.current.gravityMult;
       }
       if (hitRadius != null && !isNaN(hitRadius)) {
+        state.baseRadius = hitRadius;
         settings.hitRadius = hitRadius;
-        if (state) state.baseRadius = hitRadius;
       }
-
       updated++;
     }
 
-    console.log(`[SpringBonePresets] Updated ${updated} joints in group: ${boneGroup}`);
     return updated;
   }, []);
 
@@ -350,9 +446,6 @@ export function useSpringBonePresets() {
     if (emotion.joltAmount > 0) {
       pendingJolt.current = emotion.joltAmount;
     }
-
-    console.log(`[SpringBonePresets] Applied emotion: ${emotionName || 'neutral'}`,
-      `-> stiffness×${emotion.stiffnessMult}, drag×${emotion.dragMult}, gravity×${emotion.gravityMult}`);
   }, []);
 
   const update = useCallback((deltaTime, vrm) => {
@@ -379,6 +472,7 @@ export function useSpringBonePresets() {
       needsReapply = true;
     }
 
+    // Jolt effect (hips bounce for surprised etc.)
     const jolt = joltState.current;
     if (pendingJolt.current != null) {
       jolt.active = true;
@@ -409,30 +503,52 @@ export function useSpringBonePresets() {
       }
     }
 
-    if (!needsReapply || baseJointState.current.size === 0) return;
+    if (!needsReapply) return;
 
-    const joints = vrm.springBoneManager.joints;
-    for (const joint of joints) {
-      const state = baseJointState.current.get(joint);
-      if (!state) continue;
+    // Only iterate joints that belong to tracked groups (not all joints)
+    for (const [, joints] of groupToJoints.current.entries()) {
+      for (const joint of joints) {
+        const state = baseJointState.current.get(joint);
+        if (!state) continue;
 
-      const settings = joint.settings;
-
-      settings.stiffness = state.baseStiffness * cur.stiffnessMult;
-      settings.dragForce = Math.min(0.95, state.baseDrag * cur.dragMult);
-      settings.gravityPower = state.baseGravity * cur.gravityMult;
+        const settings = joint.settings;
+        settings.stiffness = state.baseStiffness * cur.stiffnessMult;
+        settings.dragForce = Math.min(0.95, state.baseDrag * cur.dragMult);
+        settings.gravityPower = state.baseGravity * cur.gravityMult;
+        // hitRadius intentionally NOT modified by emotions
+      }
     }
   }, []);
 
   const getCurrentModifiers = useCallback(() => ({ ...currentModifiers.current }), []);
 
+  // Export the original values and multipliers for the tuning UI
   const getJointStats = useCallback(() => {
     const stats = {};
     for (const [group, joints] of groupToJoints.current.entries()) {
       if (joints.length > 0) {
+        const firstState = baseJointState.current.get(joints[0]);
         stats[group] = {
           count: joints.length,
-          preset: SPRING_BONE_PRESETS[group],
+          label: SPRING_BONE_PRESETS[group]?.label || group,
+          originalValues: firstState ? {
+            stiffness: firstState.originalStiffness,
+            drag: firstState.originalDrag,
+            gravity: firstState.originalGravity,
+            radius: firstState.originalRadius,
+          } : null,
+          tunedValues: firstState ? {
+            stiffness: firstState.baseStiffness,
+            drag: firstState.baseDrag,
+            gravity: firstState.baseGravity,
+            radius: firstState.baseRadius,
+          } : null,
+          multipliers: firstState ? {
+            stiffness: firstState.stiffnessMult,
+            drag: firstState.dragMult,
+            gravity: firstState.gravityMult,
+            radius: firstState.radiusMult,
+          } : null,
         };
       }
     }
@@ -448,6 +564,7 @@ export function useSpringBonePresets() {
     getJointStats,
     BoneGroup,
     SPRING_BONE_PRESETS,
+    groupToJoints,
   };
 }
 

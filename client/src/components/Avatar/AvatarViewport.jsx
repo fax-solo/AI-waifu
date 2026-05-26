@@ -21,6 +21,7 @@ import { useRenderQueue } from '../../animations/useRenderQueue.js';
 import { useColorSpace } from '../../animations/useColorSpace.js';
 import { useEmissiveGlow } from '../../animations/useEmissiveGlow.js';
 import { useRimLighting } from '../../animations/useRimLighting.js';
+import * as api from '../../utils/api.js';
 
 
 const DEFAULT_SETTINGS = {
@@ -90,6 +91,11 @@ const AvatarViewport = forwardRef(function AvatarViewport({
 
   const [activeTab, setActiveTab] = useState('avatar');
 
+  const [bodyAnims, setBodyAnims] = useState([]);
+  const [bodyAnimsLoading, setBodyAnimsLoading] = useState(false);
+  const [showDebugColliders, setShowDebugColliders] = useState(false);
+  const [physicsOverrides, setPhysicsOverrides] = useState({});
+
   const currentEmotion = emotion || 'neutral';
   const testingRef = useRef(false);
 
@@ -134,6 +140,15 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     testingRef.current = false;
     animator.stopAll();
   }
+
+  // Fetch body animations when the Animate tab opens
+  useEffect(() => {
+    if (activeTab !== 'animate') return;
+    setBodyAnimsLoading(true);
+    api.getAnimations().then(data => {
+      setBodyAnims(data.body || []);
+    }).catch(() => {}).finally(() => setBodyAnimsLoading(false));
+  }, [activeTab]);
 
   const FACIAL_EMOTIONS = [
     'neutral', 'happy', 'sad', 'angry', 'surprised', 'excited',
@@ -398,6 +413,14 @@ const AvatarViewport = forwardRef(function AvatarViewport({
 
         // Spring bone emotion physics
         springPresets.update(delta, currentVrm);
+
+        // Update cursor collider position (runs after physics tick, affects next frame)
+        vrmColliders.update(delta, currentVrm, {
+          mouseX: animStateRef.current.mouseX,
+          mouseY: animStateRef.current.mouseY,
+          mouseMoving: animStateRef.current.mouseMoving,
+          camera,
+        });
       }
 
       // ── Dynamic Camera: Auto-Zoom & Parallax ────────────────
@@ -835,6 +858,67 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                   <input type="checkbox" checked={avatarSettings.autoAnimate}
                     onChange={(e) => updateSetting('autoAnimate', e.target.checked)} />
                 </div>
+
+                <div className="avatar-section-title" style={{ marginTop: 16 }}>Debug</div>
+                <div className="avatar-toggle-row">
+                  <span>Show Colliders</span>
+                  <input type="checkbox" checked={showDebugColliders}
+                    onChange={(e) => { setShowDebugColliders(e.target.checked); vrmColliders.toggleDebugVisualization(e.target.checked); }} />
+                </div>
+
+                {(() => {
+                  const stats = springPresets.getJointStats();
+                  const groups = Object.entries(stats).filter(([, s]) => s.count > 0);
+                  if (groups.length === 0) return null;
+                  return (
+                    <>
+                      <div className="avatar-section-title" style={{ marginTop: 16 }}>Physics Tuning</div>
+                      {groups.map(([groupKey, stat]) => (
+                        <div key={groupKey} style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 4 }}>{stat.label} ({stat.count})</div>
+                          {['stiffness', 'drag', 'gravity', 'radius'].map(param => {
+                            const key = `${groupKey}.${param}`;
+                            const orig = stat.originalValues?.[param] ?? 0;
+                            const tuned = stat.tunedValues?.[param] ?? 0;
+                            const override = physicsOverrides[key];
+                            const val = override ?? tuned;
+                            const min = param === 'gravity' ? 0 : 0.01;
+                            const max = param === 'gravity' ? 1.0 : param === 'radius' ? 0.3 : 1.0;
+                            const step = 0.01;
+                            return (
+                              <div key={key} className="avatar-control-row" style={{ marginBottom: 2 }}>
+                                <label style={{ fontSize: '0.7rem', width: 50 }}>{param[0].toUpperCase()}</label>
+                                <input type="range" min={min} max={max} step={step}
+                                  value={override ?? tuned}
+                                  onChange={(e) => {
+                                    const v = parseFloat(e.target.value);
+                                    const next = { ...physicsOverrides, [key]: v };
+                                    setPhysicsOverrides(next);
+                                    springPresets.updateSpringProperties(groupKey,
+                                      param === 'stiffness' ? v : null,
+                                      param === 'drag' ? v : null,
+                                      param === 'gravity' ? v : null,
+                                      param === 'radius' ? v : null,
+                                    );
+                                  }}
+                                  aria-label={`${stat.label} ${param}`}
+                                  style={{ flex: 1, height: 4, margin: '0 4px' }} />
+                                <span style={{ fontSize: '0.7rem', width: 30, textAlign: 'right' }}>{val.toFixed(2)}</span>
+                              </div>
+                            );
+                          })}
+                          <div style={{ fontSize: '0.65rem', opacity: 0.5, marginTop: 1 }}>
+                            orig: s={(stat.originalValues?.stiffness ?? 0).toFixed(2)} d={(stat.originalValues?.drag ?? 0).toFixed(2)} g={(stat.originalValues?.gravity ?? 0).toFixed(2)} r={(stat.originalValues?.radius ?? 0).toFixed(2)}
+                          </div>
+                        </div>
+                      ))}
+                      <div className="avatar-actions-row">
+                        <button className="avatar-btn" onClick={() => { setPhysicsOverrides({}); if (vrm) springPresets.init(vrm); vrmColliders.initFromVRM(vrm); }}
+                          style={{ fontSize: '0.7rem' }}>Reset Physics</button>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             )}
 
@@ -849,6 +933,23 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                   <button className="avatar-btn" onClick={() => animator.playFacial('surprised.json', { blendSpeed: 12 })}>Surprised</button>
                   <button className="avatar-btn" onClick={() => animator.playFacial('wink.json', { blendSpeed: 12 })}>Wink</button>
                 </div>
+
+                <div className="avatar-section-title" style={{ marginTop: 16 }}>Body Animations</div>
+                {bodyAnims.length === 0 ? (
+                  <div style={{ opacity: 0.6, fontSize: '0.85rem', padding: '8px 0' }}>
+                    {bodyAnimsLoading ? 'Loading...' : 'No body animations found. Add .vrma or .bvh files in Settings → Animations.'}
+                  </div>
+                ) : (
+                  <div className="avatar-btn-grid cols-2">
+                    {bodyAnims.map(anim => (
+                      <button key={anim.filename} className="avatar-btn"
+                        onClick={() => { testingRef.current = true; animator.playBVH(anim.filename, { loop: true }); }}>
+                        {anim.name.replace(/\.[^.]+$/, '')}
+                        {anim.format === 'bvh' && ' (BVH)'}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

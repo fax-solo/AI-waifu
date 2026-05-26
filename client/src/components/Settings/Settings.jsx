@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect } from 'react';
-import { X, Search, User, Sparkles, Image, Volume2, Key, Keyboard, Brain, Download, Info, Database } from 'lucide-react';
+import { X, Search, User, Sparkles, Image, Volume2, Key, Keyboard, Brain, Download, Info, Database, Film } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import useSettings from './useSettings.js';
 import Toast from './Toast.jsx';
@@ -12,6 +12,7 @@ import MemoriesTab from './MemoriesTab.jsx';
 import UpdatesTab from './UpdatesTab.jsx';
 import AvatarTab from './AvatarTab.jsx';
 import AboutTab from './AboutTab.jsx';
+import AnimationsTab from './AnimationsTab.jsx';
 import DataManagementTab from './DataManagementTab.jsx';
 import SystemStatusBanner from './SystemStatusBanner.jsx';
 
@@ -24,6 +25,7 @@ const TAB_CONFIG = [
   { id: 'shortcuts', icon: Keyboard, labelKey: 'settings.shortcuts.title' },
   { id: 'memories', icon: Brain, labelKey: 'settings.tabs.memories' },
   { id: 'updates', icon: Download, labelKey: 'settings.tabs.updates' },
+  { id: 'animations', icon: Film, labelKey: 'settings.tabs.animations' },
   { id: 'about', icon: Info, labelKey: 'settings.about.title' },
   { id: 'data', icon: Database, labelKey: 'settings.data.title' },
 ];
@@ -41,7 +43,10 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
     avatars, loadAvatars, currentVRMName, handleSelectAvatar, handleDeleteAvatar,
     showUploadForm, setShowUploadForm, uploadForm, setUploadForm, isUploading, handleUploadAvatar,
     showGallery, setShowGallery, galleryAvatars, downloadingGalleryId, handleDownloadGalleryAvatar,
-    loadGalleryAvatars, fileInputRef, pfpInputRef,
+    loadGalleryAvatars, fileInputRef, pfpInputRef, textureInputRef,
+    showGalleryUpload, setShowGalleryUpload, galleryUploadForm, setGalleryUploadForm,
+    isGalleryUploading, handleUploadGalleryModel,
+    galleryModelInputRef, galleryTextureInputRef, galleryPfpInputRef,
     audioDevices, testText, setTestText, micTestStatus, ttsStatus, setupStatus, isTestingVoice, speak, handleTestMic,
     hasCustomKey, hasGroqKey, apiKeyInput, setApiKeyInput, groqApiKeyInput, setGroqApiKeyInput,
     handleSetApiKey, handleSetGroqKey, handleRemoveApiKey, handleRemoveGroqKey,
@@ -50,6 +55,9 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
     VOICES, GEMINI_MODELS, GROQ_MODELS,
     settingsLoading, requestClose,
     showUnsavedDialog, handleUnsavedConfirm, handleUnsavedCancel,
+    animations, animLoading, animSearch, testStatus,
+    animFileInputRef, loadAnimations, handleTestAnimation,
+    handleDeleteAnimation, handleUploadAnimation, setAnimSearch,
   } = settings;
 
   const overlayRef = useRef(null);
@@ -143,7 +151,14 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
           galleryAvatars={galleryAvatars} downloadingGalleryId={downloadingGalleryId}
           handleDownloadGalleryAvatar={handleDownloadGalleryAvatar}
           loadGalleryAvatars={loadGalleryAvatars}
-          fileInputRef={fileInputRef} pfpInputRef={pfpInputRef} />;
+          fileInputRef={fileInputRef} pfpInputRef={pfpInputRef}
+          textureInputRef={textureInputRef}
+          showGalleryUpload={showGalleryUpload} setShowGalleryUpload={setShowGalleryUpload}
+          galleryUploadForm={galleryUploadForm} setGalleryUploadForm={setGalleryUploadForm}
+          isGalleryUploading={isGalleryUploading} handleUploadGalleryModel={handleUploadGalleryModel}
+          galleryModelInputRef={galleryModelInputRef}
+          galleryTextureInputRef={galleryTextureInputRef}
+          galleryPfpInputRef={galleryPfpInputRef} />;
       case 'updates':
         return <UpdatesTab updateStatus={updateStatus} latestVersion={latestVersion}
           updateUrl={updateUrl} updateError={updateError} updateProgress={updateProgress}
@@ -155,6 +170,15 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
         return <DataManagementTab memories={memories}
           handleExport={handleExport} handleImport={handleImport}
           handleClearMemories={handleClearMemories} handleClearConversations={handleClearConversations} />;
+      case 'animations':
+        return <AnimationsTab
+          animations={animations} animLoading={animLoading}
+          animSearch={animSearch} setAnimSearch={setAnimSearch}
+          loadAnimations={loadAnimations}
+          handleTestAnimation={handleTestAnimation}
+          handleDeleteAnimation={handleDeleteAnimation}
+          handleUploadAnimation={handleUploadAnimation}
+          testStatus={testStatus} animFileInputRef={animFileInputRef} />;
       default:
         return null;
     }

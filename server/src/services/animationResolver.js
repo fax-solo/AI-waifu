@@ -1,4 +1,6 @@
-// Mouth expression patterns detected in AI response text
+import path from 'path';
+import { readdirSync, existsSync } from 'fs';
+
 const RESPONSE_MOUTH = [
   { patterns: ['smiles', 'smiling', 'with a smile', 'smile at you', 'gives a smile', 'flashes a smile'], value: 'smile' },
   { patterns: ['frowns', 'frowning', 'with a frown', 'pouts', 'pouting'], value: 'frown' },
@@ -20,6 +22,10 @@ const RESPONSE_EYES = [
   { patterns: ['eyes widen', 'eyes wide in', 'widens eyes', 'eyes went wide'], value: 'surprised' },
   { patterns: ['blinks', 'blinking', 'rapid blinking'], value: 'neutral' },
 ];
+
+const BODY_DIR = path.resolve('data/animations/body');
+
+let bodyFileIndex = [];
 
 function matchMouthExpression(text) {
   if (!text) return null;
@@ -43,19 +49,53 @@ function matchEyeExpression(text) {
   return null;
 }
 
+export function refreshFileIndex() {
+  bodyFileIndex = [];
+  if (!existsSync(BODY_DIR)) return;
+  try {
+    const files = readdirSync(BODY_DIR);
+    for (const f of files) {
+      if (f.endsWith('.vrma')) {
+        bodyFileIndex.push(f);
+      }
+    }
+  } catch {}
+}
+
+refreshFileIndex();
+
 export function resolveAnimation(userMessage, aiText, aiEmotion, aiAnimationTag = null) {
   const mouthExpression = aiText ? matchMouthExpression(aiText) : null;
   const eyeExpression = aiText ? matchEyeExpression(aiText) : null;
 
+  let animation = null;
+  let loop = false;
+  let source = 'none';
+
+  // 1. Explicit AI animation tag [animation:filename.vrma] takes priority
+  if (aiAnimationTag && bodyFileIndex.includes(aiAnimationTag)) {
+    animation = aiAnimationTag;
+    source = 'tag';
+    loop = false;
+  }
+
+  // 2. Fallback: emotion-based body animation (e.g., happy.vrma)
+  if (!animation && aiEmotion) {
+    const emotionFile = `${aiEmotion}.vrma`;
+    if (bodyFileIndex.includes(emotionFile)) {
+      animation = emotionFile;
+      source = 'emotion';
+      loop = true;
+    }
+  }
+
   return {
-    animation: null,
-    loop: false,
-    source: 'disabled',
+    animation,
+    loop,
+    source,
     mouthExpression: mouthExpression || undefined,
     eyeExpression: eyeExpression || undefined,
   };
 }
-
-export function refreshFileIndex() {}
 
 export default { resolveAnimation, refreshFileIndex };

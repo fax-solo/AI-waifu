@@ -1,4 +1,4 @@
-import { Image, Plus, Download, RefreshCw, User, Camera, Trash2 } from 'lucide-react';
+import { Image, Plus, Download, Upload, RefreshCw, User, Camera, Trash2 } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import * as api from '../../utils/api.js';
 
@@ -6,7 +6,10 @@ export default function AvatarTab({
   avatars, loadAvatars, currentVRMName, handleSelectAvatar, handleDeleteAvatar,
   showUploadForm, setShowUploadForm, uploadForm, setUploadForm, isUploading, handleUploadAvatar,
   showGallery, setShowGallery, galleryAvatars, downloadingGalleryId, handleDownloadGalleryAvatar,
-  loadGalleryAvatars, fileInputRef, pfpInputRef
+  loadGalleryAvatars, fileInputRef, pfpInputRef,
+  textureInputRef, showGalleryUpload, setShowGalleryUpload, galleryUploadForm, setGalleryUploadForm,
+  isGalleryUploading, handleUploadGalleryModel,
+  galleryModelInputRef, galleryTextureInputRef, galleryPfpInputRef,
 }) {
   const { t } = useLanguage();
 
@@ -17,12 +20,16 @@ export default function AvatarTab({
         {t('settings.avatar.title')}
         <div className="settings-title-actions">
           <button className="btn btn-secondary btn-small"
-            onClick={() => { setShowGallery(false); setShowUploadForm(!showUploadForm); }}>
+            onClick={() => { setShowGallery(false); setShowGalleryUpload(false); setShowUploadForm(!showUploadForm); }}>
             {showUploadForm ? 'Cancel' : <><Plus size={14} /> Add New</>}
           </button>
           <button className="btn btn-secondary btn-small"
-            onClick={() => { setShowUploadForm(false); setShowGallery(!showGallery); }}>
+            onClick={() => { setShowUploadForm(false); setShowGalleryUpload(false); setShowGallery(!showGallery); }}>
             {showGallery ? 'Cancel' : <><Download size={14} /> Gallery</>}
+          </button>
+          <button className="btn btn-secondary btn-small"
+            onClick={() => { setShowUploadForm(false); setShowGallery(false); setShowGalleryUpload(!showGalleryUpload); }}>
+            {showGalleryUpload ? 'Cancel' : <><Upload size={14} /> Upload</>}
           </button>
         </div>
       </div>
@@ -62,12 +69,85 @@ export default function AvatarTab({
                   onChange={(e) => setUploadForm({ ...uploadForm, vrmFile: e.target.files?.[0] })}
                   style={{ display: 'none' }} />
               </div>
+              <div className="form-group">
+                <label>Textures (optional)</label>
+                <button className="btn btn-secondary btn-full"
+                  onClick={() => textureInputRef.current?.click()}>
+                  {uploadForm.textureFiles?.length > 0
+                    ? `${uploadForm.textureFiles.length} texture(s) selected`
+                    : 'Select Texture Files'}
+                </button>
+                <input ref={textureInputRef} type="file" accept="image/*" multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    setUploadForm({ ...uploadForm, textureFiles: files });
+                  }} style={{ display: 'none' }} />
+              </div>
             </div>
           </div>
           <button className="btn btn-primary btn-full"
             onClick={handleUploadAvatar}
             disabled={isUploading || !uploadForm.vrmFile || !uploadForm.name}>
             {isUploading ? 'Uploading...' : t('settings.avatar.saveToLibrary')}
+          </button>
+        </div>
+      )}
+
+      {showGalleryUpload && (
+        <div className="settings-upload-form">
+          <div className="settings-upload-body">
+            <div className="settings-pfp-upload" onClick={() => galleryPfpInputRef.current?.click()}>
+              {galleryUploadForm.pfpPreview ? (
+                <img src={galleryUploadForm.pfpPreview} alt="Preview" />
+              ) : (
+                <>
+                  <Camera size={20} style={{ color: 'var(--color-text-muted)', marginBottom: 4 }} />
+                  <span className="settings-pfp-upload-hint">Icon</span>
+                </>
+              )}
+              <input ref={galleryPfpInputRef} type="file" accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) setGalleryUploadForm({ ...galleryUploadForm, pfpFile: file, pfpPreview: URL.createObjectURL(file) });
+                }} style={{ display: 'none' }} />
+            </div>
+            <div className="settings-upload-fields">
+              <div className="form-group">
+                <label>Model Name</label>
+                <input type="text" value={galleryUploadForm.name}
+                  onChange={(e) => setGalleryUploadForm({ ...galleryUploadForm, name: e.target.value })}
+                  placeholder="e.g. My Character" />
+              </div>
+              <div className="form-group">
+                <label>Model File (.vrm / .glb)</label>
+                <button className="btn btn-secondary btn-full"
+                  onClick={() => galleryModelInputRef.current?.click()}>
+                  {galleryUploadForm.modelFile ? galleryUploadForm.modelFile.name : 'Select Model File'}
+                </button>
+                <input ref={galleryModelInputRef} type="file" accept=".vrm,.glb"
+                  onChange={(e) => setGalleryUploadForm({ ...galleryUploadForm, modelFile: e.target.files?.[0] })}
+                  style={{ display: 'none' }} />
+              </div>
+              <div className="form-group">
+                <label>Textures (optional)</label>
+                <button className="btn btn-secondary btn-full"
+                  onClick={() => galleryTextureInputRef.current?.click()}>
+                  {galleryUploadForm.textureFiles?.length > 0
+                    ? `${galleryUploadForm.textureFiles.length} texture(s) selected`
+                    : 'Select Texture Files'}
+                </button>
+                <input ref={galleryTextureInputRef} type="file" accept="image/*" multiple
+                  onChange={(e) => {
+                    const files = Array.from(e.target.files || []);
+                    setGalleryUploadForm({ ...galleryUploadForm, textureFiles: files });
+                  }} style={{ display: 'none' }} />
+              </div>
+            </div>
+          </div>
+          <button className="btn btn-primary btn-full"
+            onClick={handleUploadGalleryModel}
+            disabled={isGalleryUploading || !galleryUploadForm.modelFile || !galleryUploadForm.name}>
+            {isGalleryUploading ? 'Uploading...' : 'Upload to Gallery'}
           </button>
         </div>
       )}
@@ -82,7 +162,7 @@ export default function AvatarTab({
           {galleryAvatars.length === 0 ? (
             <div className="settings-empty">
               <Download size={32} className="settings-empty-icon" />
-              <p>No gallery models available.<br/>Add .vrm files to server/data/gallery/ and refresh.</p>
+              <p>No gallery models available.<br/>Upload models or add files to server/data/gallery/ and refresh.</p>
             </div>
           ) : (
             galleryAvatars.map((model) => {
@@ -145,8 +225,10 @@ export default function AvatarTab({
         {showGallery
           ? 'Browse and download models from the gallery. Downloaded models appear in your library.'
           : showUploadForm
-            ? 'Upload your own VRM model files to build a personal library.'
-            : t('settings.avatar.hint')}
+            ? 'Upload your own VRM/GLB model files to build a personal library. Include textures if your model uses external texture files.'
+            : showGalleryUpload
+              ? 'Upload a VRM/GLB model with its texture files to the shared gallery.'
+              : t('settings.avatar.hint')}
       </div>
     </div>
   );

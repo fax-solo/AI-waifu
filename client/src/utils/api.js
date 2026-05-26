@@ -90,6 +90,13 @@ export async function downloadGalleryAvatar(id) {
   return request(`/avatars/gallery/${id}/download`, { method: 'POST' });
 }
 
+export async function uploadGalleryModel(formData) {
+  return request('/avatars/gallery/upload', {
+    method: 'POST',
+    body: formData,
+  });
+}
+
 export function getUploadUrl(path) {
   if (!path) return null;
   if (path.startsWith('http') || path.startsWith('blob:') || path.startsWith('data:')) return path;

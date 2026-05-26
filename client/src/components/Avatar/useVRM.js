@@ -12,84 +12,32 @@ import * as THREE from 'three';
 import { BONE_MAPPING } from '../../animations/boneMapping.js';
 
 /**
- * Tune spring bone parameters for better physics (anti-clipping, natural motion).
+ * Diagnose spring bone params — logs the model's original values for debugging.
+ * Does NOT modify values — actual tuning is done by springPresets.init() later.
  */
-function tuneSpringBones(vrm) {
+function diagnoseSpringBones(vrm) {
   if (!vrm?.springBoneManager?.joints) return;
-  let tuned = 0;
+  const extremes = { stiffness: 0, drag: 0, gravity: 0, radius: 0 };
+  let extremeCount = 0;
 
-  // Check colliders first — models without any colliders are prone to spring bone explosions
   const colliderGroups = vrm.springBoneManager?.colliderGroups;
   const hasColliders = colliderGroups && colliderGroups.length > 0;
   if (!hasColliders) {
-    console.warn('[VRM] Model has NO spring bone colliders — setting tiny hit radius to prevent bones popping out');
+    console.warn('[VRM] Model has NO spring bone colliders — using custom colliders');
   }
 
   for (const joint of vrm.springBoneManager.joints) {
     const s = joint.settings;
     if (!s) continue;
-    const name = joint.bone?.name || '?';
-    let changed = false;
-
-    // Per-group defaults
-    let stiffness = 0.55, drag = 0.6, gravity = 0.15, radius = 0.1;
-
-    if (name.includes('Hair')) {
-      // Hair: keep original settings, only apply safety clamping below
-      stiffness = s.stiffness ?? 0.4;
-      drag = s.dragForce ?? 0.5;
-      gravity = s.gravityPower ?? 0.08;
-      radius = s.hitRadius ?? 0.06;
-    } else if (name.includes('CoatSkirt')) {
-      // Coat skirt: firm, large collision
-      stiffness = 0.65;
-      drag = 0.65;
-      gravity = 0.1;
-      radius = 0.12;
-    } else if (name.includes('Coat')) {
-      // Coat: firm
-      stiffness = 0.65;
-      drag = 0.65;
-      gravity = 0.1;
-      radius = 0.12;
-    } else if (name.includes('Skirt')) {
-      // Skirt: stiffer, larger collision to prevent leg clipping & flipping up
-      stiffness = 0.6;
-      drag = 0.65;
-      gravity = 0.12;
-      radius = 0.14;
-    } else if (name.includes('Bust')) {
-      // Bust: softer, natural bounce
-      stiffness = 0.45;
-      drag = 0.55;
-      gravity = 0.12;
-    }
-
-    // Apply per-group defaults (with tolerance to avoid unnecessary overrides)
-    if (s.stiffness == null || Math.abs(s.stiffness - stiffness) > 0.15) {
-      s.stiffness = stiffness; changed = true;
-    }
-    if (s.dragForce == null || Math.abs(s.dragForce - drag) > 0.15) {
-      s.dragForce = drag; changed = true;
-    }
-    if (s.gravityPower == null || Math.abs(s.gravityPower - gravity) > 0.1) {
-      s.gravityPower = gravity; changed = true;
-    }
-
-    // Safety clamping for ALL joints — prevents NaN physics explosions
-    if (s.hitRadius == null || s.hitRadius < 0.02 || (!hasColliders && s.hitRadius > 0.05)) {
-      s.hitRadius = hasColliders ? Math.min(Math.max(s.hitRadius ?? 0.06, 0.02), 0.2) : 0.02;
-      changed = true;
-    }
-    if (s.stiffness > 0.95) { s.stiffness = 0.95; changed = true; }
-    if (s.dragForce < 0.05 || s.dragForce > 0.98) { s.dragForce = Math.min(Math.max(s.dragForce, 0.05), 0.95); changed = true; }
-
-    if (changed) {
-      tuned++;
-      console.log(`[VRM] Spring bone "${name}" → stiffness=${s.stiffness.toFixed(2)} drag=${s.dragForce.toFixed(2)} gravity=${s.gravityPower.toFixed(2)} radius=${s.hitRadius.toFixed(3)}`);
-    }
+    if (s.stiffness > 0.95 || s.stiffness < 0.01) { extremes.stiffness++; extremeCount++; }
+    if (s.dragForce > 0.98 || s.dragForce < 0.01) { extremes.drag++; extremeCount++; }
+    if (s.gravityPower > 2.0 || s.gravityPower < 0) { extremes.gravity++; extremeCount++; }
+    if (s.hitRadius > 0.3 || s.hitRadius < 0.005) { extremes.radius++; extremeCount++; }
   }
-  if (tuned > 0) console.log(`[VRM] Tuned ${tuned} spring bone joints`);
+  if (extremeCount > 0) {
+    console.log('[VRM] Extreme spring bone values detected (will be normalized by presets):',
+      Object.entries(extremes).filter(([,c]) => c > 0).map(([k,c]) => `${k}:${c}`).join(' '));
+  }
 }
 
 /**
@@ -210,8 +158,8 @@ export function useVRM() {
         // Capture rest pose after rotation but before any animation
         captureRestPose(loadedVRM);
 
-        // Tune spring bones for better physics (hair/skirt)
-        tuneSpringBones(loadedVRM);
+        // Diagnose original spring bone values (actual tuning in springPresets.init)
+        diagnoseSpringBones(loadedVRM);
       } else {
         console.log('[Model] No VRM data — loading as plain GLB scene');
       }

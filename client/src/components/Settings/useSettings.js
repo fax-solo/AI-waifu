@@ -88,11 +88,16 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
   const [isUploading, setIsUploading] = useState(false);
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [uploadForm, setUploadForm] = useState({
-    name: '', vrmFile: null, pfpFile: null, pfpPreview: null
+    name: '', vrmFile: null, textureFiles: [], pfpFile: null, pfpPreview: null
   });
   const [showGallery, setShowGallery] = useState(false);
   const [galleryAvatars, setGalleryAvatars] = useState([]);
   const [downloadingGalleryId, setDownloadingGalleryId] = useState(null);
+  const [showGalleryUpload, setShowGalleryUpload] = useState(false);
+  const [galleryUploadForm, setGalleryUploadForm] = useState({
+    name: '', modelFile: null, textureFiles: [], pfpFile: null, pfpPreview: null
+  });
+  const [isGalleryUploading, setIsGalleryUploading] = useState(false);
 
   const [audioDevices, setAudioDevices] = useState({ inputs: [], outputs: [] });
   const [testText, setTestText] = useState("Hello! How do I sound?");
@@ -108,6 +113,15 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
 
   const fileInputRef = useRef(null);
   const pfpInputRef = useRef(null);
+  const textureInputRef = useRef(null);
+  const galleryModelInputRef = useRef(null);
+  const galleryTextureInputRef = useRef(null);
+  const galleryPfpInputRef = useRef(null);
+  const animFileInputRef = useRef(null);
+  const [animations, setAnimations] = useState({ facial: [], body: [] });
+  const [animLoading, setAnimLoading] = useState(false);
+  const [animSearch, setAnimSearch] = useState('');
+  const [testStatus, setTestStatus] = useState({});
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type });
@@ -373,6 +387,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
 
   useEffect(() => {
     if (activeTab === 'avatar') loadAvatars();
+    if (activeTab === 'animations') loadAnimations();
   }, [activeTab]);
 
   const handleUploadAvatar = async () => {
@@ -386,11 +401,14 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
       formData.append('name', uploadForm.name);
       formData.append('vrm', uploadForm.vrmFile);
       if (uploadForm.pfpFile) formData.append('pfp', uploadForm.pfpFile);
+      for (const tex of uploadForm.textureFiles) {
+        formData.append('textures', tex);
+      }
       const newAvatar = await api.uploadAvatar(formData);
       setAvatars([newAvatar, ...avatars]);
       showToast('Avatar saved to library!');
       setShowUploadForm(false);
-      setUploadForm({ name: '', vrmFile: null, pfpFile: null, pfpPreview: null });
+      setUploadForm({ name: '', vrmFile: null, textureFiles: [], pfpFile: null, pfpPreview: null });
       handleSelectAvatar(newAvatar);
     } catch (err) {
       showToast('Failed to upload avatar.', 'error');
@@ -458,6 +476,32 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
       showToast('Failed to download model.', 'error');
     } finally {
       setDownloadingGalleryId(null);
+    }
+  };
+
+  const handleUploadGalleryModel = async () => {
+    if (!galleryUploadForm.modelFile || !galleryUploadForm.name) {
+      showToast('Please provide both a name and a model file.', 'error');
+      return;
+    }
+    setIsGalleryUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('name', galleryUploadForm.name);
+      formData.append('model', galleryUploadForm.modelFile);
+      if (galleryUploadForm.pfpFile) formData.append('pfp', galleryUploadForm.pfpFile);
+      for (const tex of galleryUploadForm.textureFiles) {
+        formData.append('textures', tex);
+      }
+      const result = await api.uploadGalleryModel(formData);
+      setGalleryAvatars([result, ...galleryAvatars]);
+      showToast(`"${galleryUploadForm.name}" uploaded to gallery!`);
+      setShowGalleryUpload(false);
+      setGalleryUploadForm({ name: '', modelFile: null, textureFiles: [], pfpFile: null, pfpPreview: null });
+    } catch (err) {
+      showToast(err.data?.error || 'Failed to upload to gallery.', 'error');
+    } finally {
+      setIsGalleryUploading(false);
     }
   };
 
@@ -629,6 +673,55 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     }
   };
 
+  const loadAnimations = useCallback(async () => {
+    setAnimLoading(true);
+    try {
+      const data = await api.getAnimations();
+      setAnimations({ facial: data.facial || [], body: data.body || [] });
+    } catch (err) {
+      showToast('Failed to load animations.', 'error');
+    } finally {
+      setAnimLoading(false);
+    }
+  }, [showToast]);
+
+  const handleTestAnimation = useCallback((type, filename) => {
+    const key = `${type}/${filename}`;
+    setTestStatus(prev => ({ ...prev, [key]: 'playing' }));
+    setTimeout(() => setTestStatus(prev => ({ ...prev, [key]: 'idle' })), 3000);
+    const ref = extAvatarRef || avatarRef;
+    if (ref?.current?.triggerAnimation) {
+      ref.current.triggerAnimation(type, filename, {});
+    }
+  }, [extAvatarRef]);
+
+  const handleDeleteAnimation = useCallback(async (type, filename) => {
+    if (!window.confirm(`Delete ${filename}?`)) return;
+    try {
+      await api.deleteAnimation(type, filename);
+      showToast(`${filename} deleted.`);
+      loadAnimations();
+    } catch (err) {
+      showToast('Failed to delete animation.', 'error');
+    }
+  }, [showToast, loadAnimations]);
+
+  const handleUploadAnimation = useCallback(async (e) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    try {
+      for (const file of files) {
+        const type = file.name.endsWith('.json') ? 'facial' : 'body';
+        await api.uploadAnimation(type, file);
+      }
+      showToast(`${files.length} file(s) uploaded.`);
+      loadAnimations();
+    } catch (err) {
+      showToast('Upload failed.', 'error');
+    }
+    e.target.value = '';
+  }, [showToast, loadAnimations]);
+
   return {
     // State
     settings, settingsLoading, displayName, companion,
@@ -637,18 +730,23 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     updateStatus, latestVersion, updateUrl, updateError, updateProgress,
     currentVRMName, avatars, isUploading, showUploadForm, uploadForm,
     showGallery, galleryAvatars, downloadingGalleryId,
+    showGalleryUpload, galleryUploadForm, isGalleryUploading,
     audioDevices, testText, micTestStatus, ttsStatus, setupStatus,
     activeTab, settingsSearch, dirty, showUnsavedDialog,
     isTestingVoice,
+    animations, animLoading, animSearch, testStatus,
 
     // Refs
-    fileInputRef, pfpInputRef,
+    fileInputRef, pfpInputRef, textureInputRef,
+    galleryModelInputRef, galleryTextureInputRef, galleryPfpInputRef,
+    animFileInputRef,
 
     // Setters
     setDisplayName, setCompanion, setApiKeyInput, setGroqApiKeyInput,
     setShortcuts, setRecordingAction,
     setShowUploadForm, setUploadForm, setShowGallery,
-    setTestText, setActiveTab, setSettingsSearch,
+    setShowGalleryUpload, setGalleryUploadForm,
+    setTestText, setActiveTab, setSettingsSearch, setAnimSearch,
 
     // Constants
     VOICES, GEMINI_MODELS, GROQ_MODELS, GITHUB_REPO,
@@ -658,10 +756,11 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     handleSetApiKey, handleSetGroqKey, handleRemoveApiKey, handleRemoveGroqKey,
     loadMemories, handleDeleteMemory,
     loadAvatars, handleUploadAvatar, handleSelectAvatar, handleDeleteAvatar,
-    loadGalleryAvatars, handleDownloadGalleryAvatar,
+    loadGalleryAvatars, handleDownloadGalleryAvatar, handleUploadGalleryModel,
     handleRemoveVRM, checkForUpdates, downloadUpdate, installUpdate, handleTestMic, loadAudioDevices,
     handleExport, handleImport,
     handleClearMemories, handleClearConversations,
+    loadAnimations, handleTestAnimation, handleDeleteAnimation, handleUploadAnimation,
     requestClose, handleUnsavedConfirm, handleUnsavedCancel,
     compareVersions,
     speak,

@@ -1,21 +1,230 @@
-/**
- * useVRMColliders - Interactive Collider Pipeline
- *
- * Implements the second pillar:
- * - Mouse-to-Bone: Raycast cursor → 3D sphere collider for "petting" interaction
- * - Body Collision Setup: Auto-detect shoulders/chest/arms for anti-clipping colliders
- */
-
 import { useRef, useCallback } from 'react';
 import * as THREE from 'three';
+import {
+  VRMSpringBoneCollider,
+  VRMSpringBoneColliderShapeSphere,
+} from '@pixiv/three-vrm-springbone';
 
-// VRMSpringBoneManager.colliderGroups is getter-only — must mutate the internal
-// array in-place rather than reassigning the property.
-function replaceColliderGroups(manager, newGroups) {
-  const arr = manager.colliderGroups;
-  arr.length = 0;
-  for (let i = 0; i < newGroups.length; i++) arr.push(newGroups[i]);
+// ─── Bone type classification (mirrors useSpringBonePresets) ───
+const BoneGroup = {
+  SKIRT: 'skirt',
+  LONG_HAIR_BACK: 'longHairBack',
+  SHORT_HAIR_BANGS: 'shortHairBangs',
+  SOFT_CLOTHING: 'softClothing',
+  BUST: 'bust',
+  COAT: 'coat',
+  ACCESSORIES: 'accessories',
+  DEFAULT: 'default',
+};
+
+function classifyJoint(boneName) {
+  const n = (boneName || '').toLowerCase();
+  if (n.includes('skirt')) return BoneGroup.SKIRT;
+  if (n.includes('coat') || n.includes('jacket')) return BoneGroup.COAT;
+  if (n.includes('cloth') || n.includes('dress')) return BoneGroup.SOFT_CLOTHING;
+  if (n.includes('bust') || n.includes('breast')) return BoneGroup.BUST;
+  if (n.includes('ribbon') || n.includes('tail') || n.includes('accessory')) return BoneGroup.ACCESSORIES;
+  if (
+    n.includes('hair_back') || n.includes('back_hair') || n.includes('longhair') ||
+    (n.includes('hair') && (n.includes('_b_') || n.includes('_back')))
+  ) return BoneGroup.LONG_HAIR_BACK;
+  if (
+    n.includes('bangs') || n.includes('front_hair') || n.includes('hair_front') ||
+    n.includes('shorthair') || (n.includes('hair') && (n.includes('_f_') || n.includes('_front'))) ||
+    n.includes('ahoge')
+  ) return BoneGroup.SHORT_HAIR_BANGS;
+  if (n.includes('hair')) return BoneGroup.LONG_HAIR_BACK;
+  return BoneGroup.DEFAULT;
 }
+
+// ─── Collider index map per bone group ───
+// Indices into the built BODY_COLLIDER_GROUPS array
+const COLLIDER_MAP = {
+  [BoneGroup.SKIRT]: [0, 1, 2, 3, 4, 5, 6], // hips, leftThigh, rightThigh, leftShin, rightShin, leftShinLow, rightShinLow
+  [BoneGroup.LONG_HAIR_BACK]: [7, 8, 9, 10, 11, 12], // head, neck, chest, upperChest, spineLow, spineMid
+  [BoneGroup.SHORT_HAIR_BANGS]: [7, 8, 9, 10], // head, neck, chest, upperChest
+  [BoneGroup.COAT]: [9, 10, 13, 14, 15, 16, 17, 18], // chest, upperChest, leftShoulder, rightShoulder, leftUpperArm, rightUpperArm, leftElbow, rightElbow
+  [BoneGroup.SOFT_CLOTHING]: [9, 10, 0, 1, 2], // chest, upperChest, hips, leftThigh, rightThigh
+  [BoneGroup.ACCESSORIES]: [7, 9], // head, chest
+  [BoneGroup.BUST]: [9, 10], // chest, upperChest
+  [BoneGroup.DEFAULT]: [], // no body colliders
+};
+
+// ─── Body collider definitions ───
+const BODY_COLLIDER_DEFS = [
+  // 0-2: Hips / Pelvis
+  {
+    bone: 'hips',
+    spheres: [
+      { radius: 0.10, offsetX: 0, offsetY: 0, offsetZ: 0 },
+      { radius: 0.08, offsetX: 0, offsetY: -0.08, offsetZ: 0 },
+    ],
+    label: 'Pelvis/Hips',
+    fallback: 'pelvis',
+  },
+  // 1: Left Upper Leg
+  {
+    bone: 'leftUpperLeg',
+    spheres: [
+      { radius: 0.06, offsetX: 0, offsetY: 0, offsetZ: 0 },
+      { radius: 0.055, offsetX: 0, offsetY: -0.10, offsetZ: 0 },
+    ],
+    label: 'Left Thigh',
+    fallback: null,
+  },
+  // 2: Right Upper Leg
+  {
+    bone: 'rightUpperLeg',
+    spheres: [
+      { radius: 0.06, offsetX: 0, offsetY: 0, offsetZ: 0 },
+      { radius: 0.055, offsetX: 0, offsetY: -0.10, offsetZ: 0 },
+    ],
+    label: 'Right Thigh',
+    fallback: null,
+  },
+  // 3: Left Lower Leg (prevents skirt clipping below thigh)
+  {
+    bone: 'leftLowerLeg',
+    spheres: [
+      { radius: 0.055, offsetX: 0, offsetY: 0, offsetZ: 0 },
+      { radius: 0.045, offsetX: 0, offsetY: -0.12, offsetZ: 0 },
+    ],
+    label: 'Left Shin',
+    fallback: null,
+  },
+  // 4: Right Lower Leg
+  {
+    bone: 'rightLowerLeg',
+    spheres: [
+      { radius: 0.055, offsetX: 0, offsetY: 0, offsetZ: 0 },
+      { radius: 0.045, offsetX: 0, offsetY: -0.12, offsetZ: 0 },
+    ],
+    label: 'Right Shin',
+    fallback: null,
+  },
+  // 5: Left Lower Leg extra low (for long skirts)
+  {
+    bone: 'leftLowerLeg',
+    spheres: [
+      { radius: 0.04, offsetX: 0, offsetY: -0.25, offsetZ: 0 },
+    ],
+    label: 'Left Shin Low',
+    fallback: null,
+  },
+  // 6: Right Lower Leg extra low
+  {
+    bone: 'rightLowerLeg',
+    spheres: [
+      { radius: 0.04, offsetX: 0, offsetY: -0.25, offsetZ: 0 },
+    ],
+    label: 'Right Shin Low',
+    fallback: null,
+  },
+  // 7: Head
+  {
+    bone: 'head',
+    spheres: [
+      { radius: 0.07, offsetX: 0, offsetY: 0.04, offsetZ: 0 },
+    ],
+    label: 'Head',
+  },
+  // 8: Neck
+  {
+    bone: 'neck',
+    spheres: [
+      { radius: 0.04, offsetX: 0, offsetY: 0.02, offsetZ: 0 },
+    ],
+    label: 'Neck',
+    fallback: 'head',
+  },
+  // 9: Chest
+  {
+    bone: 'chest',
+    spheres: [
+      { radius: 0.09, offsetX: 0, offsetY: 0, offsetZ: 0 },
+      { radius: 0.08, offsetX: 0, offsetY: 0.05, offsetZ: -0.02 },
+    ],
+    label: 'Chest',
+  },
+  // 10: Upper Chest
+  {
+    bone: 'upperChest',
+    spheres: [
+      { radius: 0.08, offsetX: 0, offsetY: 0, offsetZ: 0 },
+    ],
+    label: 'Upper Chest',
+    fallback: 'chest',
+  },
+  // 11: Spine low (back, for hair collision)
+  {
+    bone: 'spine',
+    spheres: [
+      { radius: 0.07, offsetX: 0, offsetY: 0.02, offsetZ: 0.06 },
+    ],
+    label: 'Spine Low',
+    fallback: 'hips',
+  },
+  // 12: Spine mid (mid-back, for hair collision)
+  {
+    bone: 'chest',
+    spheres: [
+      { radius: 0.07, offsetX: 0, offsetY: -0.06, offsetZ: 0.04 },
+    ],
+    label: 'Spine Mid',
+  },
+  // 13: Left Shoulder
+  {
+    bone: 'leftShoulder',
+    spheres: [
+      { radius: 0.06, offsetX: 0, offsetY: 0, offsetZ: 0 },
+    ],
+    label: 'Left Shoulder',
+  },
+  // 14: Right Shoulder
+  {
+    bone: 'rightShoulder',
+    spheres: [
+      { radius: 0.06, offsetX: 0, offsetY: 0, offsetZ: 0 },
+    ],
+    label: 'Right Shoulder',
+  },
+  // 15: Left Upper Arm
+  {
+    bone: 'leftUpperArm',
+    spheres: [
+      { radius: 0.05, offsetX: 0, offsetY: -0.06, offsetZ: 0 },
+      { radius: 0.045, offsetX: 0, offsetY: -0.14, offsetZ: 0 },
+    ],
+    label: 'Left Upper Arm',
+  },
+  // 16: Right Upper Arm
+  {
+    bone: 'rightUpperArm',
+    spheres: [
+      { radius: 0.05, offsetX: 0, offsetY: -0.06, offsetZ: 0 },
+      { radius: 0.045, offsetX: 0, offsetY: -0.14, offsetZ: 0 },
+    ],
+    label: 'Right Upper Arm',
+  },
+  // 17: Left Elbow (for sleeve/hair collision)
+  {
+    bone: 'leftLowerArm',
+    spheres: [
+      { radius: 0.04, offsetX: 0, offsetY: -0.08, offsetZ: 0 },
+    ],
+    label: 'Left Elbow',
+    fallback: 'leftUpperArm',
+  },
+  // 18: Right Elbow
+  {
+    bone: 'rightLowerArm',
+    spheres: [
+      { radius: 0.04, offsetX: 0, offsetY: -0.08, offsetZ: 0 },
+    ],
+    label: 'Right Elbow',
+    fallback: 'rightUpperArm',
+  },
+];
 
 function getBone(vrm, name) {
   if (!vrm) return null;
@@ -42,17 +251,6 @@ function getBoneWorldScale(vrm, name) {
   return (scale.x + scale.y + scale.z) / 3;
 }
 
-function makeColliderGroup(node, spheres) {
-  return {
-    node,
-    colliders: spheres.map((s) => ({
-      radius: s.radius,
-      offset: new THREE.Vector3(s.offsetX ?? 0, s.offsetY ?? 0, s.offsetZ ?? 0),
-      shape: 'sphere',
-    })),
-  };
-}
-
 function scaleDefSpheres(def, scale) {
   return def.spheres.map((s) => ({
     radius: s.radius * scale,
@@ -62,96 +260,21 @@ function scaleDefSpheres(def, scale) {
   }));
 }
 
-const BODY_COLLIDER_DEFS = [
-  {
-    bone: 'chest',
-    spheres: [
-      { radius: 0.12, offsetX: 0, offsetY: 0, offsetZ: 0 },
-      { radius: 0.10, offsetX: 0, offsetY: 0.05, offsetZ: -0.02 },
-    ],
-    label: 'Chest',
-  },
-  {
-    bone: 'upperChest',
-    spheres: [
-      { radius: 0.11, offsetX: 0, offsetY: 0, offsetZ: 0 },
-    ],
-    label: 'Upper Chest',
-    fallback: 'chest',
-  },
-  {
-    bone: 'leftShoulder',
-    spheres: [
-      { radius: 0.08, offsetX: 0, offsetY: 0, offsetZ: 0 },
-    ],
-    label: 'Left Shoulder',
-  },
-  {
-    bone: 'rightShoulder',
-    spheres: [
-      { radius: 0.08, offsetX: 0, offsetY: 0, offsetZ: 0 },
-    ],
-    label: 'Right Shoulder',
-  },
-  {
-    bone: 'leftUpperArm',
-    spheres: [
-      { radius: 0.06, offsetX: 0, offsetY: -0.06, offsetZ: 0 },
-      { radius: 0.055, offsetX: 0, offsetY: -0.14, offsetZ: 0 },
-    ],
-    label: 'Left Upper Arm',
-  },
-  {
-    bone: 'rightUpperArm',
-    spheres: [
-      { radius: 0.06, offsetX: 0, offsetY: -0.06, offsetZ: 0 },
-      { radius: 0.055, offsetX: 0, offsetY: -0.14, offsetZ: 0 },
-    ],
-    label: 'Right Upper Arm',
-  },
-  {
-    bone: 'neck',
-    spheres: [
-      { radius: 0.05, offsetX: 0, offsetY: 0.02, offsetZ: 0 },
-    ],
-    label: 'Neck',
-    fallback: 'head',
-  },
-  {
-    bone: 'head',
-    spheres: [
-      { radius: 0.09, offsetX: 0, offsetY: 0.04, offsetZ: -0.01 },
-    ],
-    label: 'Head',
-  },
-  {
-    bone: 'hips',
-    spheres: [
-      { radius: 0.14, offsetX: 0, offsetY: 0, offsetZ: 0 },
-      { radius: 0.12, offsetX: 0, offsetY: -0.08, offsetZ: 0 },
-    ],
-    label: 'Pelvis/Hips',
-    fallback: 'pelvis',
-  },
-  {
-    bone: 'leftThigh',
-    spheres: [
-      { radius: 0.08, offsetX: 0, offsetY: 0, offsetZ: 0 },
-      { radius: 0.07, offsetX: 0, offsetY: -0.10, offsetZ: 0 },
-    ],
-    label: 'Left Thigh',
-    fallback: 'leftUpperLeg',
-  },
-  {
-    bone: 'rightThigh',
-    spheres: [
-      { radius: 0.08, offsetX: 0, offsetY: 0, offsetZ: 0 },
-      { radius: 0.07, offsetX: 0, offsetY: -0.10, offsetZ: 0 },
-    ],
-    label: 'Right Thigh',
-    fallback: 'rightUpperLeg',
-  },
-];
+function createSphereCollider(bone, params) {
+  const shape = new VRMSpringBoneColliderShapeSphere({
+    offset: new THREE.Vector3(params.offsetX ?? 0, params.offsetY ?? 0, params.offsetZ ?? 0),
+    radius: params.radius,
+  });
+  const collider = new VRMSpringBoneCollider(shape);
+  bone.add(collider);
+  return collider;
+}
+
+function colliderGroupFromDef(bone, def, scale) {
+  const scaled = scaleDefSpheres(def, scale);
+  const colliders = scaled.map((s) => createSphereCollider(bone, s));
+  return { colliders, node: bone };
+}
 
 export function useVRMColliders() {
   const vrmRef = useRef(null);
@@ -165,72 +288,10 @@ export function useVRMColliders() {
   const cursorDummyNode = useRef(null);
 
   const bodyColliderGroups = useRef([]);
-  const originalColliderGroups = useRef(null);
-  const ourColliderCount = useRef(0);
-
   const debugMesh = useRef(null);
+  const hasCustomColliders = useRef(false);
 
-  const init = useCallback((vrm, scene, camera) => {
-    if (!vrm) return;
-
-    vrmRef.current = vrm;
-    sceneRef.current = scene;
-    cameraRef.current = camera;
-
-    if (vrm.springBoneManager) {
-      if (!originalColliderGroups.current) {
-        originalColliderGroups.current = [
-          ...(vrm.springBoneManager.colliderGroups || []),
-        ];
-      }
-    }
-
-    setupCursorCollider(vrm);
-    const bodyCount = setupBodyColliders(vrm);
-
-    if (vrm.springBoneManager) {
-      const allGroups = [
-        ...originalColliderGroups.current,
-        ...bodyColliderGroups.current,
-        ...(cursorColliderGroup.current ? [cursorColliderGroup.current] : []),
-      ];
-      replaceColliderGroups(vrm.springBoneManager, allGroups);
-      ourColliderCount.current = bodyColliderGroups.current.length + (cursorColliderGroup.current ? 1 : 0);
-
-      console.log(`[VRMColliders] Initialized: ${bodyCount} body collider groups + 1 cursor collider`);
-    } else {
-      console.warn('[VRMColliders] No springBoneManager available — colliders will not affect physics');
-    }
-
-    return true;
-  }, []);
-
-  function setupCursorCollider(vrm) {
-    const cursorNode = new THREE.Object3D();
-    cursorNode.name = 'CursorColliderRoot';
-
-    cursorDummyNode.current = cursorNode;
-    cursorWorldPos.current.set(0, 1.0, 0);
-    cursorSmoothPos.current.set(0, 1.0, 0);
-
-    const group = {
-      node: cursorNode,
-      colliders: [
-        {
-          radius: 0.08,
-          offset: new THREE.Vector3(0, 0, 0),
-          shape: 'sphere',
-        },
-      ],
-    };
-
-    cursorColliderGroup.current = group;
-
-    if (vrm.springBoneManager && sceneRef.current) {
-      sceneRef.current.add(cursorNode);
-    }
-  }
-
+  // ── Build body colliders with proper VRMSpringBoneCollider instances ──
   function setupBodyColliders(vrm) {
     bodyColliderGroups.current = [];
     let addedCount = 0;
@@ -240,41 +301,110 @@ export function useVRMColliders() {
       if (!bone && def.fallback) {
         bone = getBone(vrm, def.fallback);
       }
-
       if (!bone) {
         console.log(`[VRMColliders] Skipping ${def.label} — bone not found`);
         continue;
       }
 
-      // Scale collider radii to the bone's world-scale — VRoid models ship
-      // at various scales and static radii that work for one break for another
       const scale = getBoneWorldScale(vrm, def.bone);
-      const scaledSpheres = scaleDefSpheres(def, scale);
-      const group = makeColliderGroup(bone, scaledSpheres);
+      const group = colliderGroupFromDef(bone, def, scale);
       bodyColliderGroups.current.push(group);
       addedCount++;
+      hasCustomColliders.current = true;
       console.log(`[VRMColliders] Added ${def.label} collider (${def.spheres.length} sphere(s), scale=${scale.toFixed(2)})`);
     }
 
     return addedCount;
   }
 
+  // ── Assign body colliders to relevant joints ──
+  function assignCollidersToJoints(manager) {
+    let assigned = 0;
+    for (const joint of manager.joints) {
+      const boneName = joint.bone.name;
+      const group = classifyJoint(boneName);
+      const indices = COLLIDER_MAP[group] || [];
+      for (const idx of indices) {
+        const cg = bodyColliderGroups.current[idx];
+        if (cg && !joint.colliderGroups.includes(cg)) {
+          joint.colliderGroups.push(cg);
+          assigned++;
+        }
+      }
+    }
+    return assigned;
+  }
+
+  // ── Assign cursor collider to all joints ──
+  function assignCursorToAllJoints(manager, cursorGroup) {
+    let assigned = 0;
+    for (const joint of manager.joints) {
+      if (!joint.colliderGroups.includes(cursorGroup)) {
+        joint.colliderGroups.push(cursorGroup);
+        assigned++;
+      }
+    }
+    return assigned;
+  }
+
+  // ── Full init (with scene/camera for cursor) ──
+  const init = useCallback((vrm, scene, camera) => {
+    if (!vrm) return;
+    vrmRef.current = vrm;
+    sceneRef.current = scene;
+    cameraRef.current = camera;
+
+    setupBodyColliders(vrm);
+    setupCursorCollider(vrm);
+
+    if (vrm.springBoneManager) {
+      assignCollidersToJoints(vrm.springBoneManager);
+      console.log(`[VRMColliders] Initialized: ${bodyColliderGroups.current.length} body collider groups`);
+    } else {
+      console.warn('[VRMColliders] No springBoneManager available');
+    }
+
+    return true;
+  }, []);
+
+  // ── Cursor collider setup ──
+  function setupCursorCollider(vrm) {
+    const cursorNode = new THREE.Object3D();
+    cursorNode.name = 'CursorColliderRoot';
+    cursorDummyNode.current = cursorNode;
+    cursorWorldPos.current.set(0, 1.0, 0);
+    cursorSmoothPos.current.set(0, 1.0, 0);
+
+    const shape = new VRMSpringBoneColliderShapeSphere({
+      offset: new THREE.Vector3(0, 0, 0),
+      radius: 0.08,
+    });
+    const collider = new VRMSpringBoneCollider(shape);
+    cursorNode.add(collider);
+
+    const group = {
+      colliders: [collider],
+      node: cursorNode,
+    };
+    cursorColliderGroup.current = group;
+
+    if (vrm.springBoneManager && sceneRef.current) {
+      sceneRef.current.add(cursorNode);
+      assignCursorToAllJoints(vrm.springBoneManager, group);
+    }
+  }
+
+  // ── Cursor update ──
   const updateCursorFromScreen = useCallback((mouseX, mouseY, camera, targetDistance = 2.5) => {
     if (!cursorDummyNode.current) return;
-
     const ray = raycaster.current;
     ray.setFromCamera(new THREE.Vector2(mouseX, mouseY), camera);
-
     const centerRay = new THREE.Ray(camera.position, camera.getWorldDirection(new THREE.Vector3()).normalize());
     const lookAtPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
     lookAtPlane.normal.copy(centerRay.direction).negate();
-    lookAtPlane.constant = -centerRay.direction.dot(
-      centerRay.at(targetDistance, new THREE.Vector3())
-    );
-
+    lookAtPlane.constant = -centerRay.direction.dot(centerRay.at(targetDistance, new THREE.Vector3()));
     const targetPoint = new THREE.Vector3();
     ray.ray.intersectPlane(lookAtPlane, targetPoint);
-
     if (targetPoint) {
       const dist = camera.position.distanceTo(targetPoint);
       if (dist > 0.5 && dist < 10.0) {
@@ -287,41 +417,40 @@ export function useVRMColliders() {
     if (!vrm) return;
     const dt = Math.min(Math.max(deltaTime, 0), 0.05);
     const cam = camera || cameraRef.current;
-
     if (mouseMoving && cam) {
       updateCursorFromScreen(mouseX, mouseY, cam);
     }
-
     const smoothSpeed = mouseMoving ? 15.0 : 10.0;
     const lerpFactor = Math.min(1, dt * smoothSpeed);
-
     cursorSmoothPos.current.lerp(cursorWorldPos.current, lerpFactor);
-
     if (cursorDummyNode.current) {
       cursorDummyNode.current.position.copy(cursorSmoothPos.current);
+      cursorDummyNode.current.updateMatrixWorld(true);
     }
-
     if (debugMesh.current) {
       debugMesh.current.position.copy(cursorSmoothPos.current);
     }
 
+    // Re-assign cursor collider to any new joints that don't have it
     if (vrm.springBoneManager && cursorColliderGroup.current) {
-      const groups = vrm.springBoneManager.colliderGroups || [];
-      const hasOurCursor = groups.includes(cursorColliderGroup.current);
-
-      if (!hasOurCursor) {
-        replaceColliderGroups(vrm.springBoneManager, [
-          ...originalColliderGroups.current,
-          ...bodyColliderGroups.current,
-          cursorColliderGroup.current,
-        ]);
+      let needsReassign = false;
+      for (const joint of vrm.springBoneManager.joints) {
+        if (!joint.colliderGroups.includes(cursorColliderGroup.current)) {
+          needsReassign = true;
+          break;
+        }
+      }
+      // Only re-assign if the cursor got dropped by a model reset
+      if (needsReassign) {
+        assignCursorToAllJoints(vrm.springBoneManager, cursorColliderGroup.current);
       }
     }
   }, [updateCursorFromScreen]);
 
   const setCursorRadius = useCallback((radius) => {
-    if (cursorColliderGroup.current?.colliders?.[0]) {
-      cursorColliderGroup.current.colliders[0].radius = radius;
+    if (cursorColliderGroup.current?.colliders?.[0]?.shape) {
+      const c = cursorColliderGroup.current.colliders[0];
+      c.shape.radius = radius;
       console.log(`[VRMColliders] Cursor collider radius: ${radius.toFixed(3)}`);
     }
     if (debugMesh.current) {
@@ -331,15 +460,9 @@ export function useVRMColliders() {
 
   const toggleDebugVisualization = useCallback((enabled) => {
     if (!sceneRef.current) return;
-
     if (enabled && !debugMesh.current) {
       const geo = new THREE.SphereGeometry(0.08, 16, 16);
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0xff00ff,
-        wireframe: true,
-        transparent: true,
-        opacity: 0.6,
-      });
+      const mat = new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true, transparent: true, opacity: 0.6 });
       const mesh = new THREE.Mesh(geo, mat);
       sceneRef.current.add(mesh);
       debugMesh.current = mesh;
@@ -349,7 +472,6 @@ export function useVRMColliders() {
       debugMesh.current.geometry?.dispose?.();
       debugMesh.current.material?.dispose?.();
       debugMesh.current = null;
-      console.log('[VRMColliders] Debug visualization disabled');
     }
   }, []);
 
@@ -366,42 +488,24 @@ export function useVRMColliders() {
       debugMesh.current.material?.dispose?.();
       debugMesh.current = null;
     }
-
     if (cursorDummyNode.current && sceneRef.current) {
       sceneRef.current.remove(cursorDummyNode.current);
     }
-
-    if (vrmRef.current?.springBoneManager && originalColliderGroups.current) {
-      replaceColliderGroups(vrmRef.current.springBoneManager, originalColliderGroups.current);
-    }
-
     cursorColliderGroup.current = null;
     cursorDummyNode.current = null;
     bodyColliderGroups.current = [];
     vrmRef.current = null;
   }, []);
 
-  /**
-   * Auto-init just the body colliders (no cursor, no scene/camera dependency).
-   * Called from useVRM.js after model load for one-shot collider generation.
-   */
+  // ── initFromVRM for model-load-time init (no cursor) ──
   const initFromVRM = useCallback((vrm) => {
     if (!vrm?.springBoneManager) {
       console.warn('[VRMColliders] initFromVRM: no springBoneManager');
       return;
     }
 
-    if (!originalColliderGroups.current) {
-      originalColliderGroups.current = [
-        ...(vrm.springBoneManager.colliderGroups || []),
-      ];
-    }
-
     const count = setupBodyColliders(vrm);
-    replaceColliderGroups(vrm.springBoneManager, [
-      ...originalColliderGroups.current,
-      ...bodyColliderGroups.current,
-    ]);
+    assignCollidersToJoints(vrm.springBoneManager);
 
     console.log(`[VRMColliders] initFromVRM: added ${count} body collider groups`);
   }, []);
@@ -414,6 +518,7 @@ export function useVRMColliders() {
     toggleDebugVisualization,
     getCursorWorldPosition,
     initFromVRM,
+    hasCustomColliders,
   };
 }
 

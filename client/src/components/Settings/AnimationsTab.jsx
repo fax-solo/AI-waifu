@@ -28,7 +28,7 @@ export default function AnimationsTab({
           <Upload size={14} />
           {t('settings.animations.upload')}
         </button>
-        <input ref={animFileInputRef} type="file" accept=".json,.vrma" multiple
+        <input ref={animFileInputRef} type="file" accept=".json,.vrma,.bvh" multiple
           style={{ display: 'none' }} onChange={handleUploadAnimation} />
       </div>
 

@@ -260,19 +260,76 @@ const dbWrapper = {
   },
 
   /**
-   * Find a companion image for a VRM file in the same directory.
+   * Find a companion image for a VRM file in the gallery directory.
+   * Searches top level files first, then subdirectories.
    */
   _findGalleryPfp(dir, baseName) {
     const exts = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
     if (!fs.existsSync(dir)) return null;
+
+    const scanDir = (scanPath, prefix) => {
+      const entries = fs.readdirSync(scanPath);
+      for (const f of entries) {
+        const fullPath = path.join(scanPath, f);
+        if (fs.statSync(fullPath).isDirectory()) continue;
+        const low = f.toLowerCase();
+        if (path.parse(f).name === baseName && exts.some(e => low.endsWith(e))) {
+          return `${prefix}${f}`;
+        }
+      }
+      return null;
+    };
+
+    const top = scanDir(dir, '/gallery/');
+    if (top) return top;
+
     const entries = fs.readdirSync(dir);
-    for (const f of entries) {
-      const low = f.toLowerCase();
-      if (path.parse(f).name === baseName && exts.some(e => low.endsWith(e))) {
-        return `/gallery/${f}`;
+    for (const entry of entries) {
+      const subPath = path.join(dir, entry);
+      if (fs.statSync(subPath).isDirectory()) {
+        const result = scanDir(subPath, `/gallery/${entry}/`);
+        if (result) return result;
       }
     }
+
     return null;
+  },
+
+  /**
+   * Discover all gallery models (flat files + subdirectory-based).
+   * Returns an array of { filePath, name }.
+   */
+  _discoverGalleryModels(galleryDir) {
+    const models = [];
+    if (!fs.existsSync(galleryDir)) return models;
+
+    const entries = fs.readdirSync(galleryDir);
+    for (const entry of entries) {
+      const entryPath = path.join(galleryDir, entry);
+
+      if (fs.statSync(entryPath).isDirectory()) {
+        const subEntries = fs.readdirSync(entryPath);
+        for (const sub of subEntries) {
+          const low = sub.toLowerCase();
+          if (low.endsWith('.vrm') || low.endsWith('.glb')) {
+            models.push({
+              filePath: `${entry}/${sub}`,
+              name: path.parse(sub).name,
+            });
+          }
+        }
+      } else {
+        const low = entry.toLowerCase();
+        if (low.endsWith('.vrm') || low.endsWith('.glb')) {
+          models.push({
+            filePath: entry,
+            name: path.parse(entry).name,
+          });
+        }
+      }
+    }
+
+    return models;
   },
 
   /**
@@ -284,41 +341,38 @@ const dbWrapper = {
       return;
     }
 
-    const files = fs.readdirSync(galleryDir).filter(f => { const l = f.toLowerCase(); return l.endsWith('.vrm') || l.endsWith('.glb'); });
-    const currentFiles = new Set(files);
+    const models = this._discoverGalleryModels(galleryDir);
+    const currentPaths = new Set(models.map(m => m.filePath));
 
     // Remove stale DB entries whose file is no longer on disk
     const allDb = this.prepare('SELECT id, file_path FROM gallery_vrm_models').all();
     for (const entry of allDb) {
-      if (!currentFiles.has(entry.file_path)) {
+      if (!currentPaths.has(entry.file_path)) {
         this.prepare('DELETE FROM gallery_vrm_models WHERE id = ?').run(entry.id);
         console.log(`[Gallery] Removed stale entry: ${entry.file_path}`);
       }
     }
 
     // Sync new/changed files
-    for (const file of files) {
-      const name = path.parse(file).name;
-      const existing = this.prepare('SELECT id, pfp_path, file_path FROM gallery_vrm_models WHERE file_path = ?').get(file);
+    for (const m of models) {
+      const existing = this.prepare('SELECT id, pfp_path, file_path, name FROM gallery_vrm_models WHERE file_path = ?').get(m.filePath);
       if (!existing) {
         const id = uuidv4();
-        const pfp_path = this._findGalleryPfp(galleryDir, name);
+        const pfp_path = this._findGalleryPfp(galleryDir, m.name);
         this.prepare(`
           INSERT INTO gallery_vrm_models (id, name, file_path, pfp_path, description)
           VALUES (?, ?, ?, ?, ?)
-        `).run(id, name, file, pfp_path, '');
-        console.log(`[Gallery] Seeded gallery model: ${name}`);
+        `).run(id, m.name, m.filePath, pfp_path, '');
+        console.log(`[Gallery] Seeded gallery model: ${m.name} → ${m.filePath}`);
       } else {
-        // Update name if file was renamed
-        if (existing.name !== name) {
-          this.prepare('UPDATE gallery_vrm_models SET name = ? WHERE id = ?').run(name, existing.id);
-          console.log(`[Gallery] Renamed: ${existing.name} -> ${name}`);
+        if (existing.name !== m.name) {
+          this.prepare('UPDATE gallery_vrm_models SET name = ? WHERE id = ?').run(m.name, existing.id);
+          console.log(`[Gallery] Renamed: ${existing.name} -> ${m.name}`);
         }
-        // Verify pfp
-        const currentPfp = this._findGalleryPfp(galleryDir, name);
+        const currentPfp = this._findGalleryPfp(galleryDir, m.name);
         if (currentPfp !== existing.pfp_path) {
           this.prepare('UPDATE gallery_vrm_models SET pfp_path = ? WHERE id = ?').run(currentPfp, existing.id);
-          if (currentPfp) console.log(`[Gallery] Updated pfp for: ${name}`);
+          if (currentPfp) console.log(`[Gallery] Updated pfp for: ${m.name}`);
         }
       }
     }

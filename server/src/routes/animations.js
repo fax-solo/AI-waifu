@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuidv4 } from 'uuid';
+import { refreshFileIndex } from '../services/animationResolver.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,7 +19,7 @@ const BODY_DIR = path.join(DATA_DIR, 'body');
 
 const router = Router();
 
-const ALLOWED_EXTENSIONS = ['.json', '.vrma'];
+const ALLOWED_EXTENSIONS = ['.json', '.vrma', '.bvh'];
 
 function isAllowed(file) {
   const ext = path.extname(file).toLowerCase();
@@ -71,6 +72,7 @@ function listAnimationFiles(dir) {
         const fullPath = path.join(dir, f);
         const ext = path.extname(f).toLowerCase();
         const isVrma = ext === '.vrma';
+        const isBvh = ext === '.bvh';
         try {
           if (isVrma) {
             return {
@@ -80,6 +82,17 @@ function listAnimationFiles(dir) {
               format: 'vrma',
               duration: getVrmaDuration(fullPath),
               loop: false,
+              blendSpeed: 8,
+            };
+          }
+          if (isBvh) {
+            return {
+              filename: f,
+              name: f.replace('.bvh', ''),
+              type: 'body',
+              format: 'bvh',
+              duration: 5,
+              loop: true,
               blendSpeed: 8,
             };
           }
@@ -124,7 +137,7 @@ const upload = multer({
     if (ALLOWED_EXTENSIONS.includes(ext) && file.fieldname === 'animation') {
       cb(null, true);
     } else {
-      cb(new Error('Only .json and .vrma files are allowed'), false);
+      cb(new Error('Only .json, .vrma, and .bvh files are allowed'), false);
     }
   }
 });
@@ -160,6 +173,8 @@ router.post('/upload/:type', upload.single('animation'), (req, res) => {
     }
   }
 
+  refreshFileIndex();
+
   res.json({
     filename: req.file.filename,
     originalname: req.file.originalname,
@@ -186,6 +201,10 @@ router.get('/:type/:filename', (req, res) => {
       const buffer = fs.readFileSync(filePath);
       res.set('Content-Type', 'model/gltf-binary');
       res.send(buffer);
+    } else if (ext === '.bvh') {
+      const text = fs.readFileSync(filePath, 'utf-8');
+      res.set('Content-Type', 'text/plain');
+      res.send(text);
     } else {
       const raw = fs.readFileSync(filePath, 'utf-8');
       res.json(JSON.parse(raw));
@@ -207,6 +226,7 @@ router.delete('/:type/:filename', (req, res) => {
   }
   try {
     fs.unlinkSync(filePath);
+    refreshFileIndex();
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: 'Failed to delete animation file' });
