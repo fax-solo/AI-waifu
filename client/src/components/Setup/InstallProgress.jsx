@@ -1,20 +1,14 @@
-import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import React, { useState, useEffect, useRef } from 'react';
 
-export default function InstallProgress({ packages, onComplete }) {
-  const { t } = useLanguage();
+export default function InstallProgress({ packages, onComplete, isActive }) {
   const [logOpen, setLogOpen] = useState(false);
   const [logs, setLogs] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [progresses, setProgresses] = useState({});
   const [isFinished, setIsFinished] = useState(false);
-  const [hasStarted, setHasStarted] = useState(false);
-  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   
   const logEndRef = useRef(null);
   const eventSourceRef = useRef(null);
-  const finishedRef = useRef(false);
-  const progressRef = useRef({});
 
   // Auto-scroll logs
   useEffect(() => {
@@ -24,13 +18,12 @@ export default function InstallProgress({ packages, onComplete }) {
   }, [logs, logOpen]);
 
   useEffect(() => {
-    if (isFinished || !hasStarted || packages.length === 0) return;
+    if (!isActive || isFinished || packages.length === 0) return;
 
     // Small delay to allow the screen transition animation to finish (0.6s)
     const timer = setTimeout(() => {
       const ids = packages.map(p => p.id).join(',');
-      const baseUrl = window.location.protocol === 'file:' ? 'http://127.0.0.1:3005' : '';
-      const eventSource = new EventSource(`${baseUrl}/api/setup/stream?packages=${ids}`);
+      const eventSource = new EventSource(`http://localhost:3005/api/setup/stream?packages=${ids}`);
 
       const addLog = (text, type = 'info') => {
         const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -44,16 +37,15 @@ export default function InstallProgress({ packages, onComplete }) {
 
       eventSource.addEventListener('progress', (e) => {
         const data = JSON.parse(e.data);
-        progressRef.current[data.id] = data.progress;
         setProgresses(prev => ({ ...prev, [data.id]: data.progress }));
         
-        // Also use ref-based index tracking to avoid stale closures
         const pkgIndex = packages.findIndex(p => p.id === data.id);
-        setCurrentIndex(prev => Math.max(prev, pkgIndex));
+        if (pkgIndex > currentIndex) {
+          setCurrentIndex(pkgIndex);
+        }
       });
 
       eventSource.addEventListener('done', (e) => {
-        finishedRef.current = true;
         const data = JSON.parse(e.data);
         addLog(data.text, 'success');
         setCurrentIndex(packages.length);
@@ -62,20 +54,6 @@ export default function InstallProgress({ packages, onComplete }) {
       });
 
       eventSource.addEventListener('error', (e) => {
-        if (finishedRef.current) return;
-
-        // If every package has reached 100 %, treat this as a clean
-        // completion — the done event may not have arrived before the
-        // connection closed.
-        if (packages.every(p => (progressRef.current[p.id] || 0) >= 100)) {
-          finishedRef.current = true;
-          addLog('All packages installed successfully.', 'success');
-          setCurrentIndex(packages.length);
-          setIsFinished(true);
-          eventSource.close();
-          return;
-        }
-
         let msg = 'Connection lost or stream ended unexpectedly.';
         if (e.data) {
           try {
@@ -98,118 +76,66 @@ export default function InstallProgress({ packages, onComplete }) {
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasStarted, isFinished]);
+  }, [isActive]);
 
   // Calculate overall progress
   const totalWeight = packages.length * 100;
   const currentWeight = packages.reduce((acc, pkg) => acc + (progresses[pkg.id] || 0), 0);
   const overallProgress = packages.length === 0 ? 0 : Math.floor((currentWeight / totalWeight) * 100);
 
-  const handleCancelClick = () => {
-    setShowCancelConfirm(true);
-  };
-
-  const handleConfirmCancel = () => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-    onComplete();
-  };
-
-  const handleResume = () => {
-    setShowCancelConfirm(false);
-  };
-
   return (
     <div className="setup-screen">
-      {showCancelConfirm && (
-        <div className="confirmation-overlay" style={{ zIndex: 100 }}>
-          <div className="confirmation-card">
-            <h2 style={{ color: '#ef4444' }}>Abort Installation?</h2>
-            <p>Are you sure you want to cancel the installation? The application may not function correctly without these components.</p>
-            <div style={{ display: 'flex', gap: '12px', marginTop: '1.5rem' }}>
-              <button className="btn-secondary" onClick={handleResume} style={{ flex: 1 }}>
-                Resume
-              </button>
-              <button className="btn-primary" onClick={handleConfirmCancel} style={{ flex: 1, backgroundColor: '#ef4444', borderColor: '#ef4444' }}>
-                Yes, Abort
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <div className="setup-header">
+        <h1>Installation</h1>
+        <span className="step-indicator">Step 2 of 2</span>
+      </div>
+
       {!isFinished ? (
         <div className="install-container">
-          {!hasStarted ? (
-            <div className="confirmation-overlay">
-              <div className="confirmation-card">
-                <h2>{t('setup.confirmTitle')}</h2>
-                <p>{t('setup.confirmDesc')}</p>
-                <div className="summary-list">
-                  {packages.map(pkg => (
-                    <div key={pkg.id} className="summary-item">
-                      <span>{pkg.name}</span>
-                      <span className="summary-size">{pkg.size}</span>
-                    </div>
-                  ))}
-                </div>
-                <button className="btn-primary" onClick={() => setHasStarted(true)} style={{ width: '100%', marginTop: '1.5rem', height: '3.5rem', fontSize: '1.125rem' }}>
-                  {t('setup.startInstall')}
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="7 13 12 18 17 13"></polyline>
-                    <polyline points="7 6 12 11 17 6"></polyline>
-                  </svg>
-                </button>
-              </div>
+          <div className="overall-progress">
+            <div className="progress-header">
+              <h2>Downloading Models</h2>
+              <span className="progress-percentage">{overallProgress}%</span>
             </div>
-          ) : (
-            <>
-              <div className="overall-progress">
-                <div className="progress-header">
-                  <h2>{t('setup.installingComponents')}</h2>
-                  <span className="progress-percentage">{overallProgress}%</span>
-                </div>
-                <div className="progress-bar-container">
-                  <div className="progress-bar-fill" style={{ width: `${overallProgress}%` }}></div>
-                </div>
-              </div>
+            <div className="progress-bar-container">
+              <div className="progress-bar-fill" style={{ width: `${overallProgress}%` }}></div>
+            </div>
+          </div>
 
-              <div className="install-list">
-                {packages.map((pkg, idx) => {
-                  const status = idx < currentIndex ? 'done' : idx === currentIndex ? 'active' : 'waiting';
-                  const progress = progresses[pkg.id] || 0;
-                  
-                  return (
-                    <div key={pkg.id} className={`install-item ${status}`}>
-                      <div className="item-info">
-                        <div className="item-icon">
-                          {status === 'active' ? (
-                            <div className="spinner"></div>
-                          ) : status === 'done' ? (
-                            <svg className="status-icon done" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                          ) : (
-                            <svg className="status-icon waiting" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <circle cx="12" cy="12" r="10"></circle>
-                              <polyline points="12 6 12 12 16 14"></polyline>
-                            </svg>
-                          )}
-                        </div>
-                        <div className="item-details">
-                          <div className="item-name">{pkg.name}</div>
-                        </div>
-                      </div>
-                      <div className={`item-status ${status}`}>
-                        {status === 'active' ? `Installing... ${Math.floor(progress)}%` : 
-                         status === 'done' ? t('setup.installStatusInstalled') : t('setup.installStatusWaiting')}
-                      </div>
+          <div className="install-list">
+            {packages.map((pkg, idx) => {
+              const status = idx < currentIndex ? 'done' : idx === currentIndex ? 'active' : 'waiting';
+              const progress = progresses[pkg.id] || 0;
+              
+              return (
+                <div key={pkg.id} className={`install-item ${status}`}>
+                  <div className="item-info">
+                    <div className="item-icon">
+                      {status === 'active' ? (
+                        <div className="spinner"></div>
+                      ) : status === 'done' ? (
+                        <svg className="status-icon done" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      ) : (
+                        <svg className="status-icon waiting" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                      )}
                     </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
+                    <div className="item-details">
+                      <div className="item-name">{pkg.name}</div>
+                    </div>
+                  </div>
+                  <div className={`item-status ${status}`}>
+                    {status === 'active' ? `Installing... ${Math.floor(progress)}%` : 
+                     status === 'done' ? 'Installed' : 'Waiting...'}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
         <div className="completion-state">
@@ -219,8 +145,8 @@ export default function InstallProgress({ packages, onComplete }) {
               <polyline points="22 4 12 14.01 9 11.01"></polyline>
             </svg>
           </div>
-          <h2>{t('setup.readyToLaunch')}</h2>
-          <p>{t('setup.readyDesc')}</p>
+          <h2>Ready to Launch</h2>
+          <p>All selected components have been successfully downloaded and configured.</p>
           <button className="btn-primary" onClick={onComplete} style={{ fontSize: '1.125rem', padding: '1rem 2.5rem' }}>
             Launch App
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -231,27 +157,22 @@ export default function InstallProgress({ packages, onComplete }) {
         </div>
       )}
 
-      <div className="setup-footer" style={{ display: 'flex', justifyContent: 'space-between' }}>
-        {hasStarted && !isFinished && (
-          <button className="btn-secondary" onClick={handleCancelClick} style={{ color: '#ef4444', borderColor: '#ef4444', marginRight: 'auto' }}>
-            Cancel Installation
-          </button>
-        )}
-        <button className="btn-secondary" onClick={() => setLogOpen(!logOpen)} aria-label={logOpen ? 'Hide installation log' : 'Show installation log'} style={{ marginLeft: (!hasStarted || isFinished) ? 'auto' : '0' }}>
+      <div className="setup-footer">
+        <button className="btn-secondary" onClick={() => setLogOpen(!logOpen)}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="4 14 10 14 10 20"></polyline>
             <polyline points="20 10 14 10 14 4"></polyline>
             <line x1="14" y1="10" x2="21" y2="3"></line>
             <line x1="3" y1="21" x2="10" y2="14"></line>
           </svg>
-          {logOpen ? t('setup.hideLog') : t('setup.showLog')}
+          {logOpen ? 'Hide Log' : 'Show Log'}
         </button>
       </div>
 
       <div className={`log-drawer ${!logOpen ? 'closed' : ''}`} style={{ height: '300px' }}>
         <div className="log-header">
-          <span className="log-title">{t('setup.consoleOutput')}</span>
-          <button aria-label="Close log" style={{ background: 'transparent', border: 'none', color: 'var(--color-text-secondary)', cursor: 'pointer' }} onClick={() => setLogOpen(false)}>
+          <span className="log-title">Console Output</span>
+          <button style={{ background: 'transparent', border: 'none', color: 'var(--setup-text-secondary)', cursor: 'pointer' }} onClick={() => setLogOpen(false)}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18"></line>
               <line x1="6" y1="6" x2="18" y2="18"></line>
