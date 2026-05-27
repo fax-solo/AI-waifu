@@ -8,14 +8,48 @@ import { Readable } from 'stream';
 
 const router = express.Router();
 
+async function getDiskInfo() {
+  try {
+    const stats = await fs.promises.statfs(process.cwd());
+    const freeBytes = stats.bavail * stats.bsize;
+    const totalBytes = stats.blocks * stats.bsize;
+    const freeGB = freeBytes / (1024 ** 3);
+    const totalGB = totalBytes / (1024 ** 3);
+    return {
+      freeGB: Math.round(freeGB * 100) / 100,
+      totalGB: Math.round(totalGB * 100) / 100,
+      enough: freeGB > 0.5,
+    };
+  } catch {
+    return { freeGB: null, totalGB: null, enough: true };
+  }
+}
+
+function getOsInfo() {
+  const platform = os.platform();
+  const release = os.release();
+  const supported = ['linux', 'darwin', 'win32'].includes(platform);
+  return {
+    platform,
+    release,
+    supported,
+    label: platform === 'darwin' ? 'macOS' : platform === 'win32' ? 'Windows' : 'Linux',
+  };
+}
+
 async function getGpuInfo() {
   return new Promise((resolve) => {
     const proc = spawn('nvidia-smi', ['--query-gpu=name', '--format=csv,noheader']);
+    const timeout = setTimeout(() => {
+      proc.kill();
+      resolve({ hasNvidia: false, name: null });
+    }, 5000);
     let output = '';
     proc.stdout.on('data', (data) => {
       output += data.toString();
     });
     proc.on('close', (code) => {
+      clearTimeout(timeout);
       if (code === 0 && output.trim()) {
         resolve({
           hasNvidia: true,
@@ -29,6 +63,7 @@ async function getGpuInfo() {
       }
     });
     proc.on('error', () => {
+      clearTimeout(timeout);
       resolve({
         hasNvidia: false,
         name: null
@@ -38,17 +73,24 @@ async function getGpuInfo() {
 }
 
 function detectRootDir() {
-  const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
-  // In production (Electron), process.resourcesPath points to the app resources folder
-  if (isProd && process.resourcesPath) {
-    return process.resourcesPath;
+  // Walk up from cwd to find the project root (where models.json lives)
+  let dir = process.cwd();
+  for (let i = 0; i < 5; i++) {
+    if (fs.existsSync(path.join(dir, 'models.json'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
   }
-  // Fallback: check alongside the executable
+  // In production (Electron), check alongside the executable
+  const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
   if (isProd && process.execPath) {
     const exeDir = path.dirname(process.execPath);
     if (fs.existsSync(path.join(exeDir, 'models.json'))) return exeDir;
   }
-  return process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd();
+  if (isProd && process.resourcesPath) {
+    return process.resourcesPath;
+  }
+  return process.cwd();
 }
 
 router.get('/status', async (req, res) => {
@@ -82,14 +124,17 @@ router.get('/status', async (req, res) => {
     const venvValid = fs.existsSync(venvPath) && fs.existsSync(binDir);
     const setupComplete = fs.existsSync(markerPath);
 
-    const gpuInfo = await getGpuInfo();
+    const [gpuInfo, diskInfo] = await Promise.all([getGpuInfo(), getDiskInfo()]);
+    const osInfo = getOsInfo();
 
     res.json({
       setupRequired: !setupComplete && (modelsMissing || !venvValid),
       modelsMissing,
       venvMissing: !venvValid,
       setupComplete,
-      gpuInfo
+      gpuInfo,
+      diskInfo,
+      osInfo
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -345,39 +390,23 @@ async function bootstrapPython(pkgId, venvPath, sendEvent, gpuNvidia, gpuAmd, gp
   if (gpuNvidia) engineName = `NVIDIA GPU: ${gpuName || 'Unknown'}`;
   else if (gpuAmd) engineName = `AMD GPU: ${gpuName || 'Unknown'}`;
   
-  sendEvent('log', { text: `Installing ONNX Runtime (${engineName})...`, type: 'info' });
+  sendEvent('log', { text: `Installing PyTorch (${engineName})...`, type: 'info' });
   
   if (gpuNvidia) {
-    await runCommand(pipCmd, ['uninstall', '-y', 'onnxruntime'], pythonDir, sendEvent);
-    const gpuDeps = [
-      'nvidia-cublas-cu12', 
-      'nvidia-cudnn-cu12', 
-      'nvidia-cufft-cu12',
-      'nvidia-curand-cu12',
-      'nvidia-cusparse-cu12',
-      'onnxruntime-gpu'
-    ];
-    await runCommand(pipCmd, ['install', ...gpuDeps], pythonDir, sendEvent, advanceProgress);
+    await runCommand(pipCmd, ['install', 'torch', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cu124'], pythonDir, sendEvent, advanceProgress);
   } else if (gpuAmd) {
-    await runCommand(pipCmd, ['uninstall', '-y', 'onnxruntime'], pythonDir, sendEvent);
     if (process.platform === 'win32') {
-      await runCommand(pipCmd, ['install', 'onnxruntime-directml'], pythonDir, sendEvent, advanceProgress);
+      await runCommand(pipCmd, ['install', 'torch', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/rocm6.2'], pythonDir, sendEvent, advanceProgress);
     } else {
-      await runCommand(pipCmd, ['install', 'onnxruntime-rocm', '--extra-index-url', 'https://download.onnxruntime.ai/onnxruntime_stable_rocm.html'], pythonDir, sendEvent, advanceProgress);
+      await runCommand(pipCmd, ['install', 'torch', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/rocm6.2'], pythonDir, sendEvent, advanceProgress);
     }
   } else {
-    await runCommand(pipCmd, ['install', 'onnxruntime'], pythonDir, sendEvent, advanceProgress);
+    await runCommand(pipCmd, ['install', 'torch', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cpu'], pythonDir, sendEvent, advanceProgress);
   }
   
-  sendEvent('log', { text: `Installing TTS dependencies (kokoro-onnx, fastapi, uvicorn, soundfile)...`, type: 'info' });
-  const deps = ['fastapi', 'uvicorn', 'soundfile', 'kokoro-onnx'];
+  sendEvent('log', { text: `Installing TTS dependencies (styletts2, fastapi, uvicorn, soundfile)...`, type: 'info' });
+  const deps = ['fastapi', 'uvicorn', 'soundfile', 'styletts2'];
   await runCommand(pipCmd, ['install', ...deps], pythonDir, sendEvent, advanceProgress);
-  // Ensure onnxruntime is properly installed (kokoro-onnx needs it, and onnxruntime-gpu
-  // may leave a broken package directory with only capi/ and no __init__.py).
-  // This force-reinstall overwrites the broken GPU package with a working import.
-  try {
-    await runCommand(pipCmd, ['install', '--force-reinstall', '--no-deps', 'onnxruntime'], pythonDir, sendEvent);
-  } catch {}
   
   // Linux: check libsndfile1 (required by soundfile)
   if (!isWindows) {
@@ -520,8 +549,22 @@ router.get('/stream', async (req, res) => {
       allPkgs.unshift({ id: 'python-env-amd', type: 'python-env' });
     }
 
+    // Map TTS model package IDs to their download entries
+    // tts-ljspeech → includes tts-model_ljspeech + tts-config_ljspeech
+    // tts-libritts → includes tts-model_libritts + tts-config_libritts
+    // tts-deferred → no download entries (auto-download on first use)
+    const expandedRequested = new Set(requested);
+    if (requested.includes('tts-ljspeech')) {
+      expandedRequested.add('tts-model_ljspeech');
+      expandedRequested.add('tts-config_ljspeech');
+    }
+    if (requested.includes('tts-libritts')) {
+      expandedRequested.add('tts-model_libritts');
+      expandedRequested.add('tts-config_libritts');
+    }
+
     const targetPackages = requested.length > 0 
-      ? allPkgs.filter(p => requested.includes(p.id)) 
+      ? allPkgs.filter(p => expandedRequested.has(p.id)) 
       : allPkgs;
 
     sendEvent('log', { text: `Starting setup sequence for ${targetPackages.length} packages...`, type: 'info' });

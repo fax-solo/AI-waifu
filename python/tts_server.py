@@ -2,7 +2,7 @@ import os
 import sys
 import tempfile
 
-# Inject NVIDIA CUDA libraries into LD_LIBRARY_PATH before importing onnxruntime
+# Inject NVIDIA CUDA libraries into LD_LIBRARY_PATH before importing torch
 def ensure_nvidia_libs():
     if sys.platform != "linux":
         return
@@ -15,16 +15,15 @@ def ensure_nvidia_libs():
                 lib_path = os.path.join(sp, 'nvidia', pkg, 'lib')
                 if os.path.exists(lib_path):
                     nvidia_paths.append(lib_path)
-        
+
         if nvidia_paths:
             current_ld = os.environ.get('LD_LIBRARY_PATH', '')
             new_ld = ':'.join(nvidia_paths)
             if current_ld:
                 new_ld += ':' + current_ld
-                
             if os.environ.get('LD_LIBRARY_PATH') != new_ld:
                 os.environ['LD_LIBRARY_PATH'] = new_ld
-    except Exception as e:
+    except Exception:
         pass
 
 ensure_nvidia_libs()
@@ -40,8 +39,8 @@ import hashlib
 import time
 import re
 import contextlib
-import base64
 import numpy as np
+import json
 
 def safe_print(msg):
     try:
@@ -60,70 +59,85 @@ try:
 except Exception:
     pass
 
-# Global engine
-kokoro = None
+model = None
 engine_loaded = False
 engine_error = None
 current_device = "cpu"
 CACHE_DIR = "tts_cache"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Map PyTorch lang codes to ONNX locale codes
-LANG_MAP = {
-    'a': 'en-us',
-    'b': 'en-gb',
-    'j': 'ja-jp',
-}
-
-# Voice prefixes for each language
-VOICE_LANG = {
-    'af_': 'a', 'am_': 'a',
-    'bf_': 'b', 'bm_': 'b',
-    'jf_': 'j', 'jm_': 'j',
-}
+VOICES_DIR = os.path.join(SCRIPT_DIR, "voices")
+VOICES_MANIFEST = os.path.join(VOICES_DIR, "manifest.json")
 
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
+if not os.path.exists(VOICES_DIR):
+    os.makedirs(VOICES_DIR)
+
+def load_voices_manifest():
+    if os.path.exists(VOICES_MANIFEST):
+        try:
+            with open(VOICES_MANIFEST, 'r') as f:
+                return json.load(f)
+        except:
+            pass
+    return []
+
+voices_manifest = load_voices_manifest()
+
+def find_checkpoint():
+    paths = [
+        os.path.join(SCRIPT_DIR, 'styletts2-libritts.pth'),
+        os.path.join(SCRIPT_DIR, '..', 'python', 'styletts2-libritts.pth'),
+        os.path.join(SCRIPT_DIR, 'styletts2-ljspeech.pth'),
+        os.path.join(SCRIPT_DIR, '..', 'python', 'styletts2-ljspeech.pth'),
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            return p
+    return None
+
+def find_config():
+    paths = [
+        os.path.join(SCRIPT_DIR, 'styletts2-config-libritts.yml'),
+        os.path.join(SCRIPT_DIR, '..', 'python', 'styletts2-config-libritts.yml'),
+        os.path.join(SCRIPT_DIR, 'styletts2-config-ljspeech.yml'),
+        os.path.join(SCRIPT_DIR, '..', 'python', 'styletts2-config-ljspeech.yml'),
+    ]
+    for p in paths:
+        if os.path.exists(p):
+            return p
+    return None
 
 def init_engine():
-    global kokoro, engine_loaded, engine_error, current_device
-    
-    if kokoro:
+    global model, engine_loaded, engine_error, current_device
+
+    if model:
         return
-    
-    safe_print("[TTS] Initializing Kokoro ONNX Runtime...")
+
+    safe_print("[TTS] Initializing StyleTTS2...")
     start_time = time.time()
-    
-    # Find model files alongside this script
-    model_path = os.path.join(SCRIPT_DIR, 'kokoro-v1.0.int8.onnx')
-    voices_path = os.path.join(SCRIPT_DIR, 'voices-v1.0.bin')
-    
-    # Also try parent dirs for different install layouts
-    if not os.path.exists(model_path):
-        model_path = os.path.join(SCRIPT_DIR, '..', 'python', 'kokoro-v1.0.int8.onnx')
-        voices_path = os.path.join(SCRIPT_DIR, '..', 'python', 'voices-v1.0.bin')
-    if not os.path.exists(model_path):
-        model_path = os.path.join(os.path.dirname(SCRIPT_DIR), 'kokoro-v1.0.int8.onnx')
-        voices_path = os.path.join(os.path.dirname(SCRIPT_DIR), 'voices-v1.0.bin')
-    
-    if not os.path.exists(model_path):
-        engine_error = f"Model file not found at {model_path}"
-        safe_print(f"[TTS] ❌ {engine_error}")
-        return
-    
-    if not os.path.exists(voices_path):
-        engine_error = f"Voices file not found at {voices_path}"
-        safe_print(f"[TTS] ❌ {engine_error}")
-        return
-    
+
     try:
-        from kokoro_onnx import Kokoro
-        kokoro = Kokoro(model_path, voices_path)
+        from styletts2 import tts
+
+        checkpoint_path = find_checkpoint()
+        config_path = find_config()
+
+        if checkpoint_path and config_path:
+            safe_print(f"[TTS] Loading model from {os.path.basename(checkpoint_path)}")
+            model = tts.StyleTTS2(
+                model_checkpoint_path=checkpoint_path,
+                config_path=config_path
+            )
+        else:
+            safe_print("[TTS] No local checkpoint found. Will auto-download from HuggingFace on first inference.")
+            model = tts.StyleTTS2()
+
         engine_loaded = True
         safe_print(f"[TTS] Engine loaded in {time.time() - start_time:.2f}s")
     except Exception as e:
         engine_error = str(e)
-        safe_print(f"[TTS] ❌ Failed to load engine: {e}")
+        safe_print(f"[TTS] Failed to load engine: {e}")
         import traceback
         traceback.print_exc()
 
@@ -145,11 +159,15 @@ app.add_middleware(
 
 class TTSRequest(BaseModel):
     text: str
-    voice: str = "af_bella"
+    voice: str = "default"
     speed: float = 1.0
     pitch: float = 1.0
     volume: float = 1.0
     device: str = "cpu"
+    alpha: float = 0.3
+    beta: float = 0.7
+    diffusion_steps: int = 5
+    embedding_scale: float = 1.0
 
 def clean_text_for_tts(text):
     text = re.sub(r'\*.*?\*', '', text)
@@ -158,69 +176,76 @@ def clean_text_for_tts(text):
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-def has_japanese(text):
-    for ch in text:
-        cp = ord(ch)
-        if 0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF or 0x4E00 <= cp <= 0x9FFF:
-            return True
-    return False
-
-def resolve_lang(voice, text):
-    """Determine language locale from voice prefix and text content."""
-    for prefix, lang in VOICE_LANG.items():
-        if voice.startswith(prefix):
-            if lang == 'j':
-                if has_japanese(text):
-                    return 'ja-jp'
-                else:
-                    return 'en-us'
-            return LANG_MAP.get(lang, 'en-us')
-    return 'en-us'
+def resolve_voice_path(voice_id):
+    if voice_id == "default" or not voice_id:
+        return None
+    if voice_id.startswith("/") or voice_id.startswith("\\"):
+        return voice_id
+    candidate = os.path.join(VOICES_DIR, voice_id)
+    if os.path.exists(candidate):
+        return candidate
+    for entry in voices_manifest:
+        if entry.get("id") == voice_id:
+            fname = entry.get("path", "")
+            candidate2 = os.path.join(VOICES_DIR, fname)
+            if os.path.exists(candidate2):
+                return candidate2
+    return None
 
 @app.post("/tts")
 async def text_to_speech(request: TTSRequest):
-    global kokoro, engine_loaded
-    
+    global model, engine_loaded
+
     if not engine_loaded:
         init_engine()
-    
-    if not engine_loaded or not kokoro:
-        detail = engine_error or "TTS Engine not initialized (missing models?)"
-        raise HTTPException(status_code=503, detail=detail)
-    
+        if not engine_loaded and model is None:
+            detail = engine_error or "TTS Engine not initialized"
+            raise HTTPException(status_code=503, detail=detail)
+
     clean_text = clean_text_for_tts(request.text)
-    
     if not clean_text:
         safe_print(f"[TTS] Skipping message with no speakable content")
         raise HTTPException(status_code=400, detail="No speakable content")
-    
-    lang = resolve_lang(request.voice, clean_text)
-    
-    cache_key = hashlib.md5(f"{clean_text}|{request.voice}|{request.speed}|{request.pitch}|{request.volume}|{lang}".encode()).hexdigest()
+
+    cache_key = hashlib.md5(
+        f"{clean_text}|{request.voice}|{request.speed}|{request.pitch}|{request.volume}|{request.alpha}|{request.beta}|{request.diffusion_steps}|{request.embedding_scale}".encode()
+    ).hexdigest()
     cache_path = os.path.join(CACHE_DIR, f"{cache_key}.wav")
-    
+
     if os.path.exists(cache_path):
         with open(cache_path, "rb") as f:
             return Response(content=f.read(), media_type="audio/wav")
-    
+
     try:
         start_time = time.time()
-        
-        samples, sample_rate = kokoro.create(
+
+        voice_path = resolve_voice_path(request.voice)
+
+        samples = model.inference(
             clean_text,
-            voice=request.voice,
-            speed=request.speed,
-            lang=lang,
+            target_voice_path=voice_path,
+            alpha=request.alpha,
+            beta=request.beta,
+            diffusion_steps=request.diffusion_steps,
+            embedding_scale=request.embedding_scale,
         )
-        
+
         if samples is None or len(samples) == 0:
             raise HTTPException(status_code=500, detail="No audio generated")
-        
-        # Apply volume
+
+        sample_rate = 24000
+
         if request.volume != 1.0:
             samples = samples * max(0.0, min(2.0, request.volume))
-        
-        # Apply pitch shift via resampling
+
+        if request.speed != 1.0:
+            orig_len = len(samples)
+            step = request.speed
+            indices = np.arange(0, orig_len, step)
+            indices = indices[indices < orig_len]
+            if len(indices) > 0:
+                samples = np.interp(indices, np.arange(orig_len), samples).astype(samples.dtype)
+
         if request.pitch != 1.0:
             orig_len = len(samples)
             step = request.pitch
@@ -228,18 +253,21 @@ async def text_to_speech(request: TTSRequest):
             indices = indices[indices < orig_len]
             if len(indices) > 0:
                 samples = np.interp(indices, np.arange(orig_len), samples).astype(samples.dtype)
-        
+
         gen_time = time.time() - start_time
-        safe_print(f"[TTS] Generated audio in {gen_time:.2f}s ({lang} {request.voice})")
-        
+        voice_label = request.voice if request.voice != "default" else "default"
+        safe_print(f"[TTS] Generated audio in {gen_time:.2f}s (voice: {voice_label})")
+
         buffer = io.BytesIO()
         sf.write(buffer, samples, sample_rate, format='WAV')
         audio_data = buffer.getvalue()
-        
+
         with open(cache_path, "wb") as f:
             f.write(audio_data)
-        
+
         return Response(content=audio_data, media_type="audio/wav")
+    except HTTPException:
+        raise
     except Exception as e:
         safe_print(f"[TTS] Error during generation: {e}")
         import traceback
@@ -252,10 +280,21 @@ async def health():
     return {
         "status": status,
         "device": current_device,
-        "engine": "onnx",
+        "engine": "styletts2",
         "loaded": engine_loaded,
         "error": engine_error,
     }
+
+@app.get("/voices")
+async def list_voices():
+    entries = []
+    entries.append({"id": "default", "name": "Default Voice", "path": ""})
+    for entry in voices_manifest:
+        vid = entry.get("id", "")
+        vname = entry.get("name", vid)
+        vpath = entry.get("path", "")
+        entries.append({"id": vid, "name": vname, "path": vpath})
+    return entries
 
 class STTRequest(BaseModel):
     audio: str
@@ -265,10 +304,11 @@ async def speech_to_text(req: STTRequest):
     if not req.audio:
         raise HTTPException(status_code=400, detail="No audio data provided")
     try:
+        import base64
         data = base64.b64decode(req.audio)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid base64 audio data")
-    
+
     import speech_recognition as sr
     from pydub import AudioSegment
     tmp_in = tempfile.NamedTemporaryFile(suffix=".webm", delete=False)
@@ -279,7 +319,7 @@ async def speech_to_text(req: STTRequest):
         audio_seg = AudioSegment.from_file(tmp_in.name)
         audio_seg.export(tmp_wav.name, format="wav")
         tmp_wav.close()
-        
+
         recognizer = sr.Recognizer()
         with sr.AudioFile(tmp_wav.name) as source:
             audio = recognizer.record(source)

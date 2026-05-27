@@ -19,7 +19,7 @@ const BODY_DIR = path.join(DATA_DIR, 'body');
 
 const router = Router();
 
-const ALLOWED_EXTENSIONS = ['.json', '.vrma', '.bvh'];
+const ALLOWED_EXTENSIONS = ['.json', '.vrma'];
 
 function isAllowed(file) {
   const ext = path.extname(file).toLowerCase();
@@ -72,7 +72,6 @@ function listAnimationFiles(dir) {
         const fullPath = path.join(dir, f);
         const ext = path.extname(f).toLowerCase();
         const isVrma = ext === '.vrma';
-        const isBvh = ext === '.bvh';
         try {
           if (isVrma) {
             return {
@@ -82,17 +81,6 @@ function listAnimationFiles(dir) {
               format: 'vrma',
               duration: getVrmaDuration(fullPath),
               loop: false,
-              blendSpeed: 8,
-            };
-          }
-          if (isBvh) {
-            return {
-              filename: f,
-              name: f.replace('.bvh', ''),
-              type: 'body',
-              format: 'bvh',
-              duration: 5,
-              loop: true,
               blendSpeed: 8,
             };
           }
@@ -137,7 +125,7 @@ const upload = multer({
     if (ALLOWED_EXTENSIONS.includes(ext) && file.fieldname === 'animation') {
       cb(null, true);
     } else {
-      cb(new Error('Only .json, .vrma, and .bvh files are allowed'), false);
+      cb(new Error('Only .json and .vrma files are allowed'), false);
     }
   }
 });
@@ -201,10 +189,6 @@ router.get('/:type/:filename', (req, res) => {
       const buffer = fs.readFileSync(filePath);
       res.set('Content-Type', 'model/gltf-binary');
       res.send(buffer);
-    } else if (ext === '.bvh') {
-      const text = fs.readFileSync(filePath, 'utf-8');
-      res.set('Content-Type', 'text/plain');
-      res.send(text);
     } else {
       const raw = fs.readFileSync(filePath, 'utf-8');
       res.json(JSON.parse(raw));

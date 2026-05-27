@@ -43,9 +43,13 @@ export default function App() {
     name: 'Aria',
     backstory: 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
     ttsEnabled: true,
-    ttsVoice: 'af_bella',
+    ttsVoice: 'default',
     audioInputDevice: 'default',
     audioOutputDevice: 'default',
+    ttsAlpha: 0.3,
+    ttsBeta: 0.7,
+    ttsDiffusionSteps: 5,
+    ttsEmbeddingScale: 1.0,
     shortcuts: DEFAULT_SHORTCUTS
   });
   const [currentEmotion, setCurrentEmotion] = useState('neutral');
@@ -250,13 +254,17 @@ export default function App() {
       if (companionSettings.ttsEnabled) {
         speak(result.message, {
           enabled: companionSettings.ttsEnabled,
-          voice: companionSettings.ttsVoice,
+          voice: companionSettings.ttsVoice || 'default',
           speed: companionSettings.ttsSpeed ?? 1.0,
           pitch: companionSettings.ttsPitch ?? 1.0,
           volume: companionSettings.ttsVolume ?? 1.0,
           outputDeviceId: companionSettings.audioOutputDevice,
           device: companionSettings.ttsDevice || 'cpu',
-          engine: companionSettings.ttsEngine || 'onnx'
+          engine: companionSettings.ttsEngine || 'styletts2',
+          alpha: companionSettings.ttsAlpha ?? 0.3,
+          beta: companionSettings.ttsBeta ?? 0.7,
+          diffusionSteps: companionSettings.ttsDiffusionSteps ?? 5,
+          embeddingScale: companionSettings.ttsEmbeddingScale ?? 1.0,
         });
       }
     }
@@ -393,7 +401,7 @@ export default function App() {
           }
           setShowSetup(false);
         }}
-        onCancel={() => setShowSetup(false)}
+        onSkip={() => setShowSetup(false)}
         systemInfo={systemInfo}
       />
     );

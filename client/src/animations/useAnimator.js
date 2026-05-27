@@ -36,6 +36,27 @@ const EMOTION_FACIAL = {
   confusion: 'confusion.json',
 };
 
+// Maps body animation filenames (without extension) to facial expression keys
+const BODY_TO_FACIAL = {
+  Angry: 'angry',
+  Blush: 'embarrassed',
+  Goodbye: 'sad',
+  greeting: 'happy',
+  greeting2: 'happy',
+  Jump: 'excited',
+  LookAround: 'curious',
+  'model pose': 'proud',
+  'peace sign': 'playful',
+  Relax: 'relaxed',
+  Sad: 'sad',
+  shoot: 'playful',
+  'show full body': 'proud',
+  Sleepy: 'tired',
+  spin: 'excited',
+  Surprised: 'surprised',
+  Thinking: 'thoughtful',
+};
+
 const MOUTH_FACIAL = {
   smile: 'mouth_smile.json',
   frown: 'mouth_frown.json',
@@ -313,315 +334,11 @@ export function useAnimator({ getTexture, onVFX } = {}) {
   const lastBodyAnimation = useRef(null);
   const loadingBody = useRef(false);
 
-  // ── BVH parser ────────────────────────────────────────
-  const BVH_BONE_MAP = {
-    'Hips': 'hips', 'Chest': 'chest', 'UpperChest': 'upperChest',
-    'Neck': 'neck', 'Head': 'head',
-    'LeftShoulder': 'leftShoulder', 'RightShoulder': 'rightShoulder',
-    'LeftArm': 'leftUpperArm', 'RightArm': 'rightUpperArm',
-    'LeftForeArm': 'leftLowerArm', 'RightForeArm': 'rightLowerArm',
-    'LeftHand': 'leftHand', 'RightHand': 'rightHand',
-    'LeftUpLeg': 'leftUpperLeg', 'RightUpLeg': 'rightUpperLeg',
-    'LeftLeg': 'leftLowerLeg', 'RightLeg': 'rightLowerLeg',
-    'LeftFoot': 'leftFoot', 'RightFoot': 'rightFoot',
-    'LeftToe': 'leftToes', 'RightToe': 'rightToes',
-    'Spine': 'spine', 'Spine1': 'chest', 'Spine2': 'upperChest',
-    'LeftUpperLeg': 'leftUpperLeg', 'RightUpperLeg': 'rightUpperLeg',
-    'LeftLowerLeg': 'leftLowerLeg', 'RightLowerLeg': 'rightLowerLeg',
-    'LeftToeBase': 'leftToes', 'RightToeBase': 'rightToes',
-    // Mixamo / common alternative names
-    'mixamorig:Hips': 'hips', 'mixamorig:Spine': 'spine', 'mixamorig:Spine1': 'chest', 'mixamorig:Spine2': 'upperChest',
-    'mixamorig:Neck': 'neck', 'mixamorig:Head': 'head',
-    'mixamorig:LeftShoulder': 'leftShoulder', 'mixamorig:RightShoulder': 'rightShoulder',
-    'mixamorig:LeftArm': 'leftUpperArm', 'mixamorig:RightArm': 'rightUpperArm',
-    'mixamorig:LeftForeArm': 'leftLowerArm', 'mixamorig:RightForeArm': 'rightLowerArm',
-    'mixamorig:LeftHand': 'leftHand', 'mixamorig:RightHand': 'rightHand',
-    'mixamorig:LeftUpLeg': 'leftUpperLeg', 'mixamorig:RightUpLeg': 'rightUpperLeg',
-    'mixamorig:LeftLeg': 'leftLowerLeg', 'mixamorig:RightLeg': 'rightLowerLeg',
-    'mixamorig:LeftFoot': 'leftFoot', 'mixamorig:RightFoot': 'rightFoot',
-    'mixamorig:LeftToeBase': 'leftToes', 'mixamorig:RightToeBase': 'rightToes',
-    // Bip01 naming
-    'Bip01': 'hips', 'Bip01_Spine': 'spine', 'Bip01_Neck': 'neck', 'Bip01_Head': 'head',
-    'Bip01_L_UpperArm': 'leftUpperArm', 'Bip01_R_UpperArm': 'rightUpperArm',
-    'Bip01_L_Forearm': 'leftLowerArm', 'Bip01_R_Forearm': 'rightLowerArm',
-    'Bip01_L_Hand': 'leftHand', 'Bip01_R_Hand': 'rightHand',
-    'Bip01_L_Thigh': 'leftUpperLeg', 'Bip01_R_Thigh': 'rightUpperLeg',
-    'Bip01_L_Calf': 'leftLowerLeg', 'Bip01_R_Calf': 'rightLowerLeg',
-    'Bip01_L_Foot': 'leftFoot', 'Bip01_R_Foot': 'rightFoot',
-  };
-
-  function parseBVH(text) {
-    const lines = text.split('\n');
-    let idx = 0;
-    function nextLine() {
-      while (idx < lines.length) {
-        const line = lines[idx++].trim();
-        if (line) return line;
-      }
-      return null;
-    }
-
-    function parseJoint(parentName) {
-      const line = nextLine();
-      if (!line || line === '}') return null;
-      const parts = line.split(/\s+/);
-      const joint = { name: parts[1], offset: [0, 0, 0], channels: [], children: [] };
-      nextLine(); // {
-      let tok;
-      while ((tok = nextLine()) !== '}') {
-        if (!tok) break;
-        if (tok.startsWith('OFFSET')) {
-          const vals = tok.split(/\s+/);
-          joint.offset = [parseFloat(vals[1]), parseFloat(vals[2]), parseFloat(vals[3])];
-        } else if (tok.startsWith('CHANNELS')) {
-          const vals = tok.split(/\s+/);
-          for (let i = 2; i < vals.length; i++) joint.channels.push(vals[i]);
-        } else if (tok.startsWith('JOINT')) {
-          joint.children.push(parseJoint(joint.name));
-        } else if (tok === 'End Site') {
-          const end = { name: joint.name + '_end', offset: [0, 0, 0], channels: [], children: [], isEnd: true };
-          nextLine(); // {
-          let eTok;
-          while ((eTok = nextLine()) !== '}') {
-            if (eTok && eTok.startsWith('OFFSET')) {
-              const vals = eTok.split(/\s+/);
-              end.offset = [parseFloat(vals[1]), parseFloat(vals[2]), parseFloat(vals[3])];
-            }
-          }
-          joint.children.push(end);
-        }
-      }
-      return joint;
-    }
-
-    nextLine(); // HIERARCHY
-    const root = parseJoint(null);
-
-    while (idx < lines.length && !lines[idx].includes('MOTION')) idx++;
-    if (idx >= lines.length) return null;
-    idx++;
-
-    const framesMatch = nextLine()?.match(/Frames:\s*(\d+)/i);
-    const frameTimeMatch = nextLine()?.match(/Frame Time:\s*([\d.]+)/i);
-    if (!framesMatch || !frameTimeMatch) return null;
-    const frameCount = parseInt(framesMatch[1]);
-    const frameTime = parseFloat(frameTimeMatch[1]);
-
-    const data = [];
-    while (idx < lines.length) {
-      const line = lines[idx++].trim();
-      if (line) {
-        const vals = line.split(/\s+/).map(Number);
-        for (const v of vals) data.push(v);
-      }
-    }
-
-    return { root, frameCount, frameTime, data };
-  }
-
-  function flattenJoints(joint, order = []) {
-    order.push(joint);
-    for (const c of joint.children) flattenJoints(c, order);
-    return order;
-  }
-
-  function mapBvhToVrm(bvhRoot, vrm) {
-    const all = flattenJoints(bvhRoot);
-    const humanoid = vrm.humanoid;
-    if (!humanoid) return [];
-    const mappings = [];
-    for (const j of all) {
-      if (j.isEnd) continue;
-      const vrmBoneName = BVH_BONE_MAP[j.name];
-      if (!vrmBoneName) continue;
-      const node = humanoid.getNormalizedBoneNode?.(vrmBoneName) ?? humanoid.getRawBoneNode?.(vrmBoneName);
-      if (node) {
-        const ch = j.channels;
-        const rotCh = [];
-        const posCh = [];
-        for (let ci = 0; ci < ch.length; ci++) {
-          const c = ch[ci].toLowerCase();
-          if (c === 'xrotation' || c === 'yrotation' || c === 'zrotation') rotCh.push(ci);
-          if (c === 'xposition' || c === 'yposition' || c === 'zposition') posCh.push(ci);
-        }
-        mappings.push({ joint: j, node, rotCh, posCh, vrmBoneName });
-      }
-    }
-    return mappings;
-  }
-
-  function playBVH(filename, text, vrm, loop) {
-    try {
-      const parsed = parseBVH(text);
-      if (!parsed) {
-        console.warn('[Anim] Failed to parse BVH:', filename);
-        return;
-      }
-      console.log(`[Anim] BVH parsed: ${parsed.frameCount} frames, ${parsed.frameTime}s/frame, ${parsed.data.length} values`);
-      const mappings = mapBvhToVrm(parsed.root, vrm);
-      if (mappings.length === 0) {
-        console.warn('[Anim] No bone mappings found for BVH — check BVH_BONE_MAP keys vs BVH joint names:', filename);
-        const all = flattenJoints(parsed.root);
-        console.log('[Anim] BVH joints:', all.filter(j => !j.isEnd).map(j => j.name).join(', '));
-        return;
-      }
-      console.log(`[Anim] BVH mapped ${mappings.length} bones:`, mappings.map(m => `${m.joint.name}→${m.vrmBoneName}`).join(', '));
-
-      const { frameCount, frameTime, data } = parsed;
-      const duration = frameCount * frameTime;
-
-      // Build per-bone keyframes: array of quaternion values per frame
-      const euler = new THREE.Euler();
-      const quat = new THREE.Quaternion();
-      const tracks = [];
-
-      // Pre-compute channel offsets for each joint in the flat data
-      const allJoints = flattenJoints(parsed.root);
-      const totalChannels = allJoints.reduce((s, aj) => s + aj.channels.length, 0);
-      const jointOffsets = [];
-      let off = 0;
-      for (const aj of allJoints) {
-        jointOffsets.push(off);
-        off += aj.channels.length;
-      }
-
-      // Detect rotation channel order from BVH for proper Euler conversion
-      const detectEulerOrder = (channels) => {
-        const order = [];
-        for (const ch of channels) {
-          const lc = ch.toLowerCase();
-          if (lc.includes('xrotation')) order.push('X');
-          else if (lc.includes('yrotation')) order.push('Y');
-          else if (lc.includes('zrotation')) order.push('Z');
-        }
-        return order.join('') || 'XYZ';
-      };
-
-      for (const m of mappings) {
-        const j = m.joint;
-        const ji = allJoints.indexOf(j);
-        const channelOffset = jointOffsets[ji];
-        const times = new Float32Array(frameCount);
-        const quats = new Float32Array(frameCount * 4);
-        const eulerOrder = detectEulerOrder(j.channels);
-
-        for (let f = 0; f < frameCount; f++) {
-          times[f] = f * frameTime;
-          const frameStart = f * totalChannels + channelOffset;
-
-          let rx = 0, ry = 0, rz = 0;
-          for (let ci = 0; ci < j.channels.length; ci++) {
-            const val = data[frameStart + ci];
-            if (val === undefined) continue;
-            const chName = j.channels[ci].toLowerCase();
-            if (chName.includes('xrotation')) rx = val;
-            else if (chName.includes('yrotation')) ry = val;
-            else if (chName.includes('zrotation')) rz = val;
-          }
-
-          // BVH uses +Z forward, VRM uses -Z forward — negate Z rotation
-          euler.set(
-            THREE.MathUtils.degToRad(rx),
-            THREE.MathUtils.degToRad(ry),
-            THREE.MathUtils.degToRad(-rz),
-            eulerOrder
-          );
-          quat.setFromEuler(euler);
-          quats[f * 4] = quat.x;
-          quats[f * 4 + 1] = quat.y;
-          quats[f * 4 + 2] = quat.z;
-          quats[f * 4 + 3] = quat.w;
-        }
-
-        const track = new THREE.QuaternionKeyframeTrack(
-          `${m.node.name}.quaternion`,
-          times,
-          quats
-        );
-        tracks.push(track);
-      }
-
-      if (tracks.length === 0) {
-        console.warn('[Anim] No valid tracks created from BVH:', filename);
-        return;
-      }
-
-      const clip = new THREE.AnimationClip(`bvh_${filename}`, duration, tracks);
-
-      // Stop any existing animation
-      if (vrma.stateRef.current.mixer) {
-        vrma.stateRef.current.mixer.stopAllAction();
-      }
-
-      const mixer = new THREE.AnimationMixer(vrm.scene);
-      const action = mixer.clipAction(clip);
-      action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, 1);
-      if (!loop) action.clampWhenFinished = true;
-      action.play();
-
-      vrma.stateRef.current = {
-        playing: true,
-        filename,
-        mixer,
-        action,
-        duration,
-        loop,
-      };
-      console.log(`[Anim] Playing BVH: ${filename} (${duration.toFixed(2)}s, ${mappings.length} bones)`);
-    } catch (err) {
-      console.error('[Anim] BVH playback error:', filename, err?.message);
-    }
-  }
-
-  // ── Play body animation (unified entry point) ────────
-  const playBodyAnimation = useCallback(async (filename, options = {}) => {
-    try {
-      const ext = filename?.toLowerCase().split('.').pop();
-      if (ext === 'bvh') {
-        loadingBody.current = true;
-        const bvhUrl = (window.location.href.startsWith('http')
-          ? `/animations/body/${filename}`
-          : `http://127.0.0.1:3005/animations/body/${filename}`);
-        const resp = await fetch(bvhUrl);
-        if (!resp.ok) { console.warn('[Anim] Failed to fetch BVH:', bvhUrl, resp.status); loadingBody.current = false; return; }
-        const text = await resp.text();
-        console.log(`[Anim] BVH fetched: ${filename}, ${text.length} bytes`);
-        const vrm = vrmRef.current;
-        if (!vrm) { loadingBody.current = false; return; }
-        const loop = options.loop ?? true;
-        playBVH(filename, text, vrm, loop);
-        loadingBody.current = false;
-        return;
-      }
-      loadingBody.current = true;
-      const url = (window.location.href.startsWith('http')
-        ? `/animations/body/${filename}`
-        : `http://127.0.0.1:3005/animations/body/${filename}`);
-      const vrm = vrmRef.current;
-      if (!vrm) { loadingBody.current = false; return; }
-      const loop = options.loop ?? false;
-      await vrma.play(vrm, filename, url, { loop });
-    } catch (err) {
-      console.warn('[Anim] Body animation failed:', filename, err?.message);
-    } finally {
-      loadingBody.current = false;
-    }
-  }, [vrma]);
-
-  // ── Stop all animation (facial) ─────────────────────
-  const stopAll = useCallback(() => {
-    vrma.stop();
-    facial.current = [];
-    auto.current = { talking: false, thinking: false };
-    lastEmotion.current = null;
-    lastMouth.current = null;
-    lastEye.current = null;
-  }, [vrma.stop]);
-
-  // ── Play VRMA animation (delegates to playBodyAnimation) ──
-  const playVRMA = useCallback((filename, options = {}) => {
-    return playBodyAnimation(filename, options);
-  }, [playBodyAnimation]);
+  // Maps body animation filenames to facial expression keys
+  const getFacialKeyForBody = useCallback((filename) => {
+    const baseName = filename.replace(/\.vrma$/, '');
+    return BODY_TO_FACIAL[baseName] || null;
+  }, []);
 
   // ── Play facial animation ───────────────────────────
   const playFacial = useCallback((filename, options = {}) => {
@@ -665,6 +382,46 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       console.warn(`[Anim] Overlay ${filename} failed:`, err?.message);
     });
   }, []);
+
+  // ── Play body animation (unified entry point) ────────
+  const playBodyAnimation = useCallback(async (filename, options = {}) => {
+    try {
+      loadingBody.current = true;
+      const encodedName = encodeURIComponent(filename);
+      const url = (window.location.href.startsWith('http')
+        ? `/animations/body/${encodedName}`
+        : `http://127.0.0.1:3005/animations/body/${encodedName}`);
+      const vrm = vrmRef.current;
+      if (!vrm) { loadingBody.current = false; return; }
+      const loop = options.loop ?? false;
+      await vrma.play(vrm, filename, url, { loop });
+
+      // Trigger matching facial expression alongside the body animation
+      const facialKey = options.facialKey || getFacialKeyForBody(filename);
+      if (facialKey && EMOTION_FACIAL[facialKey]) {
+        playFacial(EMOTION_FACIAL[facialKey], { blendSpeed: 10 });
+      }
+    } catch (err) {
+      console.warn('[Anim] Body animation failed:', filename, err?.message);
+    } finally {
+      loadingBody.current = false;
+    }
+  }, [vrma, playFacial, getFacialKeyForBody]);
+
+  // ── Play VRMA animation (delegates to playBodyAnimation) ──
+  const playVRMA = useCallback((filename, options = {}) => {
+    return playBodyAnimation(filename, options);
+  }, [playBodyAnimation]);
+
+  // ── Stop all animation (facial + body) ──────────────
+  const stopAll = useCallback(() => {
+    vrma.stop();
+    facial.current = [];
+    auto.current = { talking: false, thinking: false };
+    lastEmotion.current = null;
+    lastMouth.current = null;
+    lastEye.current = null;
+  }, [vrma.stop]);
 
   // ── Main update loop (called every frame) ───────────
   const update = useCallback((vrm, deltaTime, state = {}) => {
@@ -1217,8 +974,8 @@ export function useAnimator({ getTexture, onVFX } = {}) {
 
     if (aiActive) {
       const stillLoading = loadingBody.current;
-      const stillPlaying = vrma.stateRef.current.filename === aiActive && vrma.stateRef.current.playing;
-      if (!stillLoading && !stillPlaying) {
+      const stillPlayingVRMA = vrma.stateRef.current.filename === aiActive && vrma.stateRef.current.playing;
+      if (!stillLoading && !stillPlayingVRMA) {
         state.aiAnimationActive = null;
       }
     }
@@ -1228,7 +985,7 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       if (emotion !== lastBodyAnimation.current) {
         lastBodyAnimation.current = emotion;
         if (aiActive) {
-          playBodyAnimation(aiActive, { loop: false });
+          playBodyAnimation(aiActive, { loop: false, facialKey: emotion });
         }
       }
     }
@@ -1236,13 +993,16 @@ export function useAnimator({ getTexture, onVFX } = {}) {
   }, [updateBuiltins, updateBreathingRaw, playBodyAnimation, playFacial]);
 
   const currentAnimation = useCallback(() => {
-    if (!vrma.stateRef.current.playing) return null;
-    return {
-      filename: vrma.stateRef.current.filename,
-      elapsed: 0,
-      duration: vrma.stateRef.current.duration ?? 0,
-    };
+    if (vrma.stateRef.current.playing) {
+      return {
+        filename: vrma.stateRef.current.filename,
+        elapsed: 0,
+        duration: vrma.stateRef.current.duration ?? 0,
+        type: 'vrma',
+      };
+    }
+    return null;
   }, [vrma.stateRef]);
 
-  return { update, playBVH: playBodyAnimation, playVRMA, playFacial, playFacialOverlay, stopAll, currentAnimation };
+  return { update, playVRMA, playFacial, playFacialOverlay, stopAll, currentAnimation };
 }

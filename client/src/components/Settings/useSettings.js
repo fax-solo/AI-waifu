@@ -5,19 +5,7 @@ import { DEFAULT_SHORTCUTS } from '../../hooks/useShortcuts.js';
 import { version as APP_VERSION } from '../../../../package.json';
 
 const VOICES = [
-  { id: 'af_bella', name: 'Bella (US Female)', desc: 'Friendly & clear' },
-  { id: 'af_sarah', name: 'Sarah (US Female)', desc: 'Soft & calm' },
-  { id: 'af_sky', name: 'Sky (US Female)', desc: 'Bright & energetic' },
-  { id: 'af_nicole', name: 'Nicole (US Female)', desc: 'Professional' },
-  { id: 'am_adam', name: 'Adam (US Male)', desc: 'Deep & steady' },
-  { id: 'am_michael', name: 'Michael (US Male)', desc: 'Natural' },
-  { id: 'bf_emma', name: 'Emma (UK Female)', desc: 'British accent' },
-  { id: 'bm_george', name: 'George (UK Male)', desc: 'British accent' },
-  { id: 'jf_alpha', name: 'Alpha (JP Female)', desc: 'Cute anime-style' },
-  { id: 'jf_gongitsune', name: 'Gongitsune (JP Female)', desc: 'Sweet & playful' },
-  { id: 'jf_nezumi', name: 'Nezumi (JP Female)', desc: 'High-pitched & adorable' },
-  { id: 'jf_tebukuro', name: 'Tebukuro (JP Female)', desc: 'Soft & gentle' },
-  { id: 'jm_kumo', name: 'Kumo (JP Male)', desc: 'Calm & composed' },
+  { id: 'default', name: 'Default Voice', desc: 'Built-in StyleTTS2 voice (no reference needed)' },
 ];
 
 const GEMINI_MODELS = [
@@ -51,14 +39,18 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     personality: '',
     backstory: '',
     ttsEnabled: true,
-    ttsVoice: 'af_bella',
+    ttsVoice: 'default',
     audioInputDevice: 'default',
     audioOutputDevice: 'default',
     ttsDevice: 'cpu',
-    ttsEngine: 'onnx',
+    ttsEngine: 'styletts2',
     ttsSpeed: 1.0,
     ttsPitch: 1.0,
     ttsVolume: 1.0,
+    ttsAlpha: 0.3,
+    ttsBeta: 0.7,
+    ttsDiffusionSteps: 5,
+    ttsEmbeddingScale: 1.0,
     llmModel: 'gemini-3.1-flash-lite',
     llmProvider: 'gemini',
     shortcuts: DEFAULT_SHORTCUTS
@@ -103,6 +95,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
   const [testText, setTestText] = useState("Hello! How do I sound?");
   const [micTestStatus, setMicTestStatus] = useState('idle');
   const [ttsStatus, setTtsStatus] = useState({ status: 'unknown', device: 'cpu' });
+  const [voices, setVoices] = useState([{ id: 'default', name: 'Default Voice', path: '' }]);
   const [setupStatus, setSetupStatus] = useState(null);
 
   const [activeTab, setActiveTab] = useState('profile');
@@ -182,14 +175,18 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
           personality: data.companion.personality,
           backstory: data.companion.backstory,
           ttsEnabled: data.companion.ttsEnabled ?? true,
-          ttsVoice: data.companion.ttsVoice ?? 'af_bella',
+          ttsVoice: data.companion.ttsVoice ?? 'default',
           audioInputDevice: data.companion.audioInputDevice ?? 'default',
           audioOutputDevice: data.companion.audioOutputDevice ?? 'default',
           ttsDevice: data.companion.ttsDevice ?? 'cpu',
-          ttsEngine: data.companion.ttsEngine ?? 'onnx',
+          ttsEngine: data.companion.ttsEngine ?? 'styletts2',
           ttsSpeed: data.companion.ttsSpeed ?? 1.0,
           ttsPitch: data.companion.ttsPitch ?? 1.0,
           ttsVolume: data.companion.ttsVolume ?? 1.0,
+          ttsAlpha: data.companion.ttsAlpha ?? 0.3,
+          ttsBeta: data.companion.ttsBeta ?? 0.7,
+          ttsDiffusionSteps: data.companion.ttsDiffusionSteps ?? 5,
+          ttsEmbeddingScale: data.companion.ttsEmbeddingScale ?? 1.0,
           llmModel: data.companion.llmModel ?? 'gemini-3.1-flash-lite',
           llmProvider: data.companion.llmProvider ?? 'gemini',
           shortcuts: hasCustomShortcuts ? loadedShortcuts : DEFAULT_SHORTCUTS
@@ -224,12 +221,25 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
           if (cancelled) return;
           const data = await res.json();
           if (!cancelled) setTtsStatus(data);
+          // Once TTS is online, load available voices
+          loadVoices();
           return;
         } catch (err) {
           if (err.name === 'AbortError') return;
           if (!cancelled) setTtsStatus({ status: 'offline', device: 'none' });
           await new Promise(r => setTimeout(r, 3000));
         }
+      }
+    }
+
+    async function loadVoices() {
+      try {
+        const res = await fetch(`http://127.0.0.1:5000/voices?t=${Date.now()}`, { signal: abortController.signal, cache: 'no-store' });
+        if (cancelled) return;
+        const list = await res.json();
+        if (!cancelled) setVoices(list);
+      } catch {
+        if (!cancelled) setVoices([{ id: 'default', name: 'Default Voice', path: '' }]);
       }
     }
 
@@ -749,7 +759,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     setTestText, setActiveTab, setSettingsSearch, setAnimSearch,
 
     // Constants
-    VOICES, GEMINI_MODELS, GROQ_MODELS, GITHUB_REPO,
+    VOICES, voices, GEMINI_MODELS, GROQ_MODELS, GITHUB_REPO,
 
     // Functions
     showToast, markDirty, handleSave,

@@ -188,7 +188,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
       if (animStateRef.current) {
         animStateRef.current.aiAnimationActive = filename;
       }
-      return animator.playBVH(filename, options);
+      return animator.playVRMA(filename, options);
     },
   }), [loadVRM, loadVRMFromFile, dispose, animator]);
 
@@ -937,15 +937,14 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                 <div className="avatar-section-title" style={{ marginTop: 16 }}>Body Animations</div>
                 {bodyAnims.length === 0 ? (
                   <div style={{ opacity: 0.6, fontSize: '0.85rem', padding: '8px 0' }}>
-                    {bodyAnimsLoading ? 'Loading...' : 'No body animations found. Add .vrma or .bvh files in Settings → Animations.'}
+                    {bodyAnimsLoading ? 'Loading...' : 'No body animations found. Add .vrma files in Settings → Animations.'}
                   </div>
                 ) : (
                   <div className="avatar-btn-grid cols-2">
-                    {bodyAnims.map(anim => (
+                    {bodyAnims.filter(a => a.format === 'vrma').map(anim => (
                       <button key={anim.filename} className="avatar-btn"
-                        onClick={() => { testingRef.current = true; animator.playBVH(anim.filename, { loop: true }); }}>
+                        onClick={() => { testingRef.current = true; animator.playVRMA(anim.filename, { loop: true }); }}>
                         {anim.name.replace(/\.[^.]+$/, '')}
-                        {anim.format === 'bvh' && ' (BVH)'}
                       </button>
                     ))}
                   </div>

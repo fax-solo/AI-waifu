@@ -52,7 +52,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
     handleSetApiKey, handleSetGroqKey, handleRemoveApiKey, handleRemoveGroqKey,
     updateStatus, latestVersion, updateUrl, updateError, updateProgress, checkForUpdates,
     downloadUpdate, installUpdate,
-    VOICES, GEMINI_MODELS, GROQ_MODELS,
+    VOICES, voices, GEMINI_MODELS, GROQ_MODELS,
     settingsLoading, requestClose,
     showUnsavedDialog, handleUnsavedConfirm, handleUnsavedCancel,
     animations, animLoading, animSearch, testStatus,
@@ -125,7 +125,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
         return <CompanionTab companion={companion} setCompanion={setCompanion} />;
       case 'voice':
         return <VoiceTab companion={companion} setCompanion={setCompanion}
-          VOICES={VOICES} audioDevices={audioDevices} micTestStatus={micTestStatus}
+          VOICES={voices} audioDevices={audioDevices} micTestStatus={micTestStatus}
           testText={testText} setTestText={setTestText} ttsStatus={ttsStatus}
           isTestingVoice={isTestingVoice} speak={speak} handleTestMic={handleTestMic} />;
       case 'apikey':

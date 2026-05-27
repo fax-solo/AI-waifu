@@ -109,14 +109,14 @@ router.get('/status', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
-    const { text, voice, speed, pitch, volume } = req.body;
+    const { text, voice, speed, pitch, volume, alpha, beta, diffusion_steps, embedding_scale } = req.body;
 
     if (!text) {
       return res.status(400).json({ error: 'Text is required' });
     }
 
     const companion = db.prepare(
-      'SELECT tts_device FROM companion_settings WHERE user_id = ?'
+      'SELECT tts_device, tts_alpha, tts_beta, tts_diffusion_steps, tts_embedding_scale FROM companion_settings WHERE user_id = ?'
     ).get(userId);
     
     const device = companion?.tts_device || 'cpu';
@@ -124,7 +124,18 @@ router.post('/', async (req, res) => {
     const response = await fetch(`${TTS_SERVER_URL}/tts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, voice, speed: speed ?? 1.0, pitch: pitch ?? 1.0, volume: volume ?? 1.0, device }),
+      body: JSON.stringify({
+        text,
+        voice: voice || 'default',
+        speed: speed ?? 1.0,
+        pitch: pitch ?? 1.0,
+        volume: volume ?? 1.0,
+        device,
+        alpha: alpha ?? companion?.tts_alpha ?? 0.3,
+        beta: beta ?? companion?.tts_beta ?? 0.7,
+        diffusion_steps: diffusion_steps ?? companion?.tts_diffusion_steps ?? 5,
+        embedding_scale: embedding_scale ?? companion?.tts_embedding_scale ?? 1.0,
+      }),
     });
 
     if (!response.ok) {

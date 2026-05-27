@@ -111,36 +111,36 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
           const followUpResponse = followUpResult.response;
           const fullText = followUpResponse.text();
 
-          const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i);
-          const animMatch = fullText.match(/\[animation:([\w.\-]+?(?:\.vrma|\.bvh)?)\]/i);
+          const emotionMatch = fullText.match(/^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i);
+          const animMatch = fullText.match(/\[animation:([^\]]+)\]/i);
 
-          let text = emotionMatch ? emotionMatch[2].trim() : fullText.trim();
-          let animation = animMatch ? animMatch[1].toLowerCase() : null;
+          let text = emotionMatch ? emotionMatch[3].trim() : fullText.trim();
+          let animation = animMatch ? animMatch[1].toLowerCase().replace(/\.vrma$/i, '') + '.vrma' : null;
 
           if (animation) {
-            text = text.replace(/\[animation:[\w.\-]+?(?:\.vrma|\.bvh)?\]/gi, '').trim();
+            text = text.replace(/\[animation:[^\]]+\]/gi, '').trim();
           }
 
           if (emotionMatch) {
-            return { emotion: emotionMatch[1].toLowerCase(), animation, text };
+            return { emotion: emotionMatch[2].toLowerCase(), animation, text };
           }
           return { emotion: 'neutral', animation, text };
         }
 
         const fullText = response.text();
 
-        const emotionMatch = fullText.match(/^\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i);
-        const animMatch = fullText.match(/\[animation:([\w.\-]+?(?:\.vrma|\.bvh)?)\]/i);
+        const emotionMatch = fullText.match(/^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i);
+        const animMatch = fullText.match(/\[animation:([^\]]+)\]/i);
 
-        let text = emotionMatch ? emotionMatch[2].trim() : fullText.trim();
-        let animation = animMatch ? animMatch[1].toLowerCase() : null;
+        let text = emotionMatch ? emotionMatch[3].trim() : fullText.trim();
+        let animation = animMatch ? animMatch[1].toLowerCase().replace(/\.vrma$/i, '') + '.vrma' : null;
 
         if (animation) {
-          text = text.replace(/\[animation:[\w.\-]+?(?:\.vrma|\.bvh)?\]/gi, '').trim();
+          text = text.replace(/\[animation:[^\]]+\]/gi, '').trim();
         }
 
         if (emotionMatch) {
-          return { emotion: emotionMatch[1].toLowerCase(), animation, text };
+          return { emotion: emotionMatch[2].toLowerCase(), animation, text };
         }
 
         return { emotion: 'neutral', animation, text };

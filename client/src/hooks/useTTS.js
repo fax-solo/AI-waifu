@@ -65,12 +65,16 @@ export function useTTS() {
   const speak = useCallback(async (text, options = {}) => {
     const {
       enabled = true,
-      voice = 'af_bella',
+      voice = 'default',
       speed = 1.0,
       pitch = 1.0,
       volume = 1.0,
       outputDeviceId = 'default',
       device = 'cpu',
+      alpha = 0.3,
+      beta = 0.7,
+      diffusionSteps = 5,
+      embeddingScale = 1.0,
     } = options;
 
     if (!enabled || !text || text.trim().length === 0) return;
@@ -93,7 +97,7 @@ export function useTTS() {
       fetch(TTS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: sentence, voice, speed, pitch, volume, device }),
+        body: JSON.stringify({ text: sentence, voice, speed, pitch, volume, device, alpha, beta, diffusion_steps: diffusionSteps, embedding_scale: embeddingScale }),
         signal: controller.signal,
       })
         .then(async (res) => {

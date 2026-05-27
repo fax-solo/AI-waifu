@@ -260,7 +260,7 @@ export async function sendSTT(audioBlob) {
   });
 }
 
-export async function getTTS(text, voice = 'af_bella', speed = 1.0) {
+export async function getTTS(text, voice = 'default', speed = 1.0, options = {}) {
   const userId = getUserId();
   const response = await fetch(`${API_BASE}/tts`, {
     method: 'POST',
@@ -268,7 +268,13 @@ export async function getTTS(text, voice = 'af_bella', speed = 1.0) {
       'Content-Type': 'application/json',
       'x-user-id': userId,
     },
-    body: JSON.stringify({ text, voice, speed }),
+    body: JSON.stringify({
+      text, voice, speed,
+      alpha: options.alpha ?? 0.3,
+      beta: options.beta ?? 0.7,
+      diffusion_steps: options.diffusionSteps ?? 5,
+      embedding_scale: options.embeddingScale ?? 1.0,
+    }),
   });
 
   if (!response.ok) {

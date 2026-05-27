@@ -33,7 +33,7 @@ export default function AboutTab() {
         </div>
         <div className="about-info-row">
           <span className="about-label">{t('settings.about.ttsEngine')}</span>
-          <span className="about-value">Kokoro (ONNX / PyTorch)</span>
+          <span className="about-value">StyleTTS2 (LibriTTS / LJSpeech)</span>
         </div>
       </div>
 

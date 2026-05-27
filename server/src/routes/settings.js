@@ -51,11 +51,11 @@ router.get('/', (req, res) => {
         personality: companion?.personality || 'You are a loving and caring companion who deeply cares about the user.',
         backstory: companion?.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
         ttsEnabled: !!(companion?.tts_enabled ?? 1),
-        ttsVoice: companion?.tts_voice || 'af_bella',
+        ttsVoice: companion?.tts_voice || 'default',
         audioInputDevice: companion?.audio_input_device || 'default',
         audioOutputDevice: companion?.audio_output_device || 'default',
         ttsDevice: companion?.tts_device || 'cpu',
-        ttsEngine: companion?.tts_engine || 'onnx',
+        ttsEngine: companion?.tts_engine || 'styletts2',
         ttsSpeed: companion?.tts_speed ?? 1.0,
         ttsPitch: companion?.tts_pitch ?? 1.0,
         ttsVolume: companion?.tts_volume ?? 1.0,
@@ -112,10 +112,14 @@ router.put('/', (req, res) => {
               tts_speed = COALESCE(?, tts_speed),
               tts_pitch = COALESCE(?, tts_pitch),
               tts_volume = COALESCE(?, tts_volume),
+              tts_alpha = COALESCE(?, tts_alpha),
+              tts_beta = COALESCE(?, tts_beta),
+              tts_diffusion_steps = COALESCE(?, tts_diffusion_steps),
+              tts_embedding_scale = COALESCE(?, tts_embedding_scale),
               llm_model = COALESCE(?, llm_model),
                llm_provider = COALESCE(?, llm_provider),
-               shortcuts = COALESCE(?, shortcuts),
-               updated_at = CURRENT_TIMESTAMP
+                shortcuts = COALESCE(?, shortcuts),
+                updated_at = CURRENT_TIMESTAMP
            WHERE user_id = ?
          `).run(
            companion.name || null,
@@ -131,6 +135,10 @@ router.put('/', (req, res) => {
            companion.ttsSpeed !== undefined ? companion.ttsSpeed : null,
            companion.ttsPitch !== undefined ? companion.ttsPitch : null,
            companion.ttsVolume !== undefined ? companion.ttsVolume : null,
+           companion.ttsAlpha !== undefined ? companion.ttsAlpha : null,
+           companion.ttsBeta !== undefined ? companion.ttsBeta : null,
+           companion.ttsDiffusionSteps !== undefined ? companion.ttsDiffusionSteps : null,
+           companion.ttsEmbeddingScale !== undefined ? companion.ttsEmbeddingScale : null,
            companion.llmModel || null,
            companion.llmProvider || null,
            companion.shortcuts ? JSON.stringify(companion.shortcuts) : null,
@@ -138,8 +146,8 @@ router.put('/', (req, res) => {
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, tts_speed, tts_pitch, tts_volume, llm_model, llm_provider, shortcuts)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, tts_speed, tts_pitch, tts_volume, tts_alpha, tts_beta, tts_diffusion_steps, tts_embedding_scale, llm_model, llm_provider, shortcuts)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
            companion.name || 'Aria',
@@ -147,14 +155,18 @@ router.put('/', (req, res) => {
            companion.personality || 'You are a loving and caring companion who deeply cares about the user.',
            companion.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
            companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : 1,
-           companion.ttsVoice || 'af_bella',
+           companion.ttsVoice || 'default',
            companion.audioInputDevice || 'default',
            companion.audioOutputDevice || 'default',
            companion.ttsDevice || 'cpu',
-           companion.ttsEngine || 'onnx',
+           companion.ttsEngine || 'styletts2',
            companion.ttsSpeed ?? 1.0,
            companion.ttsPitch ?? 1.0,
            companion.ttsVolume ?? 1.0,
+           companion.ttsAlpha ?? 0.3,
+           companion.ttsBeta ?? 0.7,
+           companion.ttsDiffusionSteps ?? 5,
+           companion.ttsEmbeddingScale ?? 1.0,
            companion.llmModel || 'gemini-3.1-flash-lite',
            companion.llmProvider || 'gemini',
            companion.shortcuts ? JSON.stringify(companion.shortcuts) : null

@@ -23,6 +23,10 @@ export default defineConfig({
         target: 'http://localhost:3005',
         changeOrigin: true,
       },
+      '/animations': {
+        target: 'http://localhost:3005',
+        changeOrigin: true,
+      },
     },
   },
   build: {
