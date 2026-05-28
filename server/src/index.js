@@ -184,6 +184,8 @@ db.seedGallery(GALLERY_DIR);
 // ─── Auto-start Sidecars ──────────────────────────────────────────
 
 async function ensureSidecar(name, port, scriptName, serverUrl) {
+  const isWindows = process.platform === 'win32';
+
   try {
     const resp = await fetch(`${serverUrl}/health`, { signal: AbortSignal.timeout(1500) });
     if (resp.ok) {

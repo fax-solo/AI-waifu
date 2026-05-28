@@ -42,7 +42,7 @@ export default function StepQuickConfig({ config, updateConfig, onComplete, onSk
               {t('setup.complete')}
             </h2>
             <p className="text-gray-400 mt-1.5 text-sm">
-              {t('setup.readyDesc')}
+              {t('setup.configDesc')}
             </p>
           </div>
 

@@ -284,6 +284,48 @@ export async function getTTS(text, voice = 'default', speed = 1.0, options = {})
   return response.blob();
 }
 
+// ─── Setup API ──────────────────────────────────────────────────
+
+export async function getSetupStatus() {
+  return fetchApi('/setup/status');
+}
+
+export async function getSetupPackages() {
+  return fetchApi('/setup/packages');
+}
+
+export async function startSetup(packages, engine) {
+  return fetchApi('/setup/start', {
+    method: 'POST',
+    body: JSON.stringify({ packages, engine }),
+  });
+}
+
+export async function cancelSetup(sessionId, keepDownloads) {
+  return fetchApi('/setup/cancel', {
+    method: 'POST',
+    body: JSON.stringify({ sessionId, keepDownloads }),
+  });
+}
+
+export async function completeSetup(config) {
+  return fetchApi('/setup/complete', {
+    method: 'POST',
+    body: JSON.stringify(config),
+  });
+}
+
+export async function getComponents() {
+  return fetchApi('/setup/components');
+}
+
+export function getSetupStreamUrl(sessionId, packages) {
+  const base = window.location.protocol === 'file:'
+    ? 'http://127.0.0.1:3005/api'
+    : '/api';
+  return `${base}/setup/stream?session=${sessionId}&packages=${packages.join(',')}`;
+}
+
 // ─── Textures API ───────────────────────────────────────────────
 const TEXTURE_BASE = window.location.protocol === 'file:'
   ? 'http://127.0.0.1:3005/textures'

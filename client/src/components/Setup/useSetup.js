@@ -64,8 +64,8 @@ export default function useSetup({ onComplete, onSkip, systemInfo: initialSystem
         },
         gpu: {
           status: 'pass',
-          message: data.gpuInfo?.name || 'CPU',
-          detail: data.gpuInfo?.hasNvidia ? 'CUDA' : 'No NVIDIA GPU — using CPU (slower)',
+          message: data.gpuInfo?.hasNvidia ? data.gpuInfo.name : 'CPU',
+          detail: data.gpuInfo?.hasNvidia ? 'CUDA accelerated' : 'No NVIDIA GPU — using CPU (slower)',
         },
         disk: {
           status: disk && !disk.enough ? 'warn' : 'pass',

@@ -129,6 +129,23 @@ async function initDb() {
       description TEXT DEFAULT '',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS setup_state (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      setup_complete INTEGER DEFAULT 0,
+      completed_at DATETIME,
+      python_env_status TEXT DEFAULT 'missing',
+      tts_models_status TEXT DEFAULT 'missing',
+      tts_voices_status TEXT DEFAULT 'missing',
+      selected_engine TEXT DEFAULT 'cpu',
+      companion_name TEXT DEFAULT 'Aria',
+      language TEXT DEFAULT 'en',
+      tts_enabled INTEGER DEFAULT 1,
+      session_active INTEGER DEFAULT 0,
+      session_id TEXT,
+      session_started_at DATETIME,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Migration: Add missing columns for existing databases

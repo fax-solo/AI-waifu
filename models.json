@@ -2,23 +2,84 @@
   "tts": {
     "model_ljspeech": {
       "url": "https://huggingface.co/yl4579/StyleTTS2-LJSpeech/resolve/main/Models/LJSpeech/epoch_2nd_00100.pth",
-      "path": "python/styletts2-ljspeech.pth"
+      "path": "python/styletts2-ljspeech.pth",
+      "size": 310829056,
+      "version": "1.0"
     },
     "model_libritts": {
       "url": "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/Models/LibriTTS/epochs_2nd_00020.pth",
-      "path": "python/styletts2-libritts.pth"
+      "path": "python/styletts2-libritts.pth",
+      "size": 310829056,
+      "version": "1.0"
     },
     "config_ljspeech": {
       "url": "https://huggingface.co/yl4579/StyleTTS2-LJSpeech/resolve/main/Models/LJSpeech/config.yml",
-      "path": "python/styletts2-config-ljspeech.yml"
+      "path": "python/styletts2-config-ljspeech.yml",
+      "size": 4096,
+      "version": "1.0"
     },
     "config_libritts": {
       "url": "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/Models/LibriTTS/config.yml",
-      "path": "python/styletts2-config-libritts.yml"
+      "path": "python/styletts2-config-libritts.yml",
+      "size": 4096,
+      "version": "1.0"
     },
     "voices": {
       "url": "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/reference_audio.zip",
-      "path": "python/reference_audio.zip"
+      "path": "python/reference_audio.zip",
+      "size": 27000000,
+      "version": "1.0"
+    }
+  },
+  "__packages__": {
+    "python-env-cpu": {
+      "name": "Local AI Engine (CPU)",
+      "description": "Installs the Python environment and ONNX Runtime tailored for CPU execution.",
+      "sizeBytes": 188743680,
+      "required": true,
+      "icon": "Cpu",
+      "type": "python-env",
+      "engine": "cpu"
+    },
+    "python-env-gpu": {
+      "name": "Local AI Engine (NVIDIA GPU)",
+      "description": "Installs the Python environment and CUDA-enabled ONNX Runtime for fast execution on NVIDIA GPUs.",
+      "sizeBytes": 262144000,
+      "required": true,
+      "icon": "Cpu",
+      "type": "python-env",
+      "engine": "gpu"
+    },
+    "tts-model": {
+      "name": "Kokoro ONNX Engine",
+      "description": "The core neural network model for the local Text-to-Speech system.",
+      "sizeBytes": 621662208,
+      "required": true,
+      "icon": "Mic",
+      "type": "download",
+      "assets": [
+        "model_ljspeech",
+        "config_ljspeech",
+        "model_libritts",
+        "config_libritts"
+      ]
+    },
+    "tts-voices": {
+      "name": "Voice Pack (v1.0)",
+      "description": "Binary voice definitions and latent weights for the Kokoro TTS engine.",
+      "sizeBytes": 27000000,
+      "required": true,
+      "icon": "Mic",
+      "type": "download",
+      "assets": ["voices"]
+    },
+    "gallery-avatars": {
+      "name": "3D Gallery Avatars",
+      "description": "Pre-installed anime-style avatars ready to use immediately.",
+      "sizeBytes": 0,
+      "required": false,
+      "icon": "Gallery",
+      "type": "preinstalled"
     }
   }
 }

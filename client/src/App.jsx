@@ -406,11 +406,6 @@ export default function App() {
       <SetupUI
         onComplete={async () => {
           try {
-            await api.fetchApi('/setup/complete', { method: 'POST' });
-          } catch {
-            // non-critical
-          }
-          try {
             const data = await api.fetchApi('/setup/status');
             setSystemInfo(data);
           } catch {
