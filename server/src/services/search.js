@@ -11,8 +11,16 @@ dotenv.config();
 const TAVILY_API_URL = 'https://api.tavily.com/search';
 const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
-// Cache for search results
+// Cache for search results (max 100 entries, pruned by age)
 const searchCache = new Map();
+const MAX_CACHE_SIZE = 100;
+
+function pruneSearchCache() {
+  if (searchCache.size <= MAX_CACHE_SIZE) return;
+  const entries = [...searchCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+  const toDelete = entries.slice(0, entries.length - MAX_CACHE_SIZE);
+  for (const [key] of toDelete) searchCache.delete(key);
+}
 
 // Search triggers keywords
 const SEARCH_KEYWORDS = [
@@ -127,6 +135,7 @@ export async function searchWeb(query) {
       result,
       timestamp: Date.now()
     });
+    pruneSearchCache();
 
     return result;
   } catch (error) {

@@ -15,6 +15,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { spawn, execSync } from 'child_process';
 import os from 'os';
 import db from './config/database.js';
+import { detectRootDir, resolvePythonExe } from './utils/paths.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,6 +47,17 @@ app.use(cors({
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
+
+// Request timeout middleware — prevents hanging connections
+app.use((req, res, next) => {
+  res.setTimeout(30000, () => {
+    if (!res.headersSent) {
+      res.status(408).json({ error: 'Request timeout' });
+    }
+    req.destroy();
+  });
+  next();
+});
 
 /**
  * In-memory user cache to avoid DB queries on every request.
@@ -153,6 +165,19 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
+// ─── Environment Validation ─────────────────────────────────────────
+const envCheckPath = path.resolve(__dirname, '..', '.env');
+if (!fs.existsSync(envCheckPath)) {
+  console.warn(`\n  ⚠️  No .env file found at ${envCheckPath}`);
+  console.warn(`  💡  Copy server/.env.example to server/.env and configure your API keys\n`);
+}
+
+if (!process.env.ENCRYPTION_SECRET || process.env.ENCRYPTION_SECRET === 'change-this-to-a-random-32-char-string') {
+  console.warn(`  ⚠️  ENCRYPTION_SECRET not set or still default`);
+  console.warn(`  💡  Generate one: node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"`);
+  console.warn(`  💡  Add to server/.env: ENCRYPTION_SECRET=<your-key>\n`);
+}
+
 // ─── Seed Gallery Models ────────────────────────────────────────────
 db.seedGallery(GALLERY_DIR);
 
@@ -167,12 +192,9 @@ async function ensureSidecar(name, port, scriptName, serverUrl) {
     }
   } catch {}
 
-  const rootDir = process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd();
+  const rootDir = detectRootDir();
   const pythonDir = path.join(rootDir, 'python');
-  const isWindows = os.platform() === 'win32';
-  const venvName = fs.existsSync(path.join(pythonDir, 'venv_py311')) ? 'venv_py311' : 'venv';
-  const binDir = isWindows ? path.join(pythonDir, venvName, 'Scripts') : path.join(pythonDir, venvName, 'bin');
-  const pythonExe = path.join(binDir, isWindows ? 'python.exe' : 'python');
+  const pythonExe = resolvePythonExe(pythonDir);
   const scriptPath = path.join(pythonDir, scriptName);
 
   if (!fs.existsSync(pythonExe) || !fs.existsSync(scriptPath)) {
@@ -222,15 +244,28 @@ async function ensureSidecar(name, port, scriptName, serverUrl) {
 
 // ─── Start Server ───────────────────────────────────────────────────
 
-app.listen(PORT, '127.0.0.1', async () => {
-  console.log(`\n  ✨ Waifu AI Companion Server`);
-  console.log(`  📡 Running on http://localhost:${PORT}`);
-  console.log(`  🔑 API Key: ${process.env.GEMINI_API_KEY ? 'Configured' : '⚠️  Not set!'}`);
-  console.log(`  📊 Daily limit: ${process.env.DAILY_MESSAGE_LIMIT || 50} messages\n`);
+function startServer(port) {
+  const server = app.listen(port, '127.0.0.1');
+  server.on('listening', async () => {
+    console.log(`\n  ✨ Waifu AI Companion Server`);
+    console.log(`  📡 Running on http://localhost:${port}`);
+    console.log(`  🔑 API Key: ${process.env.GEMINI_API_KEY ? 'Configured' : '⚠️  Not set!'}`);
+    console.log(`  📊 Daily limit: ${process.env.DAILY_MESSAGE_LIMIT || 50} messages\n`);
 
-  // Auto-start sidecars in background
-  ensureSidecar('TTS', 5000, 'tts_server.py', process.env.TTS_SERVER_URL || 'http://127.0.0.1:5000');
-  ensureSidecar('STT', 5001, 'stt_server.py', process.env.STT_SERVER_URL || 'http://127.0.0.1:5001');
-});
+    // Auto-start sidecars in background
+    ensureSidecar('TTS', 5000, 'tts_server.py', process.env.TTS_SERVER_URL || 'http://127.0.0.1:5000');
+    ensureSidecar('STT', 5001, 'stt_server.py', process.env.STT_SERVER_URL || 'http://127.0.0.1:5001');
+  });
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n  ❌ Port ${port} is already in use.`);
+      console.error(`  💡 Try: kill the existing process or change PORT in .env\n`);
+      process.exit(1);
+    }
+    throw err;
+  });
+}
+
+startServer(PORT);
 
 export default app;

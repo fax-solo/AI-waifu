@@ -1,5 +1,9 @@
 import path from 'path';
 import { readdirSync, existsSync } from 'fs';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const RESPONSE_MOUTH = [
   { patterns: ['smiles', 'smiling', 'with a smile', 'smile at you', 'gives a smile', 'flashes a smile'], value: 'smile' },
@@ -23,7 +27,7 @@ const RESPONSE_EYES = [
   { patterns: ['blinks', 'blinking', 'rapid blinking'], value: 'neutral' },
 ];
 
-const BODY_DIR = path.resolve('data/animations/body');
+const BODY_DIR = path.resolve(__dirname, '..', '..', 'data', 'animations', 'body');
 
 // Text-based body animation matching (middle layer between AI tags and emotion fallback)
 const TEXT_TO_BODY = [

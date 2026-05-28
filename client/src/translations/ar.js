@@ -44,6 +44,7 @@ export default {
     selectDesc: 'اختر ما تريد تثبيته على نظامك',
     aiEngine: 'محرك الذكاء الاصطناعي',
     ttsModel: 'نموذج تحويل النص إلى كلام',
+    galleryAvatars: 'صور رمزية المعرض',
     optional: 'اختياري',
     total: 'المجموع:',
     recommended: 'مُوصى به',

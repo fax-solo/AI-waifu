@@ -32,6 +32,10 @@ function isTextureFile(filename) {
   return TEXTURE_IMAGE_EXTS.includes(path.extname(filename).toLowerCase());
 }
 
+function sanitizeFilename(name) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
 // Multer config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -134,11 +138,29 @@ function resolveGalleryDir() {
 
 // ─── Endpoints ──────────────────────────────────────────────────────
 
-// List all saved avatars
+// List all saved avatars (auto-cleans stale entries whose files are missing)
 router.get('/', (req, res) => {
   const userId = req.headers['x-user-id'];
   try {
     const avatars = db.prepare('SELECT * FROM vrm_models WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+
+    // Remove stale entries whose files no longer exist on disk
+    const deleteStale = db.prepare('DELETE FROM vrm_models WHERE id = ? AND user_id = ?');
+    let cleaned = false;
+    for (const a of avatars) {
+      const relativePath = a.file_path.replace(/^\/uploads\//, '');
+      const absPath = path.join(UPLOADS_BASE, relativePath);
+      if (!fs.existsSync(absPath)) {
+        console.log(`[Avatars] Removing stale avatar ${a.id} (${a.name}): file not found at ${absPath}`);
+        deleteStale.run(a.id, userId);
+        cleaned = true;
+      }
+    }
+    if (cleaned) {
+      const remaining = db.prepare('SELECT * FROM vrm_models WHERE user_id = ? ORDER BY created_at DESC').all(userId);
+      return res.json(remaining);
+    }
+
     res.json(avatars);
   } catch (error) {
     console.error('Error fetching avatars:', error);
@@ -184,7 +206,7 @@ router.post('/upload', upload.fields([
       fs.mkdirSync(texturesDir, { recursive: true });
       for (const tex of textureFiles) {
         const texSrc = path.join(AVATARS_DIR, tex.filename);
-        const texName = tex.originalname;
+        const texName = sanitizeFilename(tex.originalname);
         const texDest = path.join(texturesDir, texName);
         try {
           fs.renameSync(texSrc, texDest);
@@ -300,7 +322,8 @@ router.post('/gallery/upload', upload.fields([
       fs.mkdirSync(texturesDir, { recursive: true });
       for (const tex of textureFiles) {
         const texSrc = path.join(AVATARS_DIR, tex.filename);
-        const texDest = path.join(texturesDir, tex.originalname);
+        const texName = sanitizeFilename(tex.originalname);
+        const texDest = path.join(texturesDir, texName);
         try {
           fs.renameSync(texSrc, texDest);
         } catch (e) {

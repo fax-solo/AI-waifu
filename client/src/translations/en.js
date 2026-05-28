@@ -44,6 +44,7 @@ export default {
     selectDesc: 'Choose what to install on your system',
     aiEngine: 'AI Engine',
     ttsModel: 'TTS Voice Model',
+    galleryAvatars: 'Gallery Avatars',
     optional: 'Optional',
     total: 'Total:',
     recommended: 'Recommended',

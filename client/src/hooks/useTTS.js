@@ -58,6 +58,13 @@ export function useTTS() {
       currentAudioRef.current.src = '';
       currentAudioRef.current = null;
     }
+    // Disconnect and clean up media element source nodes
+    for (const [el, source] of sourceNodesRef.current.entries()) {
+      try { source.disconnect(); } catch {}
+      el.pause();
+      el.src = '';
+    }
+    sourceNodesRef.current.clear();
     playbackActiveRef.current = false;
     setIsPlaying(false);
   }, []);
@@ -92,32 +99,34 @@ export function useTTS() {
     const sentences = splitSentences(text);
     if (sentences.length === 0) return;
 
+    const timeoutMs = 30000;
+
     // Launch ALL TTS fetch requests in parallel immediately
-    const fetchPromises = sentences.map((sentence, idx) =>
-      fetch(TTS_URL, {
+    const fetchPromises = sentences.map((sentence, idx) => {
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+      return fetch(TTS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: sentence, voice, speed, pitch, volume, device, alpha, beta, diffusion_steps: diffusionSteps, embedding_scale: embeddingScale }),
         signal: controller.signal,
       })
+        .finally(() => clearTimeout(timeoutId))
         .then(async (res) => {
           if (!res.ok) return null;
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
           const audio = new Audio(url);
-          audio.crossOrigin = "anonymous"; // Required for Web Audio API
+          audio.crossOrigin = "anonymous";
           audio.preload = 'auto';
-          
+          audio.muted = true;
           if (outputDeviceId !== 'default' && audio.setSinkId) {
             audio.setSinkId(outputDeviceId).catch(() => {});
           }
-
-          // Setup Audio Node Connection
           if (audioCtxRef.current && analyserRef.current) {
             const source = audioCtxRef.current.createMediaElementSource(audio);
             source.connect(analyserRef.current);
+            sourceNodesRef.current.set(audio, source);
           }
-
           return { url, audio, order: idx };
         })
         .catch((err) => {
@@ -125,8 +134,8 @@ export function useTTS() {
             console.error(`[TTS] Fetch failed for sentence ${idx}:`, err);
           }
           return null;
-        })
-    );
+        });
+    });
 
     setIsPlaying(true);
 

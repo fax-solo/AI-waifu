@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
-import { Cpu, Mic, User } from 'lucide-react';
+import { Cpu, Mic } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 
 const PACKAGE_GROUPS = [
@@ -57,20 +57,28 @@ const PACKAGE_GROUPS = [
     ],
   },
   {
-    id: 'extras',
-    titleKey: 'setup.optional',
+    id: 'avatars',
+    titleKey: 'setup.galleryAvatars',
     exclusive: false,
     required: false,
     packages: [
       {
-        id: 'avatar-starter',
-        name: () => 'Starter VRM Avatar',
-        description: 'A standard AliciaSolid VRM model to get you started with your companion.',
-        size: '15 MB',
-        sizeBytes: 15 * 1024 * 1024,
-        icon: User,
+        id: 'gallery-avatars',
+        name: () => '3D Gallery Avatars',
+        description: 'Pre-installed anime-style avatars ready to use immediately.',
+        size: '0 B (pre-installed)',
+        sizeBytes: 0,
+        icon: () => '🎭',
+        isPreinstalled: true,
       },
     ],
+  },
+  {
+    id: 'extras',
+    titleKey: 'setup.optional',
+    exclusive: false,
+    required: false,
+    packages: [],
   },
 ];
 
@@ -85,6 +93,7 @@ function formatBytes(bytes) {
 export default function PackageSelection({ systemInfo, selectedPackages, setSelected, onNext }) {
   const { t } = useLanguage();
   const gpuName = systemInfo?.gpuInfo?.hasNvidia ? systemInfo.gpuInfo.name : null;
+  const hasGalleryAvatars = systemInfo?.hasGalleryAvatars ?? false;
 
   const initialIds = useMemo(() => {
     const ids = gpuName ? ['python-env-gpu'] : ['python-env-cpu'];
@@ -115,10 +124,21 @@ export default function PackageSelection({ systemInfo, selectedPackages, setSele
     });
   }, []);
 
+  // Filter out preinstalled avatars group if already present
+  const visibleGroups = useMemo(() => {
+    return PACKAGE_GROUPS.map(group => ({
+      ...group,
+      packages: group.packages.filter(pkg => {
+        if (pkg.isPreinstalled) return !hasGalleryAvatars;
+        return true;
+      }),
+    })).filter(group => group.packages.length > 0);
+  }, [hasGalleryAvatars]);
+
   const totalBytes = useMemo(() => {
-    const allPkgs = PACKAGE_GROUPS.flatMap(g => g.packages);
+    const allPkgs = visibleGroups.flatMap(g => g.packages);
     return allPkgs.filter(p => selectedIds.has(p.id)).reduce((acc, p) => acc + p.sizeBytes, 0);
-  }, [selectedIds]);
+  }, [selectedIds, visibleGroups]);
 
   const handleNext = useCallback(() => {
     const allPkgs = PACKAGE_GROUPS.flatMap(g => g.packages);
@@ -128,19 +148,19 @@ export default function PackageSelection({ systemInfo, selectedPackages, setSele
   }, [selectedIds, setSelected, onNext]);
 
   const handleInstallAll = useCallback(() => {
-    const allIds = new Set(PACKAGE_GROUPS.flatMap(g => g.packages.map(p => p.id)));
+    const allIds = new Set(visibleGroups.flatMap(g => g.packages.map(p => p.id)));
     if (gpuName) allIds.delete('python-env-cpu');
     setSelectedIds(allIds);
-    const allPkgs = PACKAGE_GROUPS.flatMap(g => g.packages);
+    const allPkgs = visibleGroups.flatMap(g => g.packages);
     const selected = allPkgs.filter(p => allIds.has(p.id));
     setSelected(selected);
     onNext();
-  }, [gpuName, setSelected, onNext]);
+  }, [gpuName, visibleGroups, setSelected, onNext]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex-1 overflow-y-auto space-y-8 pb-4">
-        <div className="text-center">
+<div className="text-center">
           <h2 className="text-2xl font-semibold text-gray-100">
             {t('setup.selectComponents')}
           </h2>
@@ -149,7 +169,7 @@ export default function PackageSelection({ systemInfo, selectedPackages, setSele
           </p>
         </div>
 
-        {PACKAGE_GROUPS.map(group => (
+        {visibleGroups.map(group => (
           <div key={group.id}>
             <div className="flex items-center gap-3 mb-4">
               <h3 className="text-sm font-medium text-gray-300">{t(group.titleKey)}</h3>

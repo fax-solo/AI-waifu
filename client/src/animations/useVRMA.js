@@ -31,8 +31,13 @@ export function useVRMA() {
 
     if (stateRef.current.filename === filename && stateRef.current.playing) return;
 
-    if (stateRef.current.mixer) {
-      stateRef.current.mixer.stopAllAction();
+    const s = stateRef.current;
+    if (s.mixer) {
+      s.mixer.stopAllAction();
+      // Remove any previous clips from the mixer to avoid accumulation
+      if (s.action) {
+        s.mixer.uncacheClip(s.action.getClip());
+      }
     }
 
     try {
@@ -59,7 +64,16 @@ export function useVRMA() {
 
       console.log(`[VRMA] Playing ${filename} (${clip.duration.toFixed(2)}s, ${loop ? 'loop' : 'once'})`);
 
-      const mixer = new THREE.AnimationMixer(vrm.scene);
+      // Reuse the existing mixer if the scene is the same, otherwise create a new one
+      let mixer = s.mixer;
+      if (mixer) {
+        // Check if the mixer is still tied to this scene (mixer._root is the scene)
+        if (mixer._root !== vrm.scene) {
+          mixer = new THREE.AnimationMixer(vrm.scene);
+        }
+      } else {
+        mixer = new THREE.AnimationMixer(vrm.scene);
+      }
       const action = mixer.clipAction(clip);
 
       action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, 1);
@@ -76,6 +90,7 @@ export function useVRMA() {
       };
     } catch (err) {
       console.error('[VRMA] Failed to play:', filename, err);
+      stateRef.current.playing = false;
     }
   }, []);
 
@@ -92,6 +107,7 @@ export function useVRMA() {
     s.mixer.update(dt);
     if (s.action && !s.loop && s.action.time >= s.duration - 0.001) {
       s.playing = false;
+      s.filename = null; // allow re-triggering the same animation
       console.log(`[VRMA] Finished: ${s.filename}`);
     }
   }, []);

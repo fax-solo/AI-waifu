@@ -71,10 +71,13 @@ export async function generateEmbedding(text, apiKey) {
 
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${key}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': key,
+        },
         body: JSON.stringify({
           model: `models/${EMBEDDING_MODEL}`,
           content: { parts: [{ text: text.slice(0, 2048) }] },

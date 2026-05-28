@@ -172,15 +172,22 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
     loadFile: async (input) => {
-      if (typeof input === 'string') {
-        console.log('[Avatar] Loading VRM from URL:', input);
-        await loadVRM(input);
-      } else if (input instanceof File) {
-        console.log('[Avatar] Loading VRM file:', input.name);
-        await loadVRMFromFile(input);
-      } else {
-        dispose();
-        setHasModel(false);
+      try {
+        let result;
+        if (typeof input === 'string') {
+          console.log('[Avatar] Loading VRM from URL:', input);
+          result = await loadVRM(input);
+        } else if (input instanceof File) {
+          console.log('[Avatar] Loading VRM file:', input.name);
+          result = await loadVRMFromFile(input);
+        } else {
+          dispose();
+          setHasModel(false);
+          return true;
+        }
+        return !!result;
+      } catch {
+        return false;
       }
     },
     triggerAnimation: (type, filename, options) => {
@@ -500,9 +507,6 @@ const AvatarViewport = forwardRef(function AvatarViewport({
 
     console.log('[Avatar] VRM loaded, adding to scene');
 
-    // ── CLEAR stale settings from localStorage ──
-    try { localStorage.removeItem('waifu-avatar-settings'); } catch(e) {}
-
     // Clear previous model
     const container = modelContainerRef.current;
     while (container.children.length > 0) {
@@ -637,7 +641,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     // render queue → height normalization → rim lighting → emissive glow
     if (vrm.humanoid) {
       springPresets.init(vrm);
-      vrmColliders.initFromVRM(vrm);
+      vrmColliders.initFromVRM(vrm, sceneRef.current);
 
       materialFix.reset();
       materialFix.apply(vrm);

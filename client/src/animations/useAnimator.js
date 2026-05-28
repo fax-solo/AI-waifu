@@ -321,10 +321,9 @@ export function useAnimator({ getTexture, onVFX } = {}) {
     onVFXRef.current = onVFX || null;
   }, [onVFX]);
 
-  // Runtime-discovered expression names cache
-  let _exprNames = null;
-  let _discoveredExprs = false;
-  let mtoonWarned = null;
+  // Runtime-discovered expression names cache (refs to survive across model changes)
+  const exprNamesRef = useRef(null);
+  const mtoonWarnedRef = useRef(null);
 
   // Auto-trigger tracking
   const auto = useRef({ talking: false, thinking: false });
@@ -443,6 +442,14 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       proxyRef.current = proxy;
       blendQueueRef.current = queue;
       lookAtRef.current = lookCtrl;
+
+      // Clear model-specific caches
+      exprNamesRef.current = null;
+      mtoonWarnedRef.current = null;
+      targetMaterials.current = null;
+      materialBlend.current = {};
+      materialLookup.current = {};
+      originalMapsRef.current = {};
     }
 
     if (state.restPose?.current) restPoseRef.current = state.restPose.current;
@@ -472,11 +479,25 @@ export function useAnimator({ getTexture, onVFX } = {}) {
     }
 
     // Reset finger bones (VRM only — GLB keeps inherent rest pose)
-    if (isVRM) {
+    // Use humanoid API directly for VRM models (no normalization ambiguity),
+    // fall back to getBone for GLB models with boneMap
+    if (isVRM && vrm.humanoid) {
       for (const f of ['Thumb', 'Index', 'Middle', 'Ring', 'Little']) {
         for (const j of ['Proximal', 'Intermediate', 'Distal']) {
           for (const s of ['left', 'right']) {
-            const node = getBone(vrm, `${s}${f}${j}`);
+            const name = `${s}${f}${j}`;
+            const node = vrm.humanoid.getNormalizedBoneNode?.(name)
+              ?? vrm.humanoid.getRawBoneNode?.(name);
+            if (node) node.rotation.set(0, 0, 0);
+          }
+        }
+      }
+    } else if (vrm.boneMap) {
+      for (const f of ['Thumb', 'Index', 'Middle', 'Ring', 'Little']) {
+        for (const j of ['Proximal', 'Intermediate', 'Distal']) {
+          for (const s of ['left', 'right']) {
+            const name = `${s}${f}${j}`;
+            const node = getBone(vrm, name);
             if (node) node.rotation.set(0, 0, 0);
           }
         }
@@ -531,29 +552,14 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       }
     });
 
-    // 10. Update custom collider world matrices before spring bone physics
-    // Only runs if at least one joint has collider groups (custom body colliders exist)
-    if (vrm.springBoneManager?.joints?.length > 0) {
-      const firstJoint = vrm.springBoneManager.joints[0];
-      if (firstJoint.colliderGroups?.length > 0) {
-        for (const joint of vrm.springBoneManager.joints) {
-          const cgs = joint.colliderGroups;
-          for (let gi = 0; gi < cgs.length; gi++) {
-            const cols = cgs[gi].colliders;
-            for (let ci = 0; ci < cols.length; ci++) {
-              const c = cols[ci];
-              if (c.updateWorldMatrix) c.updateWorldMatrix(false, false);
-            }
-          }
-        }
-      }
-    }
+    // 10. Update world matrices once before spring bone physics (replaces per-collider per-joint O(n*m) iteration)
+    vrm.scene.updateMatrixWorld(true);
 
-    // 11. Spring bone physics — VRM only
-    vrm.springBoneManager?.update(dt);
-    vrm.nodeConstraintManager?.update();
-
-    // 12. Process facial queue (blend shapes from JSON keyframes)
+    // 11. Process facial queue (blend shapes from JSON keyframes)
+    //     Moved BEFORE spring bones so that any bone or expression changes
+    //     from facial keyframes (including jolt/displacement) are visible
+    //     to the spring bone solver. This eliminates the 1-frame jolt delay
+    //     and ensures hair/skirt physics react to the same-frame pose.
     const proxy = proxyRef.current;
     const rawEm = isVRM ? (vrm.expressionManager || vrm.blendShapeProxy) : null;
 
@@ -588,7 +594,6 @@ export function useAnimator({ getTexture, onVFX } = {}) {
           }
           queueBlendSpeed = anim.blendSpeed ?? queueBlendSpeed;
         }
-        queueBlendSpeed = Math.min(queueBlendSpeed, 6);
        if (frame.materials) {
          hasActiveFacial = true;
          if (!targetMaterials.current) targetMaterials.current = {};
@@ -721,7 +726,7 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       }
     } else if (rawEm && rawEm.setValue) {
       const blendFactor = Math.min(1, dt * (hasActiveFacial ? queueBlendSpeed : 12));
-      const available = new Set(_exprNames || (_exprNames = getExpressionNames(rawEm)));
+      const available = new Set(exprNamesRef.current || (exprNamesRef.current = getExpressionNames(rawEm)));
       const merged = {};
       for (const [expr, val] of Object.entries(targetExpressions)) {
         const resolved = resolveExpression(expr, available);
@@ -767,7 +772,11 @@ export function useAnimator({ getTexture, onVFX } = {}) {
        const mBlend = Math.min(1, dt * (hasActiveFacial ? queueBlendSpeed : 8));
 
        for (const [matName, props] of Object.entries(tmat)) {
-          let mat = vrm.materials?.find(m => m.name === matName);
+          // Cache hit: avoid expensive per-frame material lookups
+          let mat = materialLookup.current[matName];
+          if (!mat) {
+            mat = vrm.materials?.find(m => m.name === matName);
+          }
           if (!mat) {
             const lower = matName.toLowerCase();
             mat = vrm.materials?.find(m => m.name && m.name.toLowerCase().includes(
@@ -869,8 +878,8 @@ export function useAnimator({ getTexture, onVFX } = {}) {
            }
            const mtoonOnly = ['shadeColorFactor', 'shadeMultiplyFactor', 'emissiveIntensity', 'outlineColor', 'outlineWidth'];
            if (mtoonOnly.includes(propKey) && !isMToon(mat)) {
-             if (mtoonWarned !== matName) {
-               mtoonWarned = matName;
+            if (mtoonWarnedRef.current !== matName) {
+                mtoonWarnedRef.current = matName;
                console.warn('[Anim] Skipping MToon prop "' + propKey + '" on non-MToon material:', matName);
              }
              continue;
@@ -931,7 +940,13 @@ export function useAnimator({ getTexture, onVFX } = {}) {
         }
      }
 
-     // 12. Auto-trigger: emotion → facial expression + animation lifecycle
+      // 12. Spring bone physics — after all bone/expression modifications
+    //     so that facial keyframe jolts and pose changes affect hair/skirt
+    //     in the same frame, not delayed by one frame.
+    vrm.springBoneManager?.update(dt);
+    vrm.nodeConstraintManager?.update();
+
+    // 13. Auto-trigger: emotion → facial expression + animation lifecycle
     const aiActive = state.aiAnimationActive;
     
     const emotion = state.emotion || 'neutral';

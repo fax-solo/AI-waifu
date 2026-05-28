@@ -1,4 +1,5 @@
 import { useRef, useCallback } from 'react';
+import * as THREE from 'three';
 
 export const BoneGroup = {
   LONG_HAIR_BACK: 'longHairBack',
@@ -33,10 +34,10 @@ const SPRING_BONE_PRESETS = {
     label: 'Front Bangs / Short Hair',
   },
   [BoneGroup.SOFT_CLOTHING]: {
-    stiffness: 0.08,
-    dragForce: 0.30,
-    gravityPower: 0.10,
-    hitRadius: 0.10,
+    stiffness: 0.04,
+    dragForce: 0.25,
+    gravityPower: 0.18,
+    hitRadius: 0.15,
     gravityDir: [0, -1, 0],
     centerBone: 'hips',
     label: 'Soft Clothing / Skirts',
@@ -51,10 +52,10 @@ const SPRING_BONE_PRESETS = {
     label: 'Bust/Chest',
   },
   [BoneGroup.SKIRT]: {
-    stiffness: 0.08,
-    dragForce: 0.30,
-    gravityPower: 0.12,
-    hitRadius: 0.12,
+    stiffness: 0.05,
+    dragForce: 0.25,
+    gravityPower: 0.18,
+    hitRadius: 0.18,
     gravityDir: [0, -1, 0],
     centerBone: 'hips',
     label: 'Skirt',
@@ -77,10 +78,10 @@ const SPRING_BONE_PRESETS = {
     label: 'Ribbons, Tails, Accessories',
   },
   [BoneGroup.DEFAULT]: {
-    stiffness: 0.40,
-    dragForce: 0.45,
-    gravityPower: 0.08,
-    hitRadius: 0.06,
+    stiffness: 0.15,
+    dragForce: 0.30,
+    gravityPower: 0.14,
+    hitRadius: 0.10,
     gravityDir: [0, -1, 0],
     label: 'Default / Unmatched',
   },
@@ -91,6 +92,7 @@ export const EmotionPhysics = {
     stiffnessMult: 1.0,
     dragMult: 1.0,
     gravityMult: 1.0,
+    radiusMult: 1.0,
     joltAmount: 0,
     blendSpeed: 3.0,
   },
@@ -98,6 +100,7 @@ export const EmotionPhysics = {
     stiffnessMult: 1.6,
     dragMult: 1.25,
     gravityMult: 0.7,
+    radiusMult: 1.12,
     joltAmount: 0,
     blendSpeed: 4.0,
   },
@@ -105,6 +108,7 @@ export const EmotionPhysics = {
     stiffnessMult: 2.0,
     dragMult: 1.35,
     gravityMult: 0.55,
+    radiusMult: 1.2,
     joltAmount: 0,
     blendSpeed: 5.0,
   },
@@ -112,6 +116,7 @@ export const EmotionPhysics = {
     stiffnessMult: 0.45,
     dragMult: 1.4,
     gravityMult: 1.75,
+    radiusMult: 0.85,
     joltAmount: 0,
     blendSpeed: 2.0,
   },
@@ -119,6 +124,7 @@ export const EmotionPhysics = {
     stiffnessMult: 0.35,
     dragMult: 1.5,
     gravityMult: 2.0,
+    radiusMult: 0.8,
     joltAmount: 0,
     blendSpeed: 1.5,
   },
@@ -126,6 +132,7 @@ export const EmotionPhysics = {
     stiffnessMult: 1.15,
     dragMult: 1.0,
     gravityMult: 1.0,
+    radiusMult: 1.2,
     joltAmount: 0.045,
     blendSpeed: 8.0,
   },
@@ -133,6 +140,7 @@ export const EmotionPhysics = {
     stiffnessMult: 0.55,
     dragMult: 1.6,
     gravityMult: 1.4,
+    radiusMult: 1.1,
     joltAmount: 0,
     blendSpeed: 3.0,
   },
@@ -140,6 +148,7 @@ export const EmotionPhysics = {
     stiffnessMult: 1.4,
     dragMult: 1.15,
     gravityMult: 0.9,
+    radiusMult: 1.1,
     joltAmount: 0,
     blendSpeed: 5.0,
   },
@@ -197,24 +206,64 @@ function classifyJointByBoneName(boneName) {
     return BoneGroup.SHORT_HAIR_BANGS;
   }
 
-  if (n.includes('ribbon') || n.includes('tail') || n.includes('accessory')) {
+  if (n.includes('skirt')) {
+    return BoneGroup.SKIRT;
+  }
+
+  if (n.includes('coat') || n.includes('jacket') || n.includes('blazer')) {
+    return BoneGroup.COAT;
+  }
+
+  // Loose/dangling fabric parts — hem, frill, lace, sleeve trim, etc.
+  if (
+    n.includes('hem') ||
+    n.includes('frill') ||
+    n.includes('lace') ||
+    n.includes('sleeve') ||
+    n.includes('cuff') ||
+    n.includes('collar') ||
+    n.includes('fabric') ||
+    n.includes('drape') ||
+    n.includes('train') ||
+    n.includes('flounce')
+  ) {
+    return BoneGroup.SOFT_CLOTHING;
+  }
+
+  // Full-body garments
+  if (
+    n.includes('cloth') ||
+    n.includes('dress') ||
+    n.includes('gown') ||
+    n.includes('robe') ||
+    n.includes('apron') ||
+    n.includes('cape') ||
+    n.includes('cloak') ||
+    n.includes('mantle') ||
+    n.includes('tunic') ||
+    n.includes('jumpsuit') ||
+    n.includes('onesie') ||
+    n.includes('overall')
+  ) {
+    return BoneGroup.SOFT_CLOTHING;
+  }
+
+  if (
+    n.includes('ribbon') ||
+    n.includes('bow') ||
+    n.includes('tail') ||
+    n.includes('accessory') ||
+    n.includes('sash') ||
+    n.includes('belt') ||
+    n.includes('strap') ||
+    n.includes('tie') ||
+    n.includes('necklace')
+  ) {
     return BoneGroup.ACCESSORIES;
   }
 
   if (n.includes('bust') || n.includes('breast') || n.includes('chest')) {
     return BoneGroup.BUST;
-  }
-
-  if (n.includes('skirt')) {
-    return BoneGroup.SKIRT;
-  }
-
-  if (n.includes('coat') || n.includes('jacket')) {
-    return BoneGroup.COAT;
-  }
-
-  if (n.includes('cloth') || n.includes('dress')) {
-    return BoneGroup.SOFT_CLOTHING;
   }
 
   if (n.includes('hair')) {
@@ -228,19 +277,93 @@ function clamp(val, min, max) {
   return Math.min(Math.max(val, min), max);
 }
 
+// ── Smart center bone finder ──
+// Tries three strategies in order:
+//   1. Direct humanoid bone node lookup
+//   2. Walk parent chain for name match
+//   3. World-position proximity — find the nearest standard body bone
+//      that sits *above* the joint, so gravity pulls in local space.
+function _findCenterBone(vrm, joint, preferredName) {
+  // Strategy 1: direct humanoid bone lookup
+  if (vrm.humanoid) {
+    const direct =
+      vrm.humanoid.getNormalizedBoneNode?.(preferredName) ??
+      vrm.humanoid.getRawBoneNode?.(preferredName);
+    if (direct) return direct;
+  }
+
+  // Strategy 2: walk parent chain looking for the preferred name
+  {
+    let node = joint.bone?.parent;
+    for (let i = 0; i < 12 && node; i++) {
+      const n = node.name?.toLowerCase() || '';
+      if (n.includes(preferredName)) return node;
+      node = node.parent;
+    }
+  }
+
+  // Strategy 3: find the nearest standard body bone above the joint
+  // by scanning all humanoid bones and picking the closest one that
+  // sits higher (smaller y) in local space.
+  if (vrm.humanoid) {
+    const STANDARD_BONES = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head'];
+    const jointPos = new THREE.Vector3();
+    const bonePos = new THREE.Vector3();
+    joint.bone?.getWorldPosition(jointPos);
+
+    let best = null;
+    let bestDist = Infinity;
+    for (const boneName of STANDARD_BONES) {
+      const node =
+        vrm.humanoid.getNormalizedBoneNode?.(boneName) ??
+        vrm.humanoid.getRawBoneNode?.(boneName);
+      if (!node) continue;
+      bonePos.set(0, 0, 0);
+      node.getWorldPosition(bonePos);
+      if (bonePos.y >= jointPos.y - 0.05) {
+        const dist = bonePos.distanceToSquared(jointPos);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = node;
+        }
+      }
+    }
+    if (best) return best;
+  }
+
+  // Final fallback: walk all ancestors looking for any known body bone
+  {
+    const STANDARD_BONES = ['hips', 'spine', 'chest', 'upperChest', 'neck', 'head'];
+    let node = joint.bone?.parent;
+    while (node) {
+      const n = node.name?.toLowerCase() || '';
+      if (STANDARD_BONES.some(b => n.includes(b))) return node;
+      node = node.parent;
+    }
+  }
+
+  return null;
+}
+
 export function useSpringBonePresets() {
   const vrmRef = useRef(null);
+  const initializedRef = useRef(false);
+  // Original model values read ONCE from the model. Never touched by init-tuning.
+  // This prevents re-init corruption when init() is called multiple times.
+  const originalJointValues = useRef(null);
   const baseJointState = useRef(new Map());
   const groupToJoints = useRef(new Map());
   const currentModifiers = useRef({
     stiffnessMult: 1.0,
     dragMult: 1.0,
     gravityMult: 1.0,
+    radiusMult: 1.0,
   });
   const targetModifiers = useRef({
     stiffnessMult: 1.0,
     dragMult: 1.0,
     gravityMult: 1.0,
+    radiusMult: 1.0,
   });
   const blendSpeedRef = useRef(3.0);
   const pendingJolt = useRef(null);
@@ -253,34 +376,49 @@ export function useSpringBonePresets() {
       return;
     }
 
+    // Idempotency guard: if we already initialized this VRM, skip.
+    // Prevents re-reading of already-tuned values as "original" baselines.
+    if (initializedRef.current && vrmRef.current === vrm) {
+      console.log('[SpringBonePresets] Already initialized for this VRM');
+      return;
+    }
+    initializedRef.current = true;
     vrmRef.current = vrm;
     baseJointState.current.clear();
     groupToJoints.current.clear();
     unrecognizedBones.current.clear();
 
-    // Step 1: Collect joints into groups, preserve original model values
+    // Step 1: Read and cache ORIGINAL model values ONCE.
+    // These are never mutated — always read fresh from here on re-init.
+    if (!originalJointValues.current || vrmRef.current !== vrm) {
+      const originals = [];
+      for (const joint of vrm.springBoneManager.joints) {
+        const s = joint.settings;
+        originals.push({
+          joint,
+          stiffness: s.stiffness ?? 0.3,
+          drag: s.dragForce ?? 0.5,
+          gravity: s.gravityPower ?? 0.1,
+          radius: s.hitRadius ?? 0.05,
+        });
+      }
+      originalJointValues.current = originals;
+    }
+
+    // Step 2: Collect joints into groups, preserve original model values
     const groupEntries = {};
     let totalJoints = 0;
 
-    for (const joint of vrm.springBoneManager.joints) {
-      const settings = joint.settings;
-      const boneName = joint.bone?.name || 'unnamed';
-      const group = classifyJointByBoneName(boneName);
+    for (const entry of originalJointValues.current) {
+      const joint = entry.joint;
+      const group = classifyJointByBoneName(joint.bone?.name || 'unnamed');
 
       if (group === BoneGroup.DEFAULT) {
-        unrecognizedBones.current.add(boneName);
+        unrecognizedBones.current.add(joint.bone?.name || 'unnamed');
       }
 
       if (!groupEntries[group]) groupEntries[group] = [];
-      groupEntries[group].push({
-        joint,
-        orig: {
-          stiffness: settings.stiffness ?? 0.3,
-          drag: settings.dragForce ?? 0.5,
-          gravity: settings.gravityPower ?? 0.1,
-          radius: settings.hitRadius ?? 0.05,
-        },
-      });
+      groupEntries[group].push({ joint, orig: entry });
       totalJoints++;
     }
 
@@ -331,10 +469,9 @@ export function useSpringBonePresets() {
           }
         }
 
-        // Set center bone for local-space physics stability
-        if (preset.centerBone && vrm.humanoid) {
-          const center = vrm.humanoid.getNormalizedBoneNode?.(preset.centerBone) ??
-                         vrm.humanoid.getRawBoneNode?.(preset.centerBone);
+        // Set center bone for local-space physics stability.
+        if (preset.centerBone) {
+          let center = _findCenterBone(vrm, joint, preset.centerBone);
           if (center && joint.center !== center) {
             joint.center = center;
           }
@@ -361,8 +498,8 @@ export function useSpringBonePresets() {
       }
     }
 
-    currentModifiers.current = { stiffnessMult: 1.0, dragMult: 1.0, gravityMult: 1.0 };
-    targetModifiers.current = { stiffnessMult: 1.0, dragMult: 1.0, gravityMult: 1.0 };
+    currentModifiers.current = { stiffnessMult: 1.0, dragMult: 1.0, gravityMult: 1.0, radiusMult: 1.0 };
+    targetModifiers.current = { stiffnessMult: 1.0, dragMult: 1.0, gravityMult: 1.0, radiusMult: 1.0 };
     blendSpeedRef.current = 3.0;
 
     // Log unrecognized bones for debugging
@@ -440,6 +577,7 @@ export function useSpringBonePresets() {
       stiffnessMult: emotion.stiffnessMult,
       dragMult: emotion.dragMult,
       gravityMult: emotion.gravityMult,
+      radiusMult: emotion.radiusMult,
     };
     blendSpeedRef.current = emotion.blendSpeed;
 
@@ -469,6 +607,10 @@ export function useSpringBonePresets() {
     }
     if (Math.abs(cur.gravityMult - tgt.gravityMult) > 0.001) {
       cur.gravityMult += (tgt.gravityMult - cur.gravityMult) * lerpFactor;
+      needsReapply = true;
+    }
+    if (Math.abs(cur.radiusMult - tgt.radiusMult) > 0.001) {
+      cur.radiusMult += (tgt.radiusMult - cur.radiusMult) * lerpFactor;
       needsReapply = true;
     }
 
@@ -515,12 +657,17 @@ export function useSpringBonePresets() {
         settings.stiffness = state.baseStiffness * cur.stiffnessMult;
         settings.dragForce = Math.min(0.95, state.baseDrag * cur.dragMult);
         settings.gravityPower = state.baseGravity * cur.gravityMult;
-        // hitRadius intentionally NOT modified by emotions
+        settings.hitRadius = clamp(state.baseRadius * cur.radiusMult, 0.01, 0.3);
       }
     }
   }, []);
 
-  const getCurrentModifiers = useCallback(() => ({ ...currentModifiers.current }), []);
+  const getCurrentModifiers = useCallback(() => ({
+    stiffnessMult: currentModifiers.current.stiffnessMult,
+    dragMult: currentModifiers.current.dragMult,
+    gravityMult: currentModifiers.current.gravityMult,
+    radiusMult: currentModifiers.current.radiusMult,
+  }), []);
 
   // Export the original values and multipliers for the tuning UI
   const getJointStats = useCallback(() => {

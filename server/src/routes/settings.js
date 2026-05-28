@@ -59,7 +59,7 @@ router.get('/', (req, res) => {
         ttsSpeed: companion?.tts_speed ?? 1.0,
         ttsPitch: companion?.tts_pitch ?? 1.0,
         ttsVolume: companion?.tts_volume ?? 1.0,
-        llmModel: companion?.llm_model || 'gemini-3.1-flash-lite',
+        llmModel: companion?.llm_model || 'gemini-2.0-flash-lite',
         llmProvider: companion?.llm_provider || 'gemini',
         shortcuts,
       },
@@ -118,7 +118,7 @@ router.put('/', (req, res) => {
               tts_embedding_scale = COALESCE(?, tts_embedding_scale),
               llm_model = COALESCE(?, llm_model),
                llm_provider = COALESCE(?, llm_provider),
-                shortcuts = COALESCE(?, shortcuts),
+               shortcuts = COALESCE(?, shortcuts),
                 updated_at = CURRENT_TIMESTAMP
            WHERE user_id = ?
          `).run(
@@ -167,7 +167,7 @@ router.put('/', (req, res) => {
            companion.ttsBeta ?? 0.7,
            companion.ttsDiffusionSteps ?? 5,
            companion.ttsEmbeddingScale ?? 1.0,
-           companion.llmModel || 'gemini-3.1-flash-lite',
+           companion.llmModel || 'gemini-2.0-flash-lite',
            companion.llmProvider || 'gemini',
            companion.shortcuts ? JSON.stringify(companion.shortcuts) : null
         );

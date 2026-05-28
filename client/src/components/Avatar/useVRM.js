@@ -52,6 +52,8 @@ export function useVRM() {
   const [error, setError] = useState(null);
   const loaderRef = useRef(null);
   const restPoseRef = useRef({});
+  const vrmRef = useRef(null);
+  const objectURLRef = useRef(null);
 
   const captureRestPose = useCallback((vrm) => {
     if (!vrm?.humanoid) return;
@@ -84,14 +86,24 @@ export function useVRM() {
     loaderRef.current = loader;
   }, []);
 
+  // Keep vrmRef in sync so cleanup always sees current model
+  useEffect(() => {
+    vrmRef.current = vrm;
+  }, [vrm]);
+
   // Dispose of the current VRM when switching models or unmounting
   const dispose = useCallback(() => {
-    if (vrm) {
+    const current = vrmRef.current;
+    if (current) {
       console.log('[VRM] Disposing previous model');
-      VRMUtils.deepDispose(vrm.scene);
-      setVRM(null);
+      VRMUtils.deepDispose(current.scene);
     }
-  }, [vrm]);
+    if (objectURLRef.current) {
+      URL.revokeObjectURL(objectURLRef.current);
+      objectURLRef.current = null;
+    }
+    setVRM(null);
+  }, []);
 
   /**
    * Load a VRM or GLB model from a URL.
@@ -106,8 +118,9 @@ export function useVRM() {
     setError(null);
 
     // Dispose previous model
-    if (vrm) {
-      VRMUtils.deepDispose(vrm.scene);
+    const prev = vrmRef.current;
+    if (prev) {
+      VRMUtils.deepDispose(prev.scene);
     }
 
     try {
@@ -148,8 +161,17 @@ export function useVRM() {
         // SKIP removeUnnecessaryJoints — it removes leaf bones that spring
         // bones reference, causing dangling nodes and bone pop-out.
 
-        // Rotate model to face the camera (VRM 0.x faces +Z, needs 180deg flip)
-        VRMUtils.rotateVRM0(loadedVRM);
+        // Rotate model to face the camera.
+        // VRM 0.x faces +Z by default (needs 180° Y rotation to face -Z toward camera).
+        // VRM 1.0 faces -Z already — no rotation needed.
+        // meta?.version is the MODEL version (e.g. "1.0"), NOT the VRM spec version.
+        // Check the raw GLTF extension for the spec version instead.
+        const rawExt = gltf.userData.gltfExtensions?.VRM || gltf.userData.gltfExtensions?.VRMC_vrm;
+        const specVer = rawExt?.specVersion || rawExt?.version || '';
+        const isVRM0 = specVer.startsWith('0');
+        if (isVRM0) {
+          VRMUtils.rotateVRM0(loadedVRM);
+        }
 
         // Reset spring bones after rotation so their initial state matches the
         // new orientation — prevents them fighting the 180° flip every frame
@@ -229,7 +251,7 @@ export function useVRM() {
       setProgress(0);
       return null;
     }
-  }, [vrm]);
+  }, []);
 
   /**
    * Load a VRM model from a user-uploaded File object.
@@ -241,21 +263,39 @@ export function useVRM() {
     
     // Create a temporary object URL for the file
     const objectURL = URL.createObjectURL(file);
+    // Track in ref so dispose() can revoke it if needed
+    if (objectURLRef.current) URL.revokeObjectURL(objectURLRef.current);
+    objectURLRef.current = objectURL;
     try {
       const result = await loadVRM(objectURL);
+      // Revoke after load completes — textures are cached by the loader by then
+      setTimeout(() => {
+        if (objectURLRef.current === objectURL) {
+          URL.revokeObjectURL(objectURL);
+          objectURLRef.current = null;
+        }
+      }, 100);
       return result;
     } catch (err) {
       console.error('[VRM] loadVRMFromFile failed:', err);
+      if (objectURLRef.current === objectURL) {
+        URL.revokeObjectURL(objectURL);
+        objectURLRef.current = null;
+      }
       throw err;
     }
-    // Note: We don't revoke immediately because VRM textures might still be loading
   }, [loadVRM]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (vrm) {
-        VRMUtils.deepDispose(vrm.scene);
+      const current = vrmRef.current;
+      if (current) {
+        VRMUtils.deepDispose(current.scene);
+      }
+      if (objectURLRef.current) {
+        URL.revokeObjectURL(objectURLRef.current);
+        objectURLRef.current = null;
       }
     };
   }, []);

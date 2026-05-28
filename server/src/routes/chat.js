@@ -180,7 +180,7 @@ MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date i
     }
 
     // ─── Call AI ────────────────────────────────────────────────────
-    const model = settings.llm_model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gemini-2.5-flash-lite');
+    const model = settings.llm_model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gemini-2.0-flash-lite');
 
     const chatOptions = {
       apiKey,

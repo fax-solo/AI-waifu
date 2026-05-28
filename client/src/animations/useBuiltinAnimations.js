@@ -228,50 +228,6 @@ export function useBuiltinAnimations() {
     }
   }
 
-  function updateBreathing(vrm, deltaTime) {
-    const s = breathState.current;
-    s.phase += deltaTime * 0.35 * Math.PI * 2;
-    const inhale = (Math.sin(s.phase) * 0.5 + 0.5);
-
-    const chest = getBone(vrm, 'chest');
-    const upperChest = getBone(vrm, 'upperChest') || chest;
-    if (upperChest && upperChest !== chest) {
-      upperChest.position.z += -inhale * 0.004;
-      upperChest.position.y += inhale * 0.003;
-      upperChest.rotation.x += (inhale - 0.5) * 0.015;
-    } else if (chest) {
-      chest.position.z += -inhale * 0.003;
-      chest.position.y += inhale * 0.002;
-    }
-
-    const leftClavicle = getBone(vrm, 'leftClavicle');
-    const rightClavicle = getBone(vrm, 'rightClavicle');
-    if (leftClavicle && rightClavicle) {
-      leftClavicle.rotation.x += -inhale * 0.035;
-      rightClavicle.rotation.x += -inhale * 0.035;
-    }
-
-    const leftShoulder = getBone(vrm, 'leftShoulder');
-    const rightShoulder = getBone(vrm, 'rightShoulder');
-    if (leftShoulder && rightShoulder) {
-      const shrug = inhale * 0.02;
-      leftShoulder.rotation.z += shrug;
-      rightShoulder.rotation.z -= shrug;
-      leftShoulder.rotation.x += (inhale - 0.5) * 0.01;
-      rightShoulder.rotation.x += (inhale - 0.5) * 0.01;
-    }
-
-    const spine = getBone(vrm, 'spine');
-    if (spine) {
-      spine.rotation.x += (inhale - 0.5) * 0.005;
-    }
-
-    const hips = getBone(vrm, 'hips');
-    if (hips) {
-      hips.position.y += (inhale - 0.5) * 0.001;
-    }
-  }
-
   function applyBlendBuffer(vrm, deltaTime) {
     const blendSpeed = 14;
     const lerpFactor = Math.min(1, deltaTime * blendSpeed);

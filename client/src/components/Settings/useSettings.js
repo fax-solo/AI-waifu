@@ -9,10 +9,9 @@ const VOICES = [
 ];
 
 const GEMINI_MODELS = [
-  { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash-Lite', desc: 'Next-gen efficiency (Newest)', free: true },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (Preview)', desc: 'Advanced generation', free: true },
   { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Highly capable & stable', free: true },
   { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', desc: 'Ultra lightweight', free: true },
+  { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash-Lite', desc: 'Reliable & widely available', free: true },
 ];
 
 const GROQ_MODELS = [
@@ -51,7 +50,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     ttsBeta: 0.7,
     ttsDiffusionSteps: 5,
     ttsEmbeddingScale: 1.0,
-    llmModel: 'gemini-3.1-flash-lite',
+    llmModel: 'gemini-2.0-flash-lite',
     llmProvider: 'gemini',
     shortcuts: DEFAULT_SHORTCUTS
   });
@@ -187,7 +186,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
           ttsBeta: data.companion.ttsBeta ?? 0.7,
           ttsDiffusionSteps: data.companion.ttsDiffusionSteps ?? 5,
           ttsEmbeddingScale: data.companion.ttsEmbeddingScale ?? 1.0,
-          llmModel: data.companion.llmModel ?? 'gemini-3.1-flash-lite',
+          llmModel: data.companion.llmModel ?? 'gemini-2.0-flash-lite',
           llmProvider: data.companion.llmProvider ?? 'gemini',
           shortcuts: hasCustomShortcuts ? loadedShortcuts : DEFAULT_SHORTCUTS
         };

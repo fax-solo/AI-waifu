@@ -141,7 +141,7 @@ export default function ApiKeyTab({
           desc="Gemini 3.1, 2.5 Flash & more"
           icon={<GeminiIcon />}
           isActive={isGemini}
-          onSelect={() => setCompanion(p => ({ ...p, llmProvider: 'gemini', llmModel: 'gemini-3.1-flash-lite' }))}
+          onSelect={() => setCompanion(p => ({ ...p, llmProvider: 'gemini', llmModel: 'gemini-2.0-flash-lite' }))}
         />
         <ProviderCard
           label={t('settings.apikey.groq')}

@@ -20,10 +20,30 @@ const BoneGroup = {
 function classifyJoint(boneName) {
   const n = (boneName || '').toLowerCase();
   if (n.includes('skirt')) return BoneGroup.SKIRT;
-  if (n.includes('coat') || n.includes('jacket')) return BoneGroup.COAT;
-  if (n.includes('cloth') || n.includes('dress')) return BoneGroup.SOFT_CLOTHING;
+  if (n.includes('coat') || n.includes('jacket') || n.includes('blazer')) return BoneGroup.COAT;
+
+  // Loose/dangling fabric parts
+  if (
+    n.includes('hem') || n.includes('frill') || n.includes('lace') ||
+    n.includes('sleeve') || n.includes('cuff') || n.includes('collar') ||
+    n.includes('fabric') || n.includes('drape') || n.includes('train')
+  ) return BoneGroup.SOFT_CLOTHING;
+
+  // Full-body garments
+  if (
+    n.includes('cloth') || n.includes('dress') || n.includes('gown') ||
+    n.includes('robe') || n.includes('apron') || n.includes('cape') ||
+    n.includes('cloak') || n.includes('mantle') || n.includes('tunic') ||
+    n.includes('jumpsuit') || n.includes('overall')
+  ) return BoneGroup.SOFT_CLOTHING;
+
   if (n.includes('bust') || n.includes('breast')) return BoneGroup.BUST;
-  if (n.includes('ribbon') || n.includes('tail') || n.includes('accessory')) return BoneGroup.ACCESSORIES;
+  if (
+    n.includes('ribbon') || n.includes('bow') || n.includes('tail') ||
+    n.includes('accessory') || n.includes('sash') || n.includes('belt') ||
+    n.includes('strap') || n.includes('tie')
+  ) return BoneGroup.ACCESSORIES;
+
   if (
     n.includes('hair_back') || n.includes('back_hair') || n.includes('longhair') ||
     (n.includes('hair') && (n.includes('_b_') || n.includes('_back')))
@@ -40,11 +60,11 @@ function classifyJoint(boneName) {
 // ─── Collider index map per bone group ───
 // Indices into the built BODY_COLLIDER_GROUPS array
 const COLLIDER_MAP = {
-  [BoneGroup.SKIRT]: [0, 1, 2, 3, 4, 5, 6], // hips, leftThigh, rightThigh, leftShin, rightShin, leftShinLow, rightShinLow
+  [BoneGroup.SKIRT]: [0, 1, 2, 3, 4, 5, 6, 9], // hips, thighs, shins (upper+low), chest
   [BoneGroup.LONG_HAIR_BACK]: [7, 8, 9, 10, 11, 12], // head, neck, chest, upperChest, spineLow, spineMid
   [BoneGroup.SHORT_HAIR_BANGS]: [7, 8, 9, 10], // head, neck, chest, upperChest
   [BoneGroup.COAT]: [9, 10, 13, 14, 15, 16, 17, 18], // chest, upperChest, leftShoulder, rightShoulder, leftUpperArm, rightUpperArm, leftElbow, rightElbow
-  [BoneGroup.SOFT_CLOTHING]: [9, 10, 0, 1, 2], // chest, upperChest, hips, leftThigh, rightThigh
+  [BoneGroup.SOFT_CLOTHING]: [9, 10, 0, 1, 2, 3, 4, 5, 6, 13, 14, 15, 16, 17, 18], // chest, upperChest, hips, thighs, shins, shoulders, arms, elbows
   [BoneGroup.ACCESSORIES]: [7, 9], // head, chest
   [BoneGroup.BUST]: [9, 10], // chest, upperChest
   [BoneGroup.DEFAULT]: [], // no body colliders
@@ -248,7 +268,10 @@ function getBoneWorldScale(vrm, name) {
   if (!bone) return 1;
   const scale = new THREE.Vector3();
   bone.getWorldScale(scale);
-  return (scale.x + scale.y + scale.z) / 3;
+  // Use the LARGEST component so non-uniform scaling (e.g. stretched bones)
+  // doesn't produce undersized colliders. Average would shrink spheres on
+  // models where one axis is scaled down.
+  return Math.max(scale.x, scale.y, scale.z);
 }
 
 function scaleDefSpheres(def, scale) {
@@ -280,6 +303,7 @@ export function useVRMColliders() {
   const vrmRef = useRef(null);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
+  const initializedRef = useRef(false);
 
   const raycaster = useRef(new THREE.Raycaster());
   const cursorWorldPos = useRef(new THREE.Vector3(0, 1.0, 0));
@@ -290,6 +314,7 @@ export function useVRMColliders() {
   const bodyColliderGroups = useRef([]);
   const debugMesh = useRef(null);
   const hasCustomColliders = useRef(false);
+  const cursorAssignedJoints = useRef(new WeakSet());
 
   // ── Build body colliders with proper VRMSpringBoneCollider instances ──
   function setupBodyColliders(vrm) {
@@ -338,18 +363,27 @@ export function useVRMColliders() {
   // ── Assign cursor collider to all joints ──
   function assignCursorToAllJoints(manager, cursorGroup) {
     let assigned = 0;
+    const ws = new WeakSet();
     for (const joint of manager.joints) {
       if (!joint.colliderGroups.includes(cursorGroup)) {
         joint.colliderGroups.push(cursorGroup);
         assigned++;
       }
+      ws.add(joint);
     }
+    cursorAssignedJoints.current = ws;
     return assigned;
   }
 
   // ── Full init (with scene/camera for cursor) ──
   const init = useCallback((vrm, scene, camera) => {
     if (!vrm) return;
+    // Guard against double-init for the same VRM
+    if (initializedRef.current && vrmRef.current === vrm) {
+      console.log('[VRMColliders] Already initialized for this VRM');
+      return true;
+    }
+    initializedRef.current = true;
     vrmRef.current = vrm;
     sceneRef.current = scene;
     cameraRef.current = camera;
@@ -369,6 +403,10 @@ export function useVRMColliders() {
 
   // ── Cursor collider setup ──
   function setupCursorCollider(vrm) {
+    // Remove old cursor node if re-initializing
+    if (cursorDummyNode.current && sceneRef.current) {
+      sceneRef.current.remove(cursorDummyNode.current);
+    }
     const cursorNode = new THREE.Object3D();
     cursorNode.name = 'CursorColliderRoot';
     cursorDummyNode.current = cursorNode;
@@ -431,16 +469,17 @@ export function useVRMColliders() {
       debugMesh.current.position.copy(cursorSmoothPos.current);
     }
 
-    // Re-assign cursor collider to any new joints that don't have it
+    // Re-assign cursor collider to any new joints that don't have it.
+    // Uses WeakSet for O(1) lookup instead of scanning colliderGroups per joint.
     if (vrm.springBoneManager && cursorColliderGroup.current) {
       let needsReassign = false;
+      const known = cursorAssignedJoints.current;
       for (const joint of vrm.springBoneManager.joints) {
-        if (!joint.colliderGroups.includes(cursorColliderGroup.current)) {
+        if (!known.has(joint)) {
           needsReassign = true;
           break;
         }
       }
-      // Only re-assign if the cursor got dropped by a model reset
       if (needsReassign) {
         assignCursorToAllJoints(vrm.springBoneManager, cursorColliderGroup.current);
       }
@@ -495,19 +534,31 @@ export function useVRMColliders() {
     cursorDummyNode.current = null;
     bodyColliderGroups.current = [];
     vrmRef.current = null;
+    initializedRef.current = false;
   }, []);
 
-  // ── initFromVRM for model-load-time init (no cursor) ──
-  const initFromVRM = useCallback((vrm) => {
+  // ── initFromVRM for model-load-time init ──
+  const initFromVRM = useCallback((vrm, scene) => {
     if (!vrm?.springBoneManager) {
       console.warn('[VRMColliders] initFromVRM: no springBoneManager');
       return;
     }
+    if (initializedRef.current && vrmRef.current === vrm) {
+      return;
+    }
+    initializedRef.current = true;
+    vrmRef.current = vrm;
 
     const count = setupBodyColliders(vrm);
+
+    // Store scene ref for cursor collider
+    if (scene) sceneRef.current = scene;
+
+    // Also set up cursor collider so interactive hair physics works
+    setupCursorCollider(vrm);
     assignCollidersToJoints(vrm.springBoneManager);
 
-    console.log(`[VRMColliders] initFromVRM: added ${count} body collider groups`);
+    console.log(`[VRMColliders] initFromVRM: added ${count} body collider groups + cursor collider`);
   }, []);
 
   return {

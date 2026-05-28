@@ -144,7 +144,24 @@ export default function App() {
 
         if (active && avatarRef.current) {
           const url = api.getUploadUrl(active.file_path);
-          avatarRef.current.loadFile(url);
+          const ok = await avatarRef.current.loadFile(url);
+          if (!ok) {
+            console.warn('Failed to load avatar, removing stale entry:', active.id);
+            // Remove broken entry from server and clear localStorage
+            try { await api.deleteAvatar(active.id); } catch {}
+            if (localStorage.getItem('waifu-vrm-id') === active.id) {
+              localStorage.removeItem('waifu-vrm-id');
+              localStorage.removeItem('waifu-vrm-name');
+            }
+            // Try the next avatar if available
+            const remaining = avatars.filter(a => a.id !== active.id);
+            if (remaining.length > 0 && avatarRef.current) {
+              const next = remaining[0];
+              localStorage.setItem('waifu-vrm-id', next.id);
+              localStorage.setItem('waifu-vrm-name', next.name);
+              await avatarRef.current.loadFile(api.getUploadUrl(next.file_path));
+            }
+          }
         }
       } catch (err) {
         console.error('Failed to auto-load avatar:', err);

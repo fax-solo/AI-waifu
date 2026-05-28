@@ -5,18 +5,10 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import db from '../config/database.js';
+import { detectRootDir, resolveVenvPath, resolvePythonExe } from '../utils/paths.js';
 
 const router = Router();
 const TTS_SERVER_URL = process.env.TTS_SERVER_URL || 'http://127.0.0.1:5000';
-
-function detectTTSDir() {
-  const isProd = process.env.NODE_ENV === 'production';
-  if (isProd && process.resourcesPath) {
-    return process.resourcesPath;
-  }
-  // Dev: relative to project root
-  return process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd();
-}
 
 async function isTTSServerRunning() {
   try {
@@ -38,12 +30,10 @@ router.post('/restart', async (req, res) => {
       return res.json({ ok: true, message: 'TTS already running', status });
     }
 
-    const rootDir = detectTTSDir();
+    const rootDir = detectRootDir();
     const pythonDir = path.join(rootDir, 'python');
     const isWindows = os.platform() === 'win32';
-    const venvName = fs.existsSync(path.join(pythonDir, 'venv_py311')) ? 'venv_py311' : 'venv';
-    const binDir = isWindows ? path.join(pythonDir, venvName, 'Scripts') : path.join(pythonDir, venvName, 'bin');
-    const pythonExe = path.join(binDir, isWindows ? 'python.exe' : 'python');
+    const pythonExe = resolvePythonExe(pythonDir);
     const scriptPath = path.join(pythonDir, 'tts_server.py');
 
     if (!fs.existsSync(pythonExe)) {

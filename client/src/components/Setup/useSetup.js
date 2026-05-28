@@ -251,6 +251,7 @@ export default function useSetup({ onComplete, onSkip, systemInfo: initialSystem
     stepName: STEPS[currentStep],
 
     systemInfo,
+    hasGalleryAvatars: systemInfo?.hasGalleryAvatars ?? false,
     checks,
     runSystemCheck,
     canProceedFromCheck,

@@ -3,17 +3,10 @@ import { spawn, execSync } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import { detectRootDir, resolveVenvPath, resolvePythonExe } from '../utils/paths.js';
 
 const router = Router();
 const STT_SERVER_URL = process.env.STT_SERVER_URL || 'http://127.0.0.1:5001';
-
-function detectSTTDir() {
-  const isProd = process.env.NODE_ENV === 'production';
-  if (isProd && process.resourcesPath) {
-    return process.resourcesPath;
-  }
-  return process.cwd().endsWith('server') ? path.join(process.cwd(), '..') : process.cwd();
-}
 
 async function isSTTServerRunning() {
   try {
@@ -35,12 +28,10 @@ router.post('/restart', async (req, res) => {
       return res.json({ ok: true, message: 'STT already running', status });
     }
 
-    const rootDir = detectSTTDir();
+    const rootDir = detectRootDir();
     const pythonDir = path.join(rootDir, 'python');
     const isWindows = os.platform() === 'win32';
-    const venvName = fs.existsSync(path.join(pythonDir, 'venv_py311')) ? 'venv_py311' : 'venv';
-    const binDir = isWindows ? path.join(pythonDir, venvName, 'Scripts') : path.join(pythonDir, venvName, 'bin');
-    const pythonExe = path.join(binDir, isWindows ? 'python.exe' : 'python');
+    const pythonExe = resolvePythonExe(pythonDir);
     const scriptPath = path.join(pythonDir, 'stt_server.py');
 
     if (!fs.existsSync(pythonExe)) {

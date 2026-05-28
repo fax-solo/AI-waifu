@@ -158,7 +158,7 @@ async function initDb() {
     { table: 'companion_settings', name: 'tts_beta', type: 'REAL DEFAULT 0.7' },
     { table: 'companion_settings', name: 'tts_diffusion_steps', type: 'INTEGER DEFAULT 5' },
     { table: 'companion_settings', name: 'tts_embedding_scale', type: 'REAL DEFAULT 1.0' },
-    { table: 'companion_settings', name: 'llm_model', type: 'TEXT DEFAULT "gemini-3.1-flash-lite"' },
+    { table: 'companion_settings', name: 'llm_model', type: 'TEXT DEFAULT "gemini-2.0-flash-lite"' },
     { table: 'companion_settings', name: 'llm_provider', type: 'TEXT DEFAULT "gemini"' },
     { table: 'companion_settings', name: 'groq_api_key_encrypted', type: 'TEXT' },
     { table: 'companion_settings', name: 'shortcuts', type: 'TEXT' },

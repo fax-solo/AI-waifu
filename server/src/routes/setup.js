@@ -5,6 +5,7 @@ import { spawn, execSync } from 'child_process';
 import os from 'os';
 import { pipeline } from 'stream/promises';
 import { Readable } from 'stream';
+import { detectRootDir, resolvePythonExe } from '../utils/paths.js';
 
 const router = express.Router();
 
@@ -72,74 +73,58 @@ async function getGpuInfo() {
   });
 }
 
-function detectRootDir() {
-  // Walk up from cwd to find the project root (where models.json lives)
-  let dir = process.cwd();
-  for (let i = 0; i < 5; i++) {
-    if (fs.existsSync(path.join(dir, 'models.json'))) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  // In production (Electron), check alongside the executable
-  const isProd = !process.env.NODE_ENV || process.env.NODE_ENV === 'production';
-  if (isProd && process.execPath) {
-    const exeDir = path.dirname(process.execPath);
-    if (fs.existsSync(path.join(exeDir, 'models.json'))) return exeDir;
-  }
-  if (isProd && process.resourcesPath) {
-    return process.resourcesPath;
-  }
-  return process.cwd();
-}
-
 router.get('/status', async (req, res) => {
-  try {
-    const rootDir = detectRootDir();
-      
-    const pythonDir = path.join(rootDir, 'python');
-    const modelsPath = path.join(rootDir, 'models.json');
-    const markerPath = path.join(rootDir, '.setup-complete');
-    
-    let modelsMissing = false;
-    if (fs.existsSync(modelsPath)) {
-      const models = JSON.parse(fs.readFileSync(modelsPath, 'utf8').replace(/^\uFEFF/, ''));
-      for (const service in models) {
-        for (const asset in models[service]) {
-          if (!fs.existsSync(path.join(rootDir, models[service][asset].path))) {
-            modelsMissing = true;
-            break;
-          }
-        }
-        if (modelsMissing) break;
-      }
-    } else {
-      modelsMissing = true;
-    }
+   try {
+     const rootDir = detectRootDir();
+       
+     const pythonDir = path.join(rootDir, 'python');
+     const modelsPath = path.join(rootDir, 'models.json');
+     const markerPath = path.join(rootDir, '.setup-complete');
+     
+     // Check TTS models (required) - only check tts section, not all models
+     let modelsMissing = false;
+     if (fs.existsSync(modelsPath)) {
+       const models = JSON.parse(fs.readFileSync(modelsPath, 'utf8').replace(/^\uFEFF/, ''));
+       // Only check TTS models as required - gallery avatars are already on disk
+       const ttsModels = models.tts || {};
+       for (const asset in ttsModels) {
+         if (!fs.existsSync(path.join(rootDir, ttsModels[asset].path))) {
+           modelsMissing = true;
+           break;
+         }
+       }
+     } else {
+       modelsMissing = true;
+     }
 
-    const isWindows = os.platform() === 'win32';
-    const venvName = resolveVenvName(pythonDir);
-    const venvPath = path.join(pythonDir, venvName);
-    const binDir = isWindows ? path.join(venvPath, 'Scripts') : path.join(venvPath, 'bin');
-    const venvValid = fs.existsSync(venvPath) && fs.existsSync(binDir);
-    const setupComplete = fs.existsSync(markerPath);
+     // Gallery avatars are always available (bundled with app) - no download needed
+     const galleryDir = path.join(rootDir, 'data', 'gallery');
+     const hasGalleryAvatars = fs.existsSync(galleryDir) && fs.readdirSync(galleryDir).some(f => f.endsWith('.vrm') || f.endsWith('.glb'));
 
-    const [gpuInfo, diskInfo] = await Promise.all([getGpuInfo(), getDiskInfo()]);
-    const osInfo = getOsInfo();
+     const isWindows = os.platform() === 'win32';
+     const venvName = resolveVenvName(pythonDir);
+     const venvPath = path.join(pythonDir, venvName);
+     const binDir = isWindows ? path.join(venvPath, 'Scripts') : path.join(venvPath, 'bin');
+     const venvValid = fs.existsSync(venvPath) && fs.existsSync(binDir);
+     const setupComplete = fs.existsSync(markerPath);
 
-    res.json({
-      setupRequired: !setupComplete && (modelsMissing || !venvValid),
-      modelsMissing,
-      venvMissing: !venvValid,
-      setupComplete,
-      gpuInfo,
-      diskInfo,
-      osInfo
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+     const [gpuInfo, diskInfo] = await Promise.all([getGpuInfo(), getDiskInfo()]);
+     const osInfo = getOsInfo();
+
+     res.json({
+       setupRequired: !setupComplete && (modelsMissing || !venvValid),
+       modelsMissing,
+       venvMissing: !venvValid,
+       setupComplete,
+       hasGalleryAvatars, // Inform frontend that avatars are available offline
+       gpuInfo,
+       diskInfo,
+       osInfo
+     });
+   } catch (error) {
+     res.status(500).json({ error: error.message });
+   }
+ });
 
 router.post('/complete', async (req, res) => {
   try {
@@ -149,11 +134,7 @@ router.post('/complete', async (req, res) => {
 
     // Start TTS Python sidecar
     const pythonDir = path.join(rootDir, 'python');
-    const venvName = resolveVenvName(pythonDir);
-    const venvPath = path.join(pythonDir, venvName);
-    const isWindows = os.platform() === 'win32';
-    const binDir = isWindows ? path.join(venvPath, 'Scripts') : path.join(venvPath, 'bin');
-    const pythonExe = path.join(binDir, isWindows ? 'python.exe' : 'python');
+    const pythonExe = resolvePythonExe(pythonDir);
     const scriptPath = path.join(pythonDir, 'tts_server.py');
 
     if (fs.existsSync(pythonExe) && fs.existsSync(scriptPath)) {
