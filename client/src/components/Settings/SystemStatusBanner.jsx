@@ -14,7 +14,7 @@ function getOverallStatus(items) {
 const STATUS_META = {
   ok: { icon: CheckCircle, color: 'var(--color-success)', label: 'All systems operational' },
   warn: { icon: AlertTriangle, color: 'var(--color-warning)', label: 'Some features may be limited' },
-  error: { icon: XCircle, color: 'var(--color-error)', label: 'Issues detected — setup may be incomplete' },
+  error: { icon: XCircle, color: 'var(--color-error)', label: 'Issues detected' },
 };
 
 const ICON_MAP = {
@@ -25,41 +25,20 @@ const ICON_MAP = {
   mic: Mic,
 };
 
-export default function SystemStatusBanner({ setupStatus, ttsStatus, hasCustomKey, hasGroqKey }) {
+export default function SystemStatusBanner({ ttsStatus, hasCustomKey, hasGroqKey }) {
   const [expanded, setExpanded] = useState(false);
   const hasApiKey = hasCustomKey || hasGroqKey;
 
   const items = [];
 
-  // Python env
-  if (setupStatus) {
-    items.push({
-      id: 'pythonEnv',
-      label: 'Python Environment',
-      status: setupStatus.venvMissing ? STATUS_ERR : STATUS_OK,
-      message: setupStatus.venvMissing ? 'Not set up' : 'Ready',
-      icon: 'python',
-    });
-  }
-
-  // TTS models
-  if (setupStatus) {
-    items.push({
-      id: 'ttsModels',
-      label: 'TTS Model Files',
-      status: setupStatus.modelsMissing ? STATUS_ERR : STATUS_OK,
-      message: setupStatus.modelsMissing ? 'Not downloaded' : 'Downloaded',
-      icon: 'ttsModel',
-    });
-  }
-
   // TTS server
   const ttsOnline = ttsStatus?.status === 'ok';
+  const ttsLoading = ttsStatus?.status === 'loading';
   items.push({
     id: 'ttsServer',
     label: 'TTS Server',
-    status: ttsOnline ? STATUS_OK : (ttsStatus?.status === 'unknown' ? STATUS_WARN : STATUS_ERR),
-    message: ttsOnline ? `Running (${ttsStatus.device || 'cpu'})` : (ttsStatus?.status === 'unknown' ? 'Checking...' : 'Offline'),
+    status: ttsOnline ? STATUS_OK : (ttsStatus?.status === 'unknown' ? STATUS_WARN : (ttsLoading ? STATUS_WARN : STATUS_ERR)),
+    message: ttsOnline ? `Running (${ttsStatus.device || 'cpu'})` : (ttsStatus?.status === 'unknown' ? 'Checking...' : (ttsLoading ? 'Loading...' : 'Offline')),
     icon: 'ttsServer',
   });
 
@@ -71,17 +50,6 @@ export default function SystemStatusBanner({ setupStatus, ttsStatus, hasCustomKe
     message: hasApiKey ? 'Configured' : 'Not set — chat requires an API key',
     icon: 'apiKey',
   });
-
-  // GPU info
-  if (setupStatus?.gpuInfo?.hasNvidia) {
-    items.push({
-      id: 'gpu',
-      label: 'GPU Acceleration',
-      status: STATUS_OK,
-      message: `${setupStatus.gpuInfo.name || 'NVIDIA GPU'} available`,
-      icon: 'cpu',
-    });
-  }
 
   const overall = getOverallStatus(items);
   const { icon: OverallIcon, color, label } = STATUS_META[overall];

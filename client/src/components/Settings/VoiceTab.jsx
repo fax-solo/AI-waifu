@@ -70,11 +70,13 @@ export default function VoiceTab({
                 <option value="gpu">{t('settings.voice.gpuAccel')}</option>
               </select>
               <div className="hint">
-                {ttsStatus.device === 'cuda'
-                  ? `✅ GPU Acceleration ACTIVE (CUDA).`
-                  : ttsStatus.status === 'offline'
-                    ? '❌ TTS Server Offline.'
-                    : '⚠️ GPU NOT FOUND. PyTorch is running on CPU.'}
+                {ttsStatus.status === 'loading'
+                  ? '⏳ TTS Engine loading...'
+                  : ttsStatus.device === 'cuda'
+                    ? `✅ GPU Acceleration ACTIVE (CUDA).`
+                    : ttsStatus.status === 'offline'
+                      ? '❌ TTS Server Offline.'
+                      : '⚠️ GPU NOT FOUND. PyTorch is running on CPU.'}
               </div>
             </div>
           </div>

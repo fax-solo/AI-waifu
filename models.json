@@ -3,31 +3,31 @@
     "model_ljspeech": {
       "url": "https://huggingface.co/yl4579/StyleTTS2-LJSpeech/resolve/main/Models/LJSpeech/epoch_2nd_00100.pth",
       "path": "python/styletts2-ljspeech.pth",
-      "size": 310829056,
+      "size": 749716474,
       "version": "1.0"
     },
     "model_libritts": {
       "url": "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/Models/LibriTTS/epochs_2nd_00020.pth",
       "path": "python/styletts2-libritts.pth",
-      "size": 310829056,
+      "size": 771390526,
       "version": "1.0"
     },
     "config_ljspeech": {
       "url": "https://huggingface.co/yl4579/StyleTTS2-LJSpeech/resolve/main/Models/LJSpeech/config.yml",
       "path": "python/styletts2-config-ljspeech.yml",
-      "size": 4096,
+      "size": 1895,
       "version": "1.0"
     },
     "config_libritts": {
       "url": "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/Models/LibriTTS/config.yml",
       "path": "python/styletts2-config-libritts.yml",
-      "size": 4096,
+      "size": 1859,
       "version": "1.0"
     },
     "voices": {
       "url": "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/reference_audio.zip",
       "path": "python/reference_audio.zip",
-      "size": 27000000,
+      "size": 2917622,
       "version": "1.0"
     }
   },

@@ -93,10 +93,10 @@ export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, upd
       <div className="settings-section" style={{ marginTop: '2rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
         <div className="settings-section-title">
           <Download size={18} className="icon" />
-          Component Setup Wizard
+          Setup Wizard
         </div>
         <p className="text-muted" style={{ marginBottom: '1rem', fontSize: '0.85rem' }}>
-          Open the setup wizard to download missing components like the Text-to-Speech models, Python environment, or hardware accelerators.
+          Reopen the setup wizard to configure or repair your companion installation.
         </p>
         <button className="btn btn-secondary btn-full" onClick={onTriggerSetup}>
           Open Setup Wizard

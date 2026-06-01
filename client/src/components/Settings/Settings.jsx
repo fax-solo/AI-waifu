@@ -47,7 +47,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
     showGalleryUpload, setShowGalleryUpload, galleryUploadForm, setGalleryUploadForm,
     isGalleryUploading, handleUploadGalleryModel,
     galleryModelInputRef, galleryTextureInputRef, galleryPfpInputRef,
-    audioDevices, testText, setTestText, micTestStatus, ttsStatus, setupStatus, isTestingVoice, speak, handleTestMic,
+    audioDevices, testText, setTestText, micTestStatus, ttsStatus, isTestingVoice, speak, handleTestMic,
     hasCustomKey, hasGroqKey, apiKeyInput, setApiKeyInput, groqApiKeyInput, setGroqApiKeyInput,
     handleSetApiKey, handleSetGroqKey, handleRemoveApiKey, handleRemoveGroqKey,
     updateStatus, latestVersion, updateUrl, updateError, updateProgress, checkForUpdates,
@@ -197,7 +197,6 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
         </div>
 
         <SystemStatusBanner
-          setupStatus={setupStatus}
           ttsStatus={ttsStatus}
           hasCustomKey={hasCustomKey}
           hasGroqKey={hasGroqKey}

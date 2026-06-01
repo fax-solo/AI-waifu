@@ -111,27 +111,26 @@ def find_config():
 def init_engine():
     global model, engine_loaded, engine_error, current_device
 
-    if model:
+    if model or engine_loaded:
         return
 
-    safe_print("[TTS] Initializing StyleTTS2...")
     start_time = time.time()
+    checkpoint_path = find_checkpoint()
+    config_path = find_config()
 
+    if not checkpoint_path or not config_path:
+        safe_print("[TTS] No local model files found yet. Waiting for setup to finish...")
+        return
+
+    safe_print(f"[TTS] Initializing StyleTTS2 from {os.path.basename(checkpoint_path)}...")
     try:
         from styletts2 import tts
 
-        checkpoint_path = find_checkpoint()
-        config_path = find_config()
-
-        if checkpoint_path and config_path:
-            safe_print(f"[TTS] Loading model from {os.path.basename(checkpoint_path)}")
-            model = tts.StyleTTS2(
-                model_checkpoint_path=checkpoint_path,
-                config_path=config_path
-            )
-        else:
-            safe_print("[TTS] No local checkpoint found. Will auto-download from HuggingFace on first inference.")
-            model = tts.StyleTTS2()
+        safe_print(f"[TTS] Loading model from {os.path.basename(checkpoint_path)}")
+        model = tts.StyleTTS2(
+            model_checkpoint_path=checkpoint_path,
+            config_path=config_path
+        )
 
         engine_loaded = True
         safe_print(f"[TTS] Engine loaded in {time.time() - start_time:.2f}s")
@@ -141,10 +140,21 @@ def init_engine():
         import traceback
         traceback.print_exc()
 
+def watch_for_models():
+    global model, engine_loaded, engine_error
+    while True:
+        time.sleep(30)
+        if not engine_loaded and model is None:
+            checkpoint_path = find_checkpoint()
+            config_path = find_config()
+            if checkpoint_path and config_path:
+                safe_print("[TTS] Model files detected. Loading engine...")
+                init_engine()
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     import threading
-    threading.Thread(target=init_engine, daemon=True).start()
+    threading.Thread(target=watch_for_models, daemon=True).start()
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -284,6 +294,32 @@ async def health():
         "loaded": engine_loaded,
         "error": engine_error,
     }
+
+@app.post("/reload")
+async def reload_engine():
+    global model, engine_loaded, engine_error
+    # Properly free the old model memory before reloading
+    if model is not None:
+        try:
+            if hasattr(model, 'unload'):
+                model.unload()
+        except Exception:
+            pass
+        del model
+        model = None
+    import gc
+    gc.collect()
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except ImportError:
+        pass
+    engine_loaded = False
+    engine_error = None
+    import threading
+    threading.Thread(target=init_engine, daemon=True).start()
+    return {"status": "reloading"}
 
 @app.get("/voices")
 async def list_voices():

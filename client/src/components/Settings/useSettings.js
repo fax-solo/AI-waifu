@@ -95,8 +95,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
   const [micTestStatus, setMicTestStatus] = useState('idle');
   const [ttsStatus, setTtsStatus] = useState({ status: 'unknown', device: 'cpu' });
   const [voices, setVoices] = useState([{ id: 'default', name: 'Default Voice', path: '' }]);
-  const [setupStatus, setSetupStatus] = useState(null);
-
   const [activeTab, setActiveTab] = useState('profile');
   const [settingsSearch, setSettingsSearch] = useState('');
 
@@ -204,15 +202,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
       }
     }
 
-    async function checkSetupStatus() {
-      try {
-        const data = await api.fetchApi('/setup/status');
-        if (!cancelled) setSetupStatus(data);
-      } catch {
-        if (!cancelled) setSetupStatus(null);
-      }
-    }
-
     async function checkTTS() {
       while (!cancelled) {
         try {
@@ -220,9 +209,13 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
           if (cancelled) return;
           const data = await res.json();
           if (!cancelled) setTtsStatus(data);
-          // Once TTS is online, load available voices
-          loadVoices();
-          return;
+          // Once TTS engine is fully loaded, load available voices and stop polling
+          if (data.loaded === true) {
+            loadVoices();
+            return;
+          }
+          // Engine still loading — poll again after a delay
+          await new Promise(r => setTimeout(r, 3000));
         } catch (err) {
           if (err.name === 'AbortError') return;
           if (!cancelled) setTtsStatus({ status: 'offline', device: 'none' });
@@ -243,7 +236,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     }
 
     load();
-    checkSetupStatus();
     checkTTS();
     loadMemories();
     loadAudioDevices();
@@ -740,7 +732,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     currentVRMName, avatars, isUploading, showUploadForm, uploadForm,
     showGallery, galleryAvatars, downloadingGalleryId,
     showGalleryUpload, galleryUploadForm, isGalleryUploading,
-    audioDevices, testText, micTestStatus, ttsStatus, setupStatus,
+    audioDevices, testText, micTestStatus, ttsStatus,
     activeTab, settingsSearch, dirty, showUnsavedDialog,
     isTestingVoice,
     animations, animLoading, animSearch, testStatus,

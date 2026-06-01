@@ -5,20 +5,16 @@ import Sidebar from './components/Sidebar/Sidebar.jsx';
 import ChatWindow from './components/Chat/ChatWindow.jsx';
 const Settings = lazy(() => import('./components/Settings/Settings.jsx'));
 import AvatarViewport from './components/Avatar/AvatarViewport.jsx';
-import SetupUI from './components/Setup/SetupUI.jsx';
 import { useTTS } from './hooks/useTTS.js';
 import useShortcuts, { DEFAULT_SHORTCUTS } from './hooks/useShortcuts.js';
 import * as api from './utils/api.js';
+import { WelcomeScreen } from './components/SetupWizard/index.js';
 
 const MIN_PANEL_WIDTH = 250;
 const DEFAULT_PANEL_WIDTH = 400;
 
 export default function App() {
-  const { t } = useLanguage();
   const [showSetup, setShowSetup] = useState(false);
-  const [checkingSetup, setCheckingSetup] = useState(true);
-  const [systemInfo, setSystemInfo] = useState(null);
-
   const {
     conversations,
     activeConversationId,
@@ -97,27 +93,6 @@ export default function App() {
       }
     }
 
-    async function checkSetup(retries = 10, delay = 500) {
-      try {
-        // Use the centralized API client which correctly handles port 3001
-        const data = await api.fetchApi('/setup/status');
-        setSystemInfo(data);
-        if (data.setupRequired) {
-          setShowSetup(true);
-        }
-        setCheckingSetup(false);
-      } catch (err) {
-        if (retries > 0) {
-          console.log(`Setup check failed, retrying in ${delay}ms... (${retries} left)`);
-          setTimeout(() => checkSetup(retries - 1, delay), delay);
-        } else {
-          console.error('Failed to check setup status after retries:', err);
-          setCheckingSetup(false);
-        }
-      }
-    }
-
-    checkSetup();
     loadSettings();
   }, [loadRateLimit]);
 
@@ -379,6 +354,11 @@ export default function App() {
     }
   };
 
+  const handleTriggerSetup = useCallback(() => {
+    setShowSettings(false);
+    setShowSetup(true);
+  }, []);
+
   useShortcuts(
     Object.keys(companionSettings.shortcuts || {}).length > 0 ? companionSettings.shortcuts : DEFAULT_SHORTCUTS,
     {
@@ -391,30 +371,11 @@ export default function App() {
     }
   );
 
-  if (checkingSetup) {
-    return (
-      <div className="app-splash">
-        <div className="app-splash-logo">✦</div>
-        <div className="app-splash-title">Waifu</div>
-        <div className="app-splash-spinner" />
-      </div>
-    );
-  }
-
   if (showSetup) {
     return (
-      <SetupUI
-        onComplete={async () => {
-          try {
-            const data = await api.fetchApi('/setup/status');
-            setSystemInfo(data);
-          } catch {
-            // Ignore — keep stale systemInfo
-          }
-          setShowSetup(false);
-        }}
+      <WelcomeScreen
         onSkip={() => setShowSetup(false)}
-        systemInfo={systemInfo}
+        onComplete={() => setShowSetup(false)}
       />
     );
   }
@@ -507,10 +468,7 @@ export default function App() {
             onVRMFileSelected={handleVRMFileSelected}
             avatarRef={avatarRef}
             onShortcutsChange={handleShortcutsChange}
-            onTriggerSetup={() => {
-              setShowSettings(false);
-              setShowSetup(true);
-            }}
+            onTriggerSetup={handleTriggerSetup}
           />
         </Suspense>
       )}

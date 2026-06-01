@@ -28,9 +28,9 @@ import conversationRoutes from './routes/conversations.js';
 import settingsRoutes from './routes/settings.js';
 import ttsRoutes from './routes/tts.js';
 import avatarRoutes, { UPLOADS_BASE } from './routes/avatars.js';
-import setupRoutes from './routes/setup.js';
 import sttRoutes from './routes/stt.js';
 import animationRoutes from './routes/animations.js';
+import setupRoutes from './routes/setup.js';
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -129,9 +129,9 @@ app.use('/api/conversations', conversationRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/tts', ttsRoutes);
 app.use('/api/avatars', avatarRoutes);
-app.use('/api/setup', setupRoutes);
 app.use('/api/animations', animationRoutes);
 app.use('/api/stt', sttRoutes);
+app.use('/api/setup', setupRoutes);
 
 // Static files
 app.use('/uploads', express.static(UPLOADS_BASE));

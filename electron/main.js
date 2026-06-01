@@ -23,6 +23,14 @@ if (!isDev) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Prevent uncaught exceptions from crashing the app
+process.on('uncaughtException', (err) => {
+  console.error('[Main] Uncaught exception:', err.message);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[Main] Unhandled rejection:', err?.message || err);
+});
+
 const sidecarProcesses = [];
 
 function startSidecar(port, scriptName, serviceName) {
@@ -77,7 +85,11 @@ function startSidecar(port, scriptName, serviceName) {
         if (pid && pid !== '0') execSync(`taskkill /PID ${pid} /F`, { stdio: 'ignore' });
       } catch {}
     } else {
-      try { execSync(`fuser -k ${port}/tcp 2>/dev/null || true`, { stdio: 'ignore' }); } catch {}
+      try { execSync(`fuser -k ${port}/tcp 2>/dev/null`, { stdio: 'ignore' }); } catch {}
+      // Fallback: kill any Python process using this port
+      try {
+        execSync(`lsof -ti tcp:${port} | xargs -r kill -9 2>/dev/null`, { stdio: 'ignore' });
+      } catch {}
     }
   } catch {}
 
@@ -93,9 +105,10 @@ function startSidecar(port, scriptName, serviceName) {
     }
   });
 
-  proc.stdout.on('data', (d) => console.log(`${tag} ${d}`));
-  proc.stderr.on('data', (d) => console.error(`${tag} Error: ${d}`));
-  proc.on('close', (code) => console.log(`${tag} Exited with code ${code}`));
+  const safeLog = (fn, msg) => { try { fn(msg); } catch {} };
+  proc.stdout.on('data', (d) => safeLog(console.log, `${tag} ${d}`));
+  proc.stderr.on('data', (d) => safeLog(console.error, `${tag} Error: ${d}`));
+  proc.on('close', (code) => safeLog(console.log, `${tag} Exited with code ${code}`));
 
   sidecarProcesses.push(proc);
   return proc;
