@@ -1,24 +1,10 @@
-/**
- * Settings Routes
- *
- * GET  /api/settings            - Get user settings
- * PUT  /api/settings            - Update user settings
- * POST /api/settings/api-key    - Set custom API key
- * DELETE /api/settings/api-key  - Remove custom API key
- * GET  /api/settings/rate-limit - Get rate limit status
- */
-
 import { Router } from 'express';
 import { encrypt, decrypt } from '../utils/crypto.js';
 import { getRateLimitStatus } from '../middleware/rateLimit.js';
-import db from '../config/database.js';
+import db, { listBackups, runBackup } from '../config/database.js';
 
 const router = Router();
 
-/**
- * GET /api/settings
- * Get all settings for the current user.
- */
 router.get('/', (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
@@ -31,7 +17,6 @@ router.get('/', (req, res) => {
 
     console.log('[Settings] Found user:', !!user, 'Found companion:', !!companion);
 
-    // Don't send the actual encrypted key, just whether one exists
     const hasCustomKey = !!companion?.custom_api_key_encrypted;
     const hasGroqKey = !!companion?.groq_api_key_encrypted;
 
@@ -54,8 +39,7 @@ router.get('/', (req, res) => {
         ttsVoice: companion?.tts_voice || 'default',
         audioInputDevice: companion?.audio_input_device || 'default',
         audioOutputDevice: companion?.audio_output_device || 'default',
-        ttsDevice: companion?.tts_device || 'cpu',
-        ttsEngine: companion?.tts_engine || 'styletts2',
+        ttsDevice: companion?.tts_device || 'gpu',
         ttsSpeed: companion?.tts_speed ?? 1.0,
         ttsPitch: companion?.tts_pitch ?? 1.0,
         ttsVolume: companion?.tts_volume ?? 1.0,
@@ -72,10 +56,6 @@ router.get('/', (req, res) => {
   }
 });
 
-/**
- * PUT /api/settings
- * Update user display name and/or companion settings.
- */
 router.put('/', (req, res) => {
   try {
     const userId = req.headers['x-user-id'];
@@ -83,14 +63,12 @@ router.put('/', (req, res) => {
 
     console.log('[Settings] Saving for user:', userId);
 
-    // Update user display name
     if (displayName !== undefined) {
       db.prepare(
         'UPDATE users SET display_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
       ).run(displayName, userId);
     }
 
-    // Update companion settings
     if (companion) {
       const existing = db.prepare(
         'SELECT user_id FROM companion_settings WHERE user_id = ?'
@@ -108,68 +86,53 @@ router.put('/', (req, res) => {
               audio_input_device = COALESCE(?, audio_input_device),
               audio_output_device = COALESCE(?, audio_output_device),
               tts_device = COALESCE(?, tts_device),
-              tts_engine = COALESCE(?, tts_engine),
               tts_speed = COALESCE(?, tts_speed),
               tts_pitch = COALESCE(?, tts_pitch),
               tts_volume = COALESCE(?, tts_volume),
-              tts_alpha = COALESCE(?, tts_alpha),
-              tts_beta = COALESCE(?, tts_beta),
-              tts_diffusion_steps = COALESCE(?, tts_diffusion_steps),
-              tts_embedding_scale = COALESCE(?, tts_embedding_scale),
               llm_model = COALESCE(?, llm_model),
-               llm_provider = COALESCE(?, llm_provider),
-               shortcuts = COALESCE(?, shortcuts),
-                updated_at = CURRENT_TIMESTAMP
-           WHERE user_id = ?
-         `).run(
-           companion.name || null,
-           companion.tone || null,
-           companion.personality || null,
-           companion.backstory || null,
-           companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : null,
-           companion.ttsVoice || null,
-           companion.audioInputDevice || null,
-           companion.audioOutputDevice || null,
-           companion.ttsDevice || null,
-           companion.ttsEngine || null,
-           companion.ttsSpeed !== undefined ? companion.ttsSpeed : null,
-           companion.ttsPitch !== undefined ? companion.ttsPitch : null,
-           companion.ttsVolume !== undefined ? companion.ttsVolume : null,
-           companion.ttsAlpha !== undefined ? companion.ttsAlpha : null,
-           companion.ttsBeta !== undefined ? companion.ttsBeta : null,
-           companion.ttsDiffusionSteps !== undefined ? companion.ttsDiffusionSteps : null,
-           companion.ttsEmbeddingScale !== undefined ? companion.ttsEmbeddingScale : null,
-           companion.llmModel || null,
-           companion.llmProvider || null,
-           companion.shortcuts ? JSON.stringify(companion.shortcuts) : null,
-           userId
+              llm_provider = COALESCE(?, llm_provider),
+              shortcuts = COALESCE(?, shortcuts),
+              updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ?
+        `).run(
+          companion.name || null,
+          companion.tone || null,
+          companion.personality || null,
+          companion.backstory || null,
+          companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : null,
+          companion.ttsVoice || null,
+          companion.audioInputDevice || null,
+          companion.audioOutputDevice || null,
+          companion.ttsDevice || null,
+          companion.ttsSpeed !== undefined ? companion.ttsSpeed : null,
+          companion.ttsPitch !== undefined ? companion.ttsPitch : null,
+          companion.ttsVolume !== undefined ? companion.ttsVolume : null,
+          companion.llmModel || null,
+          companion.llmProvider || null,
+          companion.shortcuts ? JSON.stringify(companion.shortcuts) : null,
+          userId
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_engine, tts_speed, tts_pitch, tts_volume, tts_alpha, tts_beta, tts_diffusion_steps, tts_embedding_scale, llm_model, llm_provider, shortcuts)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_speed, tts_pitch, tts_volume, llm_model, llm_provider, shortcuts)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
-           companion.name || 'Aria',
-           companion.tone || 'cute, friendly, emotional',
-           companion.personality || 'You are a loving and caring companion who deeply cares about the user.',
-           companion.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
-           companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : 1,
-           companion.ttsVoice || 'default',
-           companion.audioInputDevice || 'default',
-           companion.audioOutputDevice || 'default',
-           companion.ttsDevice || 'cpu',
-           companion.ttsEngine || 'styletts2',
-           companion.ttsSpeed ?? 1.0,
-           companion.ttsPitch ?? 1.0,
-           companion.ttsVolume ?? 1.0,
-           companion.ttsAlpha ?? 0.3,
-           companion.ttsBeta ?? 0.7,
-           companion.ttsDiffusionSteps ?? 5,
-           companion.ttsEmbeddingScale ?? 1.0,
-           companion.llmModel || 'gemini-2.0-flash-lite',
-           companion.llmProvider || 'gemini',
-           companion.shortcuts ? JSON.stringify(companion.shortcuts) : null
+          companion.name || 'Aria',
+          companion.tone || 'cute, friendly, emotional',
+          companion.personality || 'You are a loving and caring companion who deeply cares about the user.',
+          companion.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
+          companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : 1,
+          companion.ttsVoice || 'default',
+          companion.audioInputDevice || 'default',
+          companion.audioOutputDevice || 'default',
+          companion.ttsDevice || 'gpu',
+          companion.ttsSpeed ?? 1.0,
+          companion.ttsPitch ?? 1.0,
+          companion.ttsVolume ?? 1.0,
+          companion.llmModel || 'gemini-2.0-flash-lite',
+          companion.llmProvider || 'gemini',
+          companion.shortcuts ? JSON.stringify(companion.shortcuts) : null
         );
       }
     }
@@ -181,10 +144,6 @@ router.put('/', (req, res) => {
   }
 });
 
-/**
- * POST /api/settings/api-key
- * Store a user's custom Gemini API key (encrypted).
- */
 router.post('/api-key', (req, res) => {
   const userId = req.headers['x-user-id'];
   const { apiKey } = req.body;
@@ -193,7 +152,6 @@ router.post('/api-key', (req, res) => {
     return res.status(400).json({ error: 'API key cannot be empty.' });
   }
 
-  // Basic validation - Gemini API keys start with "AI"
   if (!apiKey.startsWith('AI')) {
     return res.status(400).json({
       error: 'Invalid API key format. Gemini API keys typically start with "AI".',
@@ -202,7 +160,6 @@ router.post('/api-key', (req, res) => {
 
   const encrypted = encrypt(apiKey.trim());
 
-  // Ensure companion_settings row exists
   const existing = db.prepare(
     'SELECT user_id FROM companion_settings WHERE user_id = ?'
   ).get(userId);
@@ -220,10 +177,6 @@ router.post('/api-key', (req, res) => {
   res.json({ success: true, message: 'API key saved securely.' });
 });
 
-/**
- * DELETE /api/settings/api-key
- * Remove a user's custom API key.
- */
 router.delete('/api-key', (req, res) => {
   const userId = req.headers['x-user-id'];
 
@@ -234,10 +187,6 @@ router.delete('/api-key', (req, res) => {
   res.json({ success: true, message: 'API key removed.' });
 });
 
-/**
- * POST /api/settings/groq-key
- * Store a user's custom Groq API key (encrypted).
- */
 router.post('/groq-key', (req, res) => {
   const userId = req.headers['x-user-id'];
   const { apiKey } = req.body;
@@ -246,7 +195,6 @@ router.post('/groq-key', (req, res) => {
     return res.status(400).json({ error: 'API key cannot be empty.' });
   }
 
-  // Basic validation - Groq API keys start with "gsk_"
   if (!apiKey.trim().startsWith('gsk_')) {
     return res.status(400).json({
       error: 'Invalid API key format. Groq API keys typically start with "gsk_".',
@@ -272,10 +220,6 @@ router.post('/groq-key', (req, res) => {
   res.json({ success: true, message: 'Groq API key saved securely.' });
 });
 
-/**
- * DELETE /api/settings/groq-key
- * Remove a user's custom Groq API key.
- */
 router.delete('/groq-key', (req, res) => {
   const userId = req.headers['x-user-id'];
 
@@ -286,15 +230,10 @@ router.delete('/groq-key', (req, res) => {
   res.json({ success: true, message: 'Groq API key removed.' });
 });
 
-/**
- * GET /api/settings/rate-limit
- * Get current rate limit status.
- */
 router.get('/rate-limit', (req, res) => {
   const userId = req.headers['x-user-id'];
   const status = getRateLimitStatus(userId);
 
-  // Check if user has custom key
   const companion = db.prepare(
     'SELECT custom_api_key_encrypted FROM companion_settings WHERE user_id = ?'
   ).get(userId);
@@ -306,10 +245,6 @@ router.get('/rate-limit', (req, res) => {
   });
 });
 
-/**
- * GET /api/settings/memories
- * Get user's stored memories.
- */
 router.get('/memories', (req, res) => {
   const userId = req.headers['x-user-id'];
 
@@ -320,10 +255,6 @@ router.get('/memories', (req, res) => {
   res.json(memories);
 });
 
-/**
- * DELETE /api/settings/memories/:id
- * Delete a specific memory.
- */
 router.delete('/memories/:id', (req, res) => {
   const userId = req.headers['x-user-id'];
   const { id } = req.params;
@@ -333,6 +264,106 @@ router.delete('/memories/:id', (req, res) => {
   ).run(id, userId);
 
   res.json({ success: true });
+});
+
+router.get('/character/export', (req, res) => {
+  const userId = req.headers['x-user-id'];
+
+  const companion = db.prepare(
+    'SELECT * FROM companion_settings WHERE user_id = ?'
+  ).get(userId) || {};
+
+  const character = {
+    name: companion.name || 'Aria',
+    tone: companion.tone || 'cute, friendly, emotional',
+    personality: companion.personality || 'You are a loving and caring companion who deeply cares about the user.',
+    backstory: companion.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
+    ttsVoice: companion.tts_voice || 'default',
+    ttsSpeed: companion.tts_speed ?? 1.0,
+    ttsPitch: companion.tts_pitch ?? 1.0,
+    ttsVolume: companion.tts_volume ?? 1.0,
+    llmModel: companion.llm_model || 'gemini-2.0-flash-lite',
+    llmProvider: companion.llm_provider || 'gemini',
+  };
+
+  const version = 1;
+  const blob = JSON.stringify({ version, type: 'waifu-character', character }, null, 2);
+
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename="${character.name.replace(/[^a-zA-Z0-9]/g, '_')}_character.json"`);
+  res.send(blob);
+});
+
+router.post('/character/import', (req, res) => {
+  const userId = req.headers['x-user-id'];
+  const { character } = req.body;
+
+  if (!character || !character.name) {
+    return res.status(400).json({ error: 'Invalid character data: name is required.' });
+  }
+
+  const existing = db.prepare(
+    'SELECT user_id FROM companion_settings WHERE user_id = ?'
+  ).get(userId);
+
+  const data = {
+    name: character.name || 'Aria',
+    tone: character.tone || 'cute, friendly, emotional',
+    personality: character.personality || 'You are a loving and caring companion who deeply cares about the user.',
+    backstory: character.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
+    ttsVoice: character.ttsVoice || 'default',
+    ttsSpeed: character.ttsSpeed ?? 1.0,
+    ttsPitch: character.ttsPitch ?? 1.0,
+    ttsVolume: character.ttsVolume ?? 1.0,
+    llmModel: character.llmModel || 'gemini-2.0-flash-lite',
+    llmProvider: character.llmProvider || 'gemini',
+  };
+
+  if (existing) {
+    db.prepare(`
+      UPDATE companion_settings
+      SET name = ?, tone = ?, personality = ?, backstory = ?,
+          tts_voice = ?, tts_speed = ?, tts_pitch = ?, tts_volume = ?,
+          llm_model = ?, llm_provider = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ?
+    `).run(
+      data.name, data.tone, data.personality, data.backstory,
+      data.ttsVoice, data.ttsSpeed, data.ttsPitch, data.ttsVolume,
+      data.llmModel, data.llmProvider,
+      userId
+    );
+  } else {
+    db.prepare(`
+      INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_voice, tts_speed, tts_pitch, tts_volume, llm_model, llm_provider)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      userId,
+      data.name, data.tone, data.personality, data.backstory,
+      data.ttsVoice, data.ttsSpeed, data.ttsPitch, data.ttsVolume,
+      data.llmModel, data.llmProvider
+    );
+  }
+
+  res.json({ success: true, character: data });
+});
+
+router.get('/backups', (req, res) => {
+  try {
+    const backups = listBackups();
+    res.json({ backups });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/backups', (req, res) => {
+  try {
+    runBackup();
+    const backups = listBackups();
+    res.json({ success: true, backups });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 export default router;

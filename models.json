@@ -1,40 +1,22 @@
 {
   "tts": {
-    "model_ljspeech": {
-      "url": "https://huggingface.co/yl4579/StyleTTS2-LJSpeech/resolve/main/Models/LJSpeech/epoch_2nd_00100.pth",
-      "path": "python/styletts2-ljspeech.pth",
-      "size": 749716474,
+    "kokoro_model": {
+      "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx",
+      "path": "python/kokoro-v1.0.onnx",
+      "size": 325532387,
       "version": "1.0"
     },
-    "model_libritts": {
-      "url": "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/Models/LibriTTS/epochs_2nd_00020.pth",
-      "path": "python/styletts2-libritts.pth",
-      "size": 771390526,
-      "version": "1.0"
-    },
-    "config_ljspeech": {
-      "url": "https://huggingface.co/yl4579/StyleTTS2-LJSpeech/resolve/main/Models/LJSpeech/config.yml",
-      "path": "python/styletts2-config-ljspeech.yml",
-      "size": 1895,
-      "version": "1.0"
-    },
-    "config_libritts": {
-      "url": "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/Models/LibriTTS/config.yml",
-      "path": "python/styletts2-config-libritts.yml",
-      "size": 1859,
-      "version": "1.0"
-    },
-    "voices": {
-      "url": "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/reference_audio.zip",
-      "path": "python/reference_audio.zip",
-      "size": 2917622,
+    "kokoro_voices": {
+      "url": "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin",
+      "path": "python/voices-v1.0.bin",
+      "size": 28214398,
       "version": "1.0"
     }
   },
   "__packages__": {
     "python-env-cpu": {
       "name": "Local AI Engine (CPU)",
-      "description": "Installs the Python environment and ONNX Runtime tailored for CPU execution.",
+      "description": "Installs the Python environment optimized for CPU execution. Includes PyTorch CPU, ONNX Runtime CPU, and all TTS dependencies.",
       "sizeBytes": 188743680,
       "required": true,
       "icon": "Cpu",
@@ -43,35 +25,33 @@
     },
     "python-env-gpu": {
       "name": "Local AI Engine (NVIDIA GPU)",
-      "description": "Installs the Python environment and CUDA-enabled ONNX Runtime for fast execution on NVIDIA GPUs.",
-      "sizeBytes": 262144000,
-      "required": true,
-      "icon": "Cpu",
+      "description": "Installs the Python environment with CUDA-enabled PyTorch for GPU-accelerated TTS on NVIDIA GPUs. Requires an NVIDIA GPU with CUDA 12+ support.",
+      "sizeBytes": 314572800,
+      "required": false,
+      "icon": "Zap",
       "type": "python-env",
       "engine": "gpu"
     },
+    "python-env-rocm": {
+      "name": "Local AI Engine (AMD GPU)",
+      "description": "Installs the Python environment with ROCm-enabled PyTorch for GPU-accelerated TTS on AMD GPUs. Requires an AMD GPU with ROCm 6+ support.",
+      "sizeBytes": 314572800,
+      "required": false,
+      "icon": "Zap",
+      "type": "python-env",
+      "engine": "rocm"
+    },
     "tts-model": {
-      "name": "Kokoro ONNX Engine",
-      "description": "The core neural network model for the local Text-to-Speech system.",
-      "sizeBytes": 621662208,
+      "name": "Kokoro TTS Model",
+      "description": "Kokoro ONNX neural TTS model with 54 built-in voices. Lightweight and fast.",
+      "sizeBytes": 353746785,
       "required": true,
       "icon": "Mic",
       "type": "download",
       "assets": [
-        "model_ljspeech",
-        "config_ljspeech",
-        "model_libritts",
-        "config_libritts"
+        "kokoro_model",
+        "kokoro_voices"
       ]
-    },
-    "tts-voices": {
-      "name": "Voice Pack (v1.0)",
-      "description": "Binary voice definitions and latent weights for the Kokoro TTS engine.",
-      "sizeBytes": 27000000,
-      "required": true,
-      "icon": "Mic",
-      "type": "download",
-      "assets": ["voices"]
     },
     "gallery-avatars": {
       "name": "3D Gallery Avatars",

@@ -51,13 +51,25 @@ export default function CheckingStep({ onNext, onSkip }) {
   const [revealed, setRevealed] = useState([]);
   const revealedRef = useRef([]);
 
+  const checkDataRef = useRef(null);
+
   useEffect(() => {
     let cancelled = false;
     runSetupCheck()
-      .then(data => { if (!cancelled) setResults(data.checks); })
+      .then(data => {
+        if (!cancelled) {
+          setResults(data.checks);
+          checkDataRef.current = data;
+        }
+      })
       .catch(err => { if (!cancelled) setError(err.message); });
     return () => { cancelled = true; };
   }, []);
+
+  function handleContinue() {
+    const data = checkDataRef.current || {};
+    onNext({ checks: data.checks, recommendedEnv: data.recommendedEnv });
+  }
 
   const allDone = results || error;
 
@@ -152,7 +164,7 @@ export default function CheckingStep({ onNext, onSkip }) {
 
       <div className="flex flex-col items-center gap-3">
         <button
-          onClick={onNext}
+          onClick={handleContinue}
           disabled={!allDone}
           className="inline-flex items-center justify-center gap-2 font-medium text-sm"
           style={{

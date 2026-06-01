@@ -44,11 +44,12 @@ export default function ResultsStep({ onComplete, onSkip, backend }) {
   async function handleFinish() {
     setCompleting(true);
     try {
-      await completeSetup({ backend });
-      onComplete();
-    } catch {
-      setCompleting(false);
-    }
+      await Promise.race([
+        completeSetup({ backend }),
+        new Promise(resolve => setTimeout(resolve, 5000)),
+      ]);
+    } catch {}
+    onComplete();
   }
 
   return (

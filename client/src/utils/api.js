@@ -103,7 +103,7 @@ export function getUploadUrl(path) {
 
   const serverBase = window.location.protocol === 'file:'
     ? 'http://127.0.0.1:3005'
-    : 'http://127.0.0.1:3005';
+    : '';
 
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
   const encoded = cleanPath.split('/').map(p => encodeURIComponent(p)).join('/');
@@ -138,10 +138,99 @@ export async function sendMessage(conversationId, message, screenshot) {
   }
 }
 
+/**
+ * Send a message and stream the response via SSE.
+ * @returns {AbortController} controller to abort the stream
+ */
+export function sendMessageStream(conversationId, message, screenshot, callbacks) {
+  const userId = getUserId();
+  const controller = new AbortController();
+
+  const body = {
+    conversationId: String(conversationId || ''),
+    message: String(message || ''),
+  };
+  if (screenshot) body.screenshot = String(screenshot);
+
+  const start = Date.now();
+
+  fetch(`${API_BASE}/chat/stream`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': userId,
+    },
+    body: JSON.stringify(body),
+    signal: controller.signal,
+  }).then(async (response) => {
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      callbacks.onError?.(errData.error || `Request failed: ${response.status}`);
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() || '';
+
+      for (const part of parts) {
+        const lines = part.split('\n');
+        let eventType = '';
+        let dataStr = '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+          if (line.startsWith('data: ')) dataStr = line.slice(6).trim();
+        }
+
+        if (!dataStr) continue;
+
+        try {
+          const data = JSON.parse(dataStr);
+          switch (eventType) {
+            case 'token':
+              callbacks.onToken?.(data.text);
+              break;
+            case 'search':
+              callbacks.onSearch?.(data.query);
+              break;
+            case 'done':
+              callbacks.onDone?.(data);
+              break;
+            case 'error':
+              callbacks.onError?.(data.message);
+              break;
+          }
+        } catch (e) {
+          console.error('[API] Failed to parse SSE event:', e);
+        }
+      }
+    }
+  }).catch((err) => {
+    if (err.name !== 'AbortError') {
+      callbacks.onError?.(err.message);
+    }
+  });
+
+  return controller;
+}
+
 // ─── Conversations API ─────────────────────────────────────────
 
 export async function getConversations() {
   return request('/conversations');
+}
+
+export async function searchConversations(query) {
+  return request(`/conversations/search?q=${encodeURIComponent(query)}`);
 }
 
 export async function createConversation(title) {
@@ -196,6 +285,29 @@ export async function removeApiKey() {
 
 export async function getRateLimit() {
   return request('/settings/rate-limit');
+}
+
+export async function exportCharacter() {
+  const response = await fetch(`${API_BASE}/settings/character/export`, {
+    headers: { 'x-user-id': getUserId() },
+  });
+  if (!response.ok) throw new Error('Failed to export character');
+  return response.json();
+}
+
+export async function importCharacter(character) {
+  return request('/settings/character/import', {
+    method: 'POST',
+    body: JSON.stringify({ character }),
+  });
+}
+
+export async function getBackups() {
+  return request('/settings/backups');
+}
+
+export async function triggerBackup() {
+  return request('/settings/backups', { method: 'POST' });
 }
 
 export async function getMemories() {
@@ -270,10 +382,6 @@ export async function getTTS(text, voice = 'default', speed = 1.0, options = {})
     },
     body: JSON.stringify({
       text, voice, speed,
-      alpha: options.alpha ?? 0.3,
-      beta: options.beta ?? 0.7,
-      diffusion_steps: options.diffusionSteps ?? 5,
-      embedding_scale: options.embeddingScale ?? 1.0,
     }),
   });
 
@@ -285,6 +393,10 @@ export async function getTTS(text, voice = 'default', speed = 1.0, options = {})
 }
 
 // ─── Setup API ──────────────────────────────────────────────
+
+export async function checkSetupStatus() {
+  return request('/setup/status');
+}
 
 export async function runSetupCheck() {
   return request('/setup/check', { method: 'POST' });

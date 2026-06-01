@@ -9,11 +9,24 @@ const STEPS = ['Welcome', 'Checking', 'Download', 'Results'];
 
 const STEP_COMPONENTS = [WelcomeStep, CheckingStep, DownloadStep, ResultsStep];
 
+const BACKEND_MAP = {
+  'python-env-gpu': 'cuda',
+  'python-env-rocm': 'vulkan',
+  'python-env-cpu': 'cpu',
+};
+
 export default function WelcomeScreen({ onSkip, onComplete }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [backend, setBackend] = useState('cuda');
+  const [checkResults, setCheckResults] = useState(null);
 
   function goNext(data) {
+    if (data?.recommendedEnv && BACKEND_MAP[data.recommendedEnv]) {
+      setBackend(BACKEND_MAP[data.recommendedEnv]);
+    }
+    if (data?.checks) {
+      setCheckResults(data.checks);
+    }
     if (data?.backend) setBackend(data.backend);
     if (currentStep < STEPS.length - 1) {
       setCurrentStep(c => c + 1);

@@ -5,7 +5,7 @@ import { DEFAULT_SHORTCUTS } from '../../hooks/useShortcuts.js';
 import { version as APP_VERSION } from '../../../../package.json';
 
 const VOICES = [
-  { id: 'default', name: 'Default Voice', desc: 'Built-in StyleTTS2 voice (no reference needed)' },
+  { id: 'default', name: 'Default Voice', desc: 'Built-in voice (af_nicole)' },
 ];
 
 const GEMINI_MODELS = [
@@ -42,14 +42,9 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     audioInputDevice: 'default',
     audioOutputDevice: 'default',
     ttsDevice: 'cpu',
-    ttsEngine: 'styletts2',
     ttsSpeed: 1.0,
     ttsPitch: 1.0,
     ttsVolume: 1.0,
-    ttsAlpha: 0.3,
-    ttsBeta: 0.7,
-    ttsDiffusionSteps: 5,
-    ttsEmbeddingScale: 1.0,
     llmModel: 'gemini-2.0-flash-lite',
     llmProvider: 'gemini',
     shortcuts: DEFAULT_SHORTCUTS
@@ -152,7 +147,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     pendingCloseRef.current = null;
   }, []);
 
-  // Load settings
   useEffect(() => {
     let cancelled = false;
     const abortController = new AbortController();
@@ -176,14 +170,9 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
           audioInputDevice: data.companion.audioInputDevice ?? 'default',
           audioOutputDevice: data.companion.audioOutputDevice ?? 'default',
           ttsDevice: data.companion.ttsDevice ?? 'cpu',
-          ttsEngine: data.companion.ttsEngine ?? 'styletts2',
           ttsSpeed: data.companion.ttsSpeed ?? 1.0,
           ttsPitch: data.companion.ttsPitch ?? 1.0,
           ttsVolume: data.companion.ttsVolume ?? 1.0,
-          ttsAlpha: data.companion.ttsAlpha ?? 0.3,
-          ttsBeta: data.companion.ttsBeta ?? 0.7,
-          ttsDiffusionSteps: data.companion.ttsDiffusionSteps ?? 5,
-          ttsEmbeddingScale: data.companion.ttsEmbeddingScale ?? 1.0,
           llmModel: data.companion.llmModel ?? 'gemini-2.0-flash-lite',
           llmProvider: data.companion.llmProvider ?? 'gemini',
           shortcuts: hasCustomShortcuts ? loadedShortcuts : DEFAULT_SHORTCUTS
@@ -205,20 +194,27 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     async function checkTTS() {
       while (!cancelled) {
         try {
-          const res = await fetch(`http://127.0.0.1:5000/health?t=${Date.now()}`, { signal: abortController.signal, cache: 'no-store' });
+          const res = await fetch(`/api/tts/status?t=${Date.now()}`, { signal: abortController.signal, cache: 'no-store' });
           if (cancelled) return;
           const data = await res.json();
-          if (!cancelled) setTtsStatus(data);
-          // Once TTS engine is fully loaded, load available voices and stop polling
+          const normalized = {
+            status: data.loaded ? 'ok' : (data.running ? 'loading' : 'offline'),
+            device: data.device || 'cpu',
+            loaded: data.loaded,
+          };
+          if (!cancelled) setTtsStatus(normalized);
           if (data.loaded === true) {
             loadVoices();
             return;
           }
-          // Engine still loading — poll again after a delay
+          if (!data.running) {
+            fetch('/api/tts/restart', { method: 'POST', signal: abortController.signal }).catch(() => {});
+          }
           await new Promise(r => setTimeout(r, 3000));
         } catch (err) {
           if (err.name === 'AbortError') return;
-          if (!cancelled) setTtsStatus({ status: 'offline', device: 'none' });
+          if (!cancelled) setTtsStatus({ status: 'offline', device: 'none', loaded: false });
+          fetch('/api/tts/restart', { method: 'POST' }).catch(() => {});
           await new Promise(r => setTimeout(r, 3000));
         }
       }
@@ -226,9 +222,9 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
 
     async function loadVoices() {
       try {
-        const res = await fetch(`http://127.0.0.1:5000/voices?t=${Date.now()}`, { signal: abortController.signal, cache: 'no-store' });
+        const resp = await fetch(`http://127.0.0.1:5000/voices?t=${Date.now()}`, { signal: abortController.signal, cache: 'no-store' });
         if (cancelled) return;
-        const list = await res.json();
+        const list = resp.ok ? await resp.json() : [];
         if (!cancelled) setVoices(list);
       } catch {
         if (!cancelled) setVoices([{ id: 'default', name: 'Default Voice', path: '' }]);
@@ -245,7 +241,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
 
     navigator.mediaDevices.ondevicechange = loadAudioDevices;
 
-    // Listen for electron updater events
     if (window.electronAPI) {
       window.electronAPI.onUpdateEvent((event) => {
         switch (event.type) {
@@ -287,7 +282,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     };
   }, []);
 
-  // Track dirty state
   useEffect(() => {
     if (!originalRef.current) return;
     const current = JSON.stringify({ displayName, companion: { ...companion, shortcuts } });
@@ -514,7 +508,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
         const res = await window.electronAPI.checkForUpdates();
         if (!res.success) throw new Error(res.error);
       } else {
-        // Fallback for web mode
         const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/releases/latest`, {
           headers: { 'Accept': 'application/vnd.github.v3+json' }
         });
@@ -587,7 +580,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     }
   };
 
-  // Shortcut recording
   useEffect(() => {
     if (!recordingAction) return;
     const handler = (e) => {
@@ -610,7 +602,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     return () => document.removeEventListener('keydown', handler);
   }, [recordingAction]);
 
-  // Export/Import
   const handleExport = () => {
     const data = {
       version: 1,
@@ -651,7 +642,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     input.click();
   };
 
-  // Data management
   const handleClearMemories = async () => {
     if (!window.confirm('Delete ALL memories? This cannot be undone.')) return;
     try {
@@ -724,7 +714,6 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
   }, [showToast, loadAnimations]);
 
   return {
-    // State
     settings, settingsLoading, displayName, companion,
     apiKeyInput, groqApiKeyInput, hasCustomKey, hasGroqKey,
     saving, toast, memories, shortcuts, recordingAction,
@@ -737,22 +726,18 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     isTestingVoice,
     animations, animLoading, animSearch, testStatus,
 
-    // Refs
     fileInputRef, pfpInputRef, textureInputRef,
     galleryModelInputRef, galleryTextureInputRef, galleryPfpInputRef,
     animFileInputRef,
 
-    // Setters
     setDisplayName, setCompanion, setApiKeyInput, setGroqApiKeyInput,
     setShortcuts, setRecordingAction,
     setShowUploadForm, setUploadForm, setShowGallery,
     setShowGalleryUpload, setGalleryUploadForm,
     setTestText, setActiveTab, setSettingsSearch, setAnimSearch,
 
-    // Constants
     VOICES, voices, GEMINI_MODELS, GROQ_MODELS, GITHUB_REPO,
 
-    // Functions
     showToast, markDirty, handleSave,
     handleSetApiKey, handleSetGroqKey, handleRemoveApiKey, handleRemoveGroqKey,
     loadMemories, handleDeleteMemory,

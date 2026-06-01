@@ -83,11 +83,6 @@ async function initDb() {
       audio_input_device TEXT DEFAULT 'default',
       audio_output_device TEXT DEFAULT 'default',
       tts_device TEXT DEFAULT 'cpu',
-      tts_engine TEXT DEFAULT 'styletts2',
-      tts_alpha REAL DEFAULT 0.3,
-      tts_beta REAL DEFAULT 0.7,
-      tts_diffusion_steps INTEGER DEFAULT 5,
-      tts_embedding_scale REAL DEFAULT 1.0,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
@@ -129,10 +124,15 @@ async function initDb() {
       description TEXT DEFAULT '',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS setup_state (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
   `);
 
   // Migration: Add missing columns for existing databases
-  const tablesToCheck = ['companion_settings', 'rate_limits', 'conversations', 'user_memories'];
+  const tablesToCheck = ['companion_settings', 'rate_limits', 'conversations', 'user_memories', 'setup_state'];
   const tableColumnCache = {};
   for (const t of tablesToCheck) {
     const info = db.prepare(`PRAGMA table_info(${t})`);
@@ -149,15 +149,10 @@ async function initDb() {
     { table: 'companion_settings', name: 'tts_voice', type: 'TEXT DEFAULT "default"' },
     { table: 'companion_settings', name: 'audio_input_device', type: 'TEXT DEFAULT "default"' },
     { table: 'companion_settings', name: 'audio_output_device', type: 'TEXT DEFAULT "default"' },
-    { table: 'companion_settings', name: 'tts_device', type: 'TEXT DEFAULT "cpu"' },
-    { table: 'companion_settings', name: 'tts_engine', type: 'TEXT DEFAULT "styletts2"' },
+    { table: 'companion_settings', name: 'tts_device', type: 'TEXT DEFAULT "gpu"' },
     { table: 'companion_settings', name: 'tts_speed', type: 'REAL DEFAULT 1.0' },
     { table: 'companion_settings', name: 'tts_pitch', type: 'REAL DEFAULT 1.0' },
     { table: 'companion_settings', name: 'tts_volume', type: 'REAL DEFAULT 1.0' },
-    { table: 'companion_settings', name: 'tts_alpha', type: 'REAL DEFAULT 0.3' },
-    { table: 'companion_settings', name: 'tts_beta', type: 'REAL DEFAULT 0.7' },
-    { table: 'companion_settings', name: 'tts_diffusion_steps', type: 'INTEGER DEFAULT 5' },
-    { table: 'companion_settings', name: 'tts_embedding_scale', type: 'REAL DEFAULT 1.0' },
     { table: 'companion_settings', name: 'llm_model', type: 'TEXT DEFAULT "gemini-2.0-flash-lite"' },
     { table: 'companion_settings', name: 'llm_provider', type: 'TEXT DEFAULT "gemini"' },
     { table: 'companion_settings', name: 'groq_api_key_encrypted', type: 'TEXT' },
@@ -166,7 +161,9 @@ async function initDb() {
     { table: 'conversations', name: 'summary', type: 'TEXT DEFAULT ""' },
     { table: 'conversations', name: 'last_summary_msg_count', type: 'INTEGER DEFAULT 0' },
     { table: 'user_memories', name: 'embedding', type: 'BLOB' },
-    { table: 'rate_limits', name: 'search_count', type: 'INTEGER DEFAULT 0' }
+    { table: 'rate_limits', name: 'search_count', type: 'INTEGER DEFAULT 0' },
+    { table: 'setup_state', name: 'key', type: 'TEXT' },
+    { table: 'setup_state', name: 'value', type: 'TEXT' }
   ];
 
   let migrationsApplied = false;
@@ -200,16 +197,73 @@ async function initDb() {
 
 // ─── Persistence helper ─────────────────────────────────────────
 
+let dbDirty = false;
+
+function markDirty() {
+  dbDirty = true;
+}
+
 function saveDb() {
-  if (db) {
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    fs.writeFileSync(DB_PATH, buffer);
+  if (!db || !dbDirty) return;
+  dbDirty = false;
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  fs.writeFileSync(DB_PATH, buffer);
+}
+
+// Auto-save every 10 seconds (only writes when changes occurred)
+setInterval(saveDb, 10000).unref();
+
+// ─── Auto Backup ────────────────────────────────────────────────
+const BACKUP_DIR = path.join(dataDir, 'backups');
+const MAX_BACKUPS = parseInt(process.env.DB_MAX_BACKUPS || '20', 10);
+const BACKUP_INTERVAL = parseInt(process.env.DB_BACKUP_INTERVAL || '1800000', 10); // 30 min
+
+if (!fs.existsSync(BACKUP_DIR)) {
+  fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+
+function createBackup() {
+  if (!db) return;
+  try {
+    // Force a save first so backup reflects latest data
+    saveDb();
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupPath = path.join(BACKUP_DIR, `waifu_${timestamp}.db`);
+    fs.copyFileSync(DB_PATH, backupPath);
+    console.log(`[Backup] Created: ${backupPath}`);
+
+    // Enforce retention — remove oldest backups beyond MAX_BACKUPS
+    const files = fs.readdirSync(BACKUP_DIR)
+      .filter(f => f.startsWith('waifu_') && f.endsWith('.db'))
+      .map(f => ({ name: f, time: fs.statSync(path.join(BACKUP_DIR, f)).mtimeMs }))
+      .sort((a, b) => a.time - b.time);
+
+    while (files.length > MAX_BACKUPS) {
+      const oldest = files.shift();
+      fs.unlinkSync(path.join(BACKUP_DIR, oldest.name));
+      console.log(`[Backup] Purged old backup: ${oldest.name}`);
+    }
+  } catch (err) {
+    console.error('[Backup] Failed:', err.message);
   }
 }
 
-// Auto-save every 10 seconds
-setInterval(saveDb, 10000);
+// Schedule periodic backups
+setInterval(createBackup, BACKUP_INTERVAL).unref();
+
+// Also trigger one shortly after startup
+setTimeout(createBackup, 30000).unref();
+
+// Save on exit
+function shutdown() {
+  console.log('[Database] Shutting down, saving...');
+  saveDb();
+}
+process.on('SIGINT', () => { shutdown(); process.exit(0); });
+process.on('SIGTERM', () => { shutdown(); process.exit(0); });
+process.on('exit', shutdown);
 
 // ─── Wrapper to provide a synchronous-looking API ───────────────
 
@@ -236,6 +290,7 @@ const dbWrapper = {
     return {
       run(...params) {
         self._db.run(sql, params);
+        if (self._db.getRowsModified() > 0) markDirty();
         return { changes: self._db.getRowsModified() };
       },
       get(...params) {
@@ -267,6 +322,7 @@ const dbWrapper = {
    */
   exec(sql) {
     this._db.run(sql);
+    markDirty();
   },
 
   /**
@@ -391,5 +447,24 @@ const dbWrapper = {
 
 // Initialize the database
 await dbWrapper.init();
+
+export function runBackup() {
+  createBackup();
+}
+
+export function listBackups() {
+  if (!fs.existsSync(BACKUP_DIR)) return [];
+  return fs.readdirSync(BACKUP_DIR)
+    .filter(f => f.startsWith('waifu_') && f.endsWith('.db'))
+    .map(f => {
+      const stat = fs.statSync(path.join(BACKUP_DIR, f));
+      return {
+        name: f,
+        size: stat.size,
+        created_at: stat.mtime.toISOString(),
+      };
+    })
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
 
 export default dbWrapper;

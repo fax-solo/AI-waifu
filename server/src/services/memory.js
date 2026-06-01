@@ -161,7 +161,7 @@ export async function getRelevantMemories(userId, query, apiKey, maxResults = 5)
   // Generate embedding for the query
   const queryEmbedding = await generateEmbedding(query, apiKey);
 
-  // Load all memories for this user with their embeddings
+  // Load memories with embeddings first (up to 200 for vector search recall)
   const rows = db.prepare(
     'SELECT id, content, embedding FROM user_memories WHERE user_id = ? ORDER BY created_at DESC LIMIT 200'
   ).all(userId);

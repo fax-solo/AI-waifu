@@ -5,6 +5,7 @@ import { sendSTT } from '../../utils/api.js';
 const MessageInput = forwardRef(({
   onSend,
   disabled,
+  isSending = false,
   placeholder = "Type a message...",
   audioInputDevice,
   screenshot,
@@ -14,7 +15,6 @@ const MessageInput = forwardRef(({
 }, ref) => {
   const [text, setText] = useState('');
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [isSending, setIsSending] = useState(false);
   const [sttError, setSttError] = useState('');
   const sttErrorTimer = useRef(null);
   const textareaRef = useRef(null);
@@ -57,12 +57,10 @@ const MessageInput = forwardRef(({
     return () => textarea.removeEventListener('paste', handlePaste);
   }, [onCaptureScreenshot]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if ((!text.trim() && !screenshot) || disabled) return;
-    setIsSending(true);
-    await onSend(text);
+    onSend(text);
     setText('');
-    setIsSending(false);
   };
 
   const handleKeyDown = (e) => {
@@ -305,10 +303,7 @@ const MessageInput = forwardRef(({
           <button
             id="send-button"
             className={`send-btn${isSending ? ' loading' : ''}`}
-            onClick={handleSubmit}
-            disabled={(!text.trim() && !activeScreenshot) || disabled || isSending}
-            title="Send message"
-            aria-label="Send message"
+            disabled={(!text.trim() && !activeScreenshot) || disabled}
           >
             {isSending ? <div className="send-btn-spinner" /> : <Send size={20} />}
           </button>

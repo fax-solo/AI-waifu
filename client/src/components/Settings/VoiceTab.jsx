@@ -1,11 +1,29 @@
-import { Volume2, Upload } from 'lucide-react';
+import { Volume2, Upload, Play } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
+import { useState } from 'react';
+
+const SAMPLE_TEXT = 'Hello! I am your AI companion. How can I help you today?';
 
 export default function VoiceTab({
   companion, setCompanion, VOICES, audioDevices, micTestStatus,
   testText, setTestText, ttsStatus, isTestingVoice, speak, handleTestMic
 }) {
   const { t } = useLanguage();
+  const [previewingVoice, setPreviewingVoice] = useState(null);
+
+  const previewVoice = (voiceId) => {
+    setPreviewingVoice(voiceId);
+    speak(SAMPLE_TEXT, {
+      enabled: true,
+      voice: voiceId,
+      speed: companion.ttsSpeed ?? 1.0,
+      pitch: companion.ttsPitch ?? 1.0,
+      volume: companion.ttsVolume ?? 1.0,
+      outputDeviceId: companion.audioOutputDevice,
+      device: companion.ttsDevice,
+    });
+    setTimeout(() => setPreviewingVoice(null), 2000);
+  };
 
   return (
     <div className="settings-section">
@@ -76,7 +94,7 @@ export default function VoiceTab({
                     ? `✅ GPU Acceleration ACTIVE (CUDA).`
                     : ttsStatus.status === 'offline'
                       ? '❌ TTS Server Offline.'
-                      : '⚠️ GPU NOT FOUND. PyTorch is running on CPU.'}
+                      : '⚠️ GPU NOT FOUND. Running on CPU.'}
               </div>
             </div>
           </div>
@@ -127,11 +145,6 @@ export default function VoiceTab({
                   volume: companion.ttsVolume ?? 1.0,
                   outputDeviceId: companion.audioOutputDevice,
                   device: companion.ttsDevice,
-                  engine: companion.ttsEngine,
-                  alpha: companion.ttsAlpha ?? 0.3,
-                  beta: companion.ttsBeta ?? 0.7,
-                  diffusionSteps: companion.ttsDiffusionSteps ?? 5,
-                  embeddingScale: companion.ttsEmbeddingScale ?? 1.0,
                 })}
                 disabled={isTestingVoice || !testText.trim()}
               >
@@ -140,58 +153,25 @@ export default function VoiceTab({
             </div>
           </div>
 
-          <label className="settings-label">{t('settings.voice.styleParams')}</label>
-          <div className="settings-voice-grid">
-            <div className="form-group">
-              <label>{t('settings.voice.voiceAlpha')}: {companion.ttsAlpha?.toFixed(2) ?? 0.30}</label>
-              <input
-                type="range" min="0.0" max="1.0" step="0.05"
-                value={companion.ttsAlpha ?? 0.3}
-                onChange={(e) => setCompanion({ ...companion, ttsAlpha: parseFloat(e.target.value) })}
-              />
-              <div className="hint">{t('settings.voice.voiceAlphaHint')}</div>
-            </div>
-
-            <div className="form-group">
-              <label>{t('settings.voice.voiceBeta')}: {companion.ttsBeta?.toFixed(2) ?? 0.70}</label>
-              <input
-                type="range" min="0.0" max="1.0" step="0.05"
-                value={companion.ttsBeta ?? 0.7}
-                onChange={(e) => setCompanion({ ...companion, ttsBeta: parseFloat(e.target.value) })}
-              />
-              <div className="hint">{t('settings.voice.voiceBetaHint')}</div>
-            </div>
-
-            <div className="form-group">
-              <label>{t('settings.voice.voiceDiffusionSteps')}: {companion.ttsDiffusionSteps ?? 5}</label>
-              <input
-                type="range" min="1" max="20" step="1"
-                value={companion.ttsDiffusionSteps ?? 5}
-                onChange={(e) => setCompanion({ ...companion, ttsDiffusionSteps: parseInt(e.target.value) })}
-              />
-              <div className="hint">{t('settings.voice.voiceDiffusionStepsHint')}</div>
-            </div>
-
-            <div className="form-group">
-              <label>{t('settings.voice.voiceEmbeddingScale')}: {companion.ttsEmbeddingScale?.toFixed(1) ?? 1.0}</label>
-              <input
-                type="range" min="0.5" max="3.0" step="0.1"
-                value={companion.ttsEmbeddingScale ?? 1.0}
-                onChange={(e) => setCompanion({ ...companion, ttsEmbeddingScale: parseFloat(e.target.value) })}
-              />
-              <div className="hint">{t('settings.voice.voiceEmbeddingScaleHint')}</div>
-            </div>
-          </div>
-
-          <label className="settings-label">{t('settings.voice.availableVoices')}</label>
+          <label className="settings-label">{t('settings.voice.availableVoices')} (Kokoro)</label>
           <div className="settings-voice-cards">
             {VOICES.map((v) => (
               <div
-                key={v.id}
+                key={`kokoro-${v.id}`}
                 className={`settings-voice-card ${companion.ttsVoice === v.id ? 'active' : ''}`}
                 onClick={() => setCompanion({ ...companion, ttsVoice: v.id })}
               >
-                <div className="settings-voice-card-name">{v.name}</div>
+                <div className="voice-card-header">
+                  <div className="settings-voice-card-name">{v.name}</div>
+                  <button
+                    className="voice-preview-btn"
+                    onClick={(e) => { e.stopPropagation(); previewVoice(v.id); }}
+                    title={`Preview ${v.name} voice`}
+                    aria-label={`Preview ${v.name} voice`}
+                  >
+                    <Play size={14} fill="currentColor" />
+                  </button>
+                </div>
                 <div className="settings-voice-card-desc">
                   {v.id === 'default' ? t('settings.voice.defaultVoiceDesc') : v.path || v.id}
                 </div>

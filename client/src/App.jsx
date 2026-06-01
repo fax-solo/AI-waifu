@@ -14,7 +14,7 @@ const MIN_PANEL_WIDTH = 250;
 const DEFAULT_PANEL_WIDTH = 400;
 
 export default function App() {
-  const [showSetup, setShowSetup] = useState(false);
+  const [showSetup, setShowSetup] = useState(null);
   const {
     conversations,
     activeConversationId,
@@ -28,6 +28,7 @@ export default function App() {
     selectConversation,
     createConversation,
     sendMessage,
+    sendMessageStream,
     removeConversation,
     setError,
     loadRateLimit,
@@ -42,10 +43,6 @@ export default function App() {
     ttsVoice: 'default',
     audioInputDevice: 'default',
     audioOutputDevice: 'default',
-    ttsAlpha: 0.3,
-    ttsBeta: 0.7,
-    ttsDiffusionSteps: 5,
-    ttsEmbeddingScale: 1.0,
     shortcuts: DEFAULT_SHORTCUTS
   });
   const [currentEmotion, setCurrentEmotion] = useState('neutral');
@@ -56,6 +53,32 @@ export default function App() {
   const [avatarCollapsed, setAvatarCollapsed] = useState(false);
   const { speak, isPlaying, analyser } = useTTS();
   const messageInputRef = useRef(null);
+  const [theme, setTheme] = useState(() => localStorage.getItem('waifu-theme') || 'dark');
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('waifu-theme', theme);
+  }, [theme]);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('waifu-accent'));
+      if (saved && saved.primary) {
+        document.documentElement.style.setProperty('--color-accent', saved.primary);
+        document.documentElement.style.setProperty('--color-accent-light', saved.light);
+        document.documentElement.style.setProperty('--color-accent-dark', saved.dark);
+        document.documentElement.style.setProperty('--color-accent-glow', `${saved.primary}26`);
+        document.documentElement.style.setProperty('--color-companion', saved.companion || saved.primary);
+        document.documentElement.style.setProperty('--color-companion-light', saved.companionLight || saved.light);
+        document.documentElement.style.setProperty('--color-companion-dark', saved.companionDark || saved.dark);
+        document.documentElement.style.setProperty('--color-companion-glow', `${saved.companion || saved.primary}1e`);
+      }
+    } catch {}
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
+  }, []);
   
   // Resizing state — use ref during drag to avoid re-renders
   const [panelWidth, setPanelWidth] = useState(() => {
@@ -148,6 +171,14 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Check if setup was completed on first launch
+  useEffect(() => {
+    api.checkSetupStatus().then(data => {
+      if (!data.completed) setShowSetup(true);
+      else setShowSetup(false);
+    }).catch(() => setShowSetup(false));
+  }, []);
+
   // Resizing logic — updates ref during drag, commits to state + localStorage on mouseup
   const startResizing = useCallback((e) => {
     e.preventDefault();
@@ -207,6 +238,17 @@ export default function App() {
   const handleSettingsClose = () => {
     setShowSettings(false);
     loadRateLimit();
+    api.getSettings().then(data => {
+      if (data?.companion) {
+        setCompanionSettings(prev => {
+          if (shortcutsOverridden.current) {
+            shortcutsOverridden.current = false;
+            return { ...data.companion, shortcuts: prev.shortcuts };
+          }
+          return data.companion;
+        });
+      }
+    }).catch(() => {});
   };
 
   const handleShortcutsChange = (shortcuts) => {
@@ -226,24 +268,20 @@ export default function App() {
       clearScreenshot();
     }
 
-    const result = await sendMessage(message, currentScreenshot);
-
-    if (result?.animation && avatarRef.current) {
-      avatarRef.current.triggerAnimation('body', result.animation, { loop: result.loopAnimation ?? false });
-    }
-    
-    if (result?.emotion) {
-      setCurrentEmotion(result.emotion);
-    }
-    if (result?.mouthExpression) {
-      setMouthExpression(result.mouthExpression);
-    }
-    if (result?.eyeExpression) {
-      setEyeExpression(result.eyeExpression);
-    }
-
-    if (result?.message) {
-      if (companionSettings.ttsEnabled) {
+    const handleResponse = (result) => {
+      if (result?.animation && avatarRef.current) {
+        avatarRef.current.triggerAnimation('body', result.animation, { loop: result.loopAnimation ?? false });
+      }
+      if (result?.emotion) {
+        setCurrentEmotion(result.emotion);
+      }
+      if (result?.mouthExpression) {
+        setMouthExpression(result.mouthExpression);
+      }
+      if (result?.eyeExpression) {
+        setEyeExpression(result.eyeExpression);
+      }
+      if (result?.message && companionSettings.ttsEnabled) {
         speak(result.message, {
           enabled: companionSettings.ttsEnabled,
           voice: companionSettings.ttsVoice || 'default',
@@ -252,14 +290,18 @@ export default function App() {
           volume: companionSettings.ttsVolume ?? 1.0,
           outputDeviceId: companionSettings.audioOutputDevice,
           device: companionSettings.ttsDevice || 'cpu',
-          engine: companionSettings.ttsEngine || 'styletts2',
-          alpha: companionSettings.ttsAlpha ?? 0.3,
-          beta: companionSettings.ttsBeta ?? 0.7,
-          diffusionSteps: companionSettings.ttsDiffusionSteps ?? 5,
-          embeddingScale: companionSettings.ttsEmbeddingScale ?? 1.0,
+          emotion: result.emotion || 'neutral',
+          intensity: companionSettings.ttsEmotionIntensity ?? 0.5,
         });
       }
-    }
+    };
+
+    sendMessageStream(message, currentScreenshot, {
+      onDone: handleResponse,
+      onError(err) {
+        console.warn('[App] All response methods failed:', err);
+      },
+    });
   };
 
   const captureScreenshot = useCallback(async (dataUrl) => {
@@ -371,6 +413,10 @@ export default function App() {
     }
   );
 
+  if (showSetup === null) {
+    return <div className="h-screen w-full bg-[#080c18]" />;
+  }
+
   if (showSetup) {
     return (
       <WelcomeScreen
@@ -390,6 +436,8 @@ export default function App() {
         onNewChat={handleNewChat}
         onDeleteConversation={removeConversation}
         onOpenSettings={() => setShowSettings(true)}
+        onToggleTheme={toggleTheme}
+        theme={theme}
         onClose={() => setSidebarOpen(false)}
       />
 

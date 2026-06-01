@@ -1,20 +1,7 @@
-/**
- * useTTS Hook
- *
- * Handles generating and playing speech audio from text.
- * Connects to the local Python TTS sidecar.
- * 
- * Strategy: Fire ALL sentence TTS requests in parallel immediately,
- * then play them back in order as they resolve. This eliminates the
- * sequential wait (8s x N sentences) and instead only waits for the
- * first sentence before playback starts.
- */
-
 import { useState, useCallback, useRef } from 'react';
 
 const TTS_URL = '/api/tts';
 
-/** Split text into speakable sentences */
 function splitSentences(text) {
   return text
     .split(/(?<=[.!?])\s+|(?<=[。！？])\s*|\n+/)
@@ -27,11 +14,10 @@ export function useTTS() {
   const currentAudioRef = useRef(null);
   const abortControllerRef = useRef(null);
   const playbackActiveRef = useRef(false);
-  
-  // ─── Audio Analysis Setup ─────────────────────────────────────
+
   const audioCtxRef = useRef(null);
   const analyserRef = useRef(null);
-  const sourceNodesRef = useRef(new Map()); // Map of Audio elements to their source nodes
+  const sourceNodesRef = useRef(new Map());
 
   const initAudioCtx = useCallback(() => {
     if (!audioCtxRef.current) {
@@ -47,18 +33,15 @@ export function useTTS() {
   }, []);
 
   const stop = useCallback(() => {
-    // Signal all ongoing fetches to abort
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    // Stop currently playing audio
     if (currentAudioRef.current) {
       currentAudioRef.current.pause();
       currentAudioRef.current.src = '';
       currentAudioRef.current = null;
     }
-    // Disconnect and clean up media element source nodes
     for (const [el, source] of sourceNodesRef.current.entries()) {
       try { source.disconnect(); } catch {}
       el.pause();
@@ -69,6 +52,8 @@ export function useTTS() {
     setIsPlaying(false);
   }, []);
 
+  const MAX_TTS_CHARS = 2000;
+
   const speak = useCallback(async (text, options = {}) => {
     const {
       enabled = true,
@@ -78,18 +63,14 @@ export function useTTS() {
       volume = 1.0,
       outputDeviceId = 'default',
       device = 'cpu',
-      alpha = 0.3,
-      beta = 0.7,
-      diffusionSteps = 5,
-      embeddingScale = 1.0,
+      emotion = 'neutral',
+      intensity = 0.5,
     } = options;
 
     if (!enabled || !text || text.trim().length === 0) return;
+    if (text.length > MAX_TTS_CHARS) return;
 
-    // Initialize audio context on user interaction
     initAudioCtx();
-
-    // Stop any previous speech
     stop();
 
     const controller = new AbortController();
@@ -101,13 +82,12 @@ export function useTTS() {
 
     const timeoutMs = 30000;
 
-    // Launch ALL TTS fetch requests in parallel immediately
     const fetchPromises = sentences.map((sentence, idx) => {
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       return fetch(TTS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: sentence, voice, speed, pitch, volume, device, alpha, beta, diffusion_steps: diffusionSteps, embedding_scale: embeddingScale }),
+        body: JSON.stringify({ text: sentence, voice, speed, pitch, volume, device, emotion, intensity }),
         signal: controller.signal,
       })
         .finally(() => clearTimeout(timeoutId))
@@ -118,7 +98,7 @@ export function useTTS() {
           const audio = new Audio(url);
           audio.crossOrigin = "anonymous";
           audio.preload = 'auto';
-          audio.muted = true;
+          audio.muted = false;
           if (outputDeviceId !== 'default' && audio.setSinkId) {
             audio.setSinkId(outputDeviceId).catch(() => {});
           }
@@ -139,7 +119,6 @@ export function useTTS() {
 
     setIsPlaying(true);
 
-    // Play each sentence in ORDER as it becomes ready
     for (let i = 0; i < fetchPromises.length; i++) {
       if (!playbackActiveRef.current) break;
 
@@ -148,7 +127,6 @@ export function useTTS() {
 
       const { url, audio } = result;
 
-      // Wait for this sentence to finish playing
       await new Promise((resolve) => {
         currentAudioRef.current = audio;
         audio.onended = () => {
@@ -171,10 +149,10 @@ export function useTTS() {
     }
   }, [stop, initAudioCtx]);
 
-  return { 
-    speak, 
-    stop, 
-    isPlaying, 
-    analyser: analyserRef.current 
+  return {
+    speak,
+    stop,
+    isPlaying,
+    analyser: analyserRef.current
   };
 }

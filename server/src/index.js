@@ -108,7 +108,7 @@ app.use('/api', (req, res, next) => {
           `).run(avatarId, userId, 'Default Aria', file_path, null);
           console.log(`[Seeding] Successfully seeded default avatar for user: ${userId}`);
         } else {
-          console.warn(`[Seeding] Seed VRM file not found at: ${seedSrc}`);
+          console.info(`[Seeding] Seed VRM file not found at: ${seedSrc} (skip — no default avatar seeded)`);
         }
       }
     } catch (err) {
@@ -135,9 +135,10 @@ app.use('/api/setup', setupRoutes);
 
 // Static files
 app.use('/uploads', express.static(UPLOADS_BASE));
-app.use('/animations', express.static(path.resolve('data/animations')));
+const DATA_DIR = path.resolve(__dirname, '..', 'data');
+app.use('/animations', express.static(path.join(DATA_DIR, 'animations')));
 app.use('/gallery', express.static(GALLERY_DIR));
-app.use('/textures', express.static(path.resolve('data/textures')));
+app.use('/textures', express.static(path.join(DATA_DIR, 'textures')));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -222,11 +223,18 @@ async function ensureSidecar(name, port, scriptName, serverUrl) {
     }
   } catch {}
 
+  const cpuCount = os.cpus().length;
   const proc = spawn(pythonExe, [scriptPath], {
     cwd: pythonDir,
     detached: true,
     stdio: 'ignore',
-    env: { ...process.env, PYTHONUNBUFFERED: '1' },
+    env: {
+      ...process.env,
+      PYTHONUNBUFFERED: '1',
+      OMP_NUM_THREADS: String(cpuCount),
+      MKL_NUM_THREADS: String(cpuCount),
+      OPENBLAS_NUM_THREADS: String(cpuCount),
+    },
   });
   proc.unref();
 
@@ -254,9 +262,11 @@ function startServer(port) {
     console.log(`  🔑 API Key: ${process.env.GEMINI_API_KEY ? 'Configured' : '⚠️  Not set!'}`);
     console.log(`  📊 Daily limit: ${process.env.DAILY_MESSAGE_LIMIT || 50} messages\n`);
 
-    // Auto-start sidecars in background
-    ensureSidecar('TTS', 5000, 'tts_server.py', process.env.TTS_SERVER_URL || 'http://127.0.0.1:5000');
-    ensureSidecar('STT', 5001, 'stt_server.py', process.env.STT_SERVER_URL || 'http://127.0.0.1:5001');
+    // Auto-start sidecars in background (only when not in Electron — Electron's main.js handles it)
+    if (!process.versions.electron) {
+      ensureSidecar('TTS', 5000, 'server.py', process.env.TTS_SERVER_URL || 'http://127.0.0.1:5000');
+      ensureSidecar('STT', 5001, 'stt_server.py', process.env.STT_SERVER_URL || 'http://127.0.0.1:5001');
+    }
   });
   server.on('error', (err) => {
     if (err.code === 'EADDRINUSE') {

@@ -22,16 +22,19 @@ function pruneSearchCache() {
   for (const [key] of toDelete) searchCache.delete(key);
 }
 
-// Search triggers keywords
 const SEARCH_KEYWORDS = [
-  'latest', 'news', 'today', '2025', '2026', 'recent', 
+  'latest', 'news', 'today', '2025', '2026', 'recent',
   'current', 'weather', 'stock', 'price', 'what happened',
   'who is the current', 'who won', 'search', 'find', 'google',
   'lookup', 'items for', 'build for', 'meta', 'tft', 'league',
   'the items', 'best build', 'what build', 'which items', 'stats for',
   'recommend', 'suggest', 'simulator', 'examples',
   'give me', 'gimme', 'list of', 'any good', 'similar to',
-  'alternatives', 'game recs'
+  'alternatives', 'game recs',
+  'songs like', 'artists like', 'music like', 'games like',
+  'movies like', 'shows like', 'something like',
+  'like what', 'similar artists', 'similar songs',
+  'recommend me', 'suggest me',
 ];
 
 /**
@@ -54,12 +57,14 @@ export function shouldSearch(query) {
   const hasKeyword = SEARCH_KEYWORDS.some(keyword => lowercaseQuery.includes(keyword));
   if (hasKeyword) return true;
 
-  // Question-based trigger for potentially time-sensitive info
   if (lowercaseQuery.match(/^(what|who|where|how) is/i)) {
-    // Only trigger if it looks like it might need recent info
     const timeWords = ['now', 'currently', 'at the moment'];
     if (timeWords.some(word => lowercaseQuery.includes(word))) return true;
   }
+
+  if (lowercaseQuery.match(/(?:something|anything|songs|artists|music|movies|shows|games|anime)\s+like\s+/i)) return true;
+
+  if (lowercaseQuery.match(/\blike\s+\w+(?:\s+\w+){0,3}\s*(?:artist|song|rapper|band|music|game|movie|show|anime)\b/i)) return true;
 
   return false;
 }

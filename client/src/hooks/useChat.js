@@ -15,6 +15,7 @@ export function useChat() {
   const [rateLimit, setRateLimit] = useState(null);
 
   const messagesEndRef = useRef(null);
+  const sendingRef = useRef(false);
 
   // Scroll to bottom of messages
   const scrollToBottom = useCallback(() => {
@@ -79,16 +80,14 @@ export function useChat() {
     }
   }, []);
 
-  // Send a message
+  // Send a message (non-streaming)
   const sendMessage = useCallback(async (text, screenshot) => {
     if ((!text.trim() && !screenshot) || isSending) return;
 
-    // If there's no text but there's a screenshot, send a default prompt
     const messageText = text.trim() || 'What do you see on my screen?';
 
     let conversationId = activeConversationId;
 
-    // Create a new conversation if none is active
     if (!conversationId) {
       const conversation = await createConversation();
       if (!conversation) return;
@@ -98,7 +97,6 @@ export function useChat() {
     setIsSending(true);
     setError(null);
 
-    // Optimistically add user message
     const userContent = text.trim() + (screenshot ? '\n\n[📷 Screenshot attached]' : '');
     const userMessage = {
       id: Date.now(),
@@ -110,7 +108,6 @@ export function useChat() {
     setMessages((prev) => [...prev, userMessage]);
     scrollToBottom();
 
-    // Reset searching state and check if search might be needed (for immediate indicator)
     const searchKeywords = ['latest', 'news', 'today', '2025', '2026', 'recent', 'current', 'weather', 'stock', 'price', 'what happened'];
     const mightNeedSearch = searchKeywords.some(keyword => messageText.toLowerCase().includes(keyword));
     setIsSearching(mightNeedSearch);
@@ -118,33 +115,30 @@ export function useChat() {
     try {
       const response = await api.sendMessage(conversationId, messageText, screenshot);
 
-      // Add AI response
       const aiMessage = {
         id: Date.now() + 1,
         role: 'assistant',
         content: response.message,
-        isSearching: response.isSearching, // Store if search was used
+        isSearching: response.isSearching,
         created_at: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, aiMessage]);
 
-      // Update rate limit
       if (response.rateLimit) {
         setRateLimit((prev) => ({
           ...prev,
           remaining: response.rateLimit.remaining,
-          used: prev?.limit - response.rateLimit.remaining,
+          limit: response.rateLimit.limit,
+          used: (prev?.limit ?? response.rateLimit.limit) - response.rateLimit.remaining,
         }));
       }
 
-      // Refresh conversations to update title/preview
       loadConversations();
       scrollToBottom();
       return response;
     } catch (err) {
       setError(err.data?.error || err.message);
 
-      // If rate limited, refresh rate limit info
       if (err.status === 429) {
         loadRateLimit();
       }
@@ -153,6 +147,150 @@ export function useChat() {
       setIsSearching(false);
     }
   }, [activeConversationId, isSending, createConversation, loadConversations, scrollToBottom, loadRateLimit]);
+
+  // Send a message (streaming) — tokens update the AI message in real-time
+  // `onDone` callback receives { emotion, animation, loopAnimation, mouthExpression, eyeExpression, message, isSearching }
+  const sendMessageStream = useCallback((text, screenshot, callbacks = {}) => {
+    if ((!text.trim() && !screenshot) || isSending || sendingRef.current) return null;
+    sendingRef.current = true;
+
+    const messageText = text.trim() || 'What do you see on my screen?';
+
+    function done() { sendingRef.current = false; }
+
+    (async () => {
+      let conversationId = activeConversationId;
+
+      if (!conversationId) {
+        const conversation = await createConversation();
+        if (!conversation) { done(); return; }
+        conversationId = conversation.id;
+      }
+
+      setIsSending(true);
+      setError(null);
+
+      const userContent = text.trim() + (screenshot ? '\n\n[📷 Screenshot attached]' : '');
+      const userMessage = {
+        id: Date.now(),
+        role: 'user',
+        content: userContent,
+        hasScreenshot: !!screenshot,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMessage]);
+      scrollToBottom();
+
+      const searchKeywords = ['latest', 'news', 'today', '2025', '2026', 'recent', 'current', 'weather', 'stock', 'price', 'what happened'];
+      const mightNeedSearch = searchKeywords.some(keyword => messageText.toLowerCase().includes(keyword));
+      setIsSearching(mightNeedSearch);
+
+      const aiMessageId = Date.now() + 1;
+      setMessages((prev) => [...prev, {
+        id: aiMessageId,
+        role: 'assistant',
+        content: '',
+        isStreaming: true,
+        created_at: new Date().toISOString(),
+      }]);
+
+      let fullContent = '';
+
+      function updatePlaceholder(updates) {
+        setMessages((prev) => {
+          const updated = [...prev];
+          const idx = updated.findIndex(m => m.id === aiMessageId);
+          if (idx !== -1) {
+            updated[idx] = { ...updated[idx], ...updates };
+          }
+          return updated;
+        });
+      }
+
+      function stripTags(text) {
+        return text
+          .replace(/\[animation:[^\]]+\]/gi, '')
+          .replace(/\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+
+      function finalizeResponse(response, content) {
+        const cleanMessage = response.message || stripTags(content || '');
+
+        updatePlaceholder({
+          content: cleanMessage,
+          isStreaming: false,
+          isSearching: response.isSearching,
+        });
+
+        if (response.rateLimit) {
+          setRateLimit((prev) => ({
+            ...prev,
+            remaining: response.rateLimit.remaining,
+            limit: response.rateLimit.limit,
+            used: (prev?.limit ?? response.rateLimit.limit) - response.rateLimit.remaining,
+          }));
+        }
+
+        setIsSending(false);
+        setIsSearching(false);
+        loadConversations();
+        scrollToBottom();
+        done();
+        callbacks.onDone?.({ ...response, message: cleanMessage });
+      }
+
+      try {
+        await new Promise((resolve, reject) => {
+          api.sendMessageStream(conversationId, messageText, screenshot, {
+            onToken(text) {
+              fullContent += text;
+              updatePlaceholder({ content: fullContent });
+              scrollToBottom();
+            },
+            onSearch(query) {
+              setIsSearching(true);
+            },
+            onDone(response) {
+              finalizeResponse(response, fullContent);
+              resolve();
+            },
+            onError(err) {
+              if (fullContent) {
+                updatePlaceholder({ isStreaming: false });
+                setIsSending(false);
+                setIsSearching(false);
+                done();
+                callbacks.onDone?.({ message: fullContent });
+                resolve();
+                return;
+              }
+
+              api.sendMessage(conversationId, messageText, screenshot)
+                .then(response => {
+                  finalizeResponse(response, '');
+                })
+                .catch(fallbackErr => {
+                  const errorMsg = fallbackErr.data?.error || fallbackErr.message || err;
+                  setError(errorMsg);
+                  updatePlaceholder({ isStreaming: false });
+                  setIsSending(false);
+                  setIsSearching(false);
+                  done();
+                  callbacks.onError?.(errorMsg);
+                  reject(errorMsg);
+                });
+            },
+          });
+        });
+      } catch {
+        // handled in onError above
+      }
+    })();
+
+    return null;
+  }, [activeConversationId, isSending, createConversation, loadConversations, scrollToBottom]);
 
   // Delete a conversation
   const removeConversation = useCallback(async (conversationId) => {
@@ -182,6 +320,7 @@ export function useChat() {
     selectConversation,
     createConversation,
     sendMessage,
+    sendMessageStream,
     removeConversation,
     setError,
     loadRateLimit,

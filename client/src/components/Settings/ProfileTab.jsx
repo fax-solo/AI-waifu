@@ -54,10 +54,11 @@ export default function ProfileTab({ displayName, setDisplayName }) {
   const currentAccent = getAccent();
 
   const setAccent = useCallback((accent) => {
-    localStorage.setItem('waifu-accent', JSON.stringify(accent));
     const companion = hueShift(accent.primary, 30);
     const companionLight = hueShift(accent.light, 30);
     const companionDark = hueShift(accent.dark, 30);
+    const palette = { ...accent, companion, companionLight, companionDark };
+    localStorage.setItem('waifu-accent', JSON.stringify(palette));
     document.documentElement.style.setProperty('--color-accent', accent.primary);
     document.documentElement.style.setProperty('--color-accent-light', accent.light);
     document.documentElement.style.setProperty('--color-accent-dark', accent.dark);

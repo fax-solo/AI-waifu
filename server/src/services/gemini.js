@@ -62,7 +62,7 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
             temperature: 0.7,
             topP: 0.95,
             topK: 40,
-            maxOutputTokens: 1024,
+            maxOutputTokens: 8192,
           },
         };
         if (forceSearch) {
@@ -94,11 +94,10 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
               temperature: 0.7,
               topP: 0.95,
               topK: 40,
-              maxOutputTokens: 1024,
+              maxOutputTokens: 8192,
             },
           });
 
-          const userParts = buildUserParts(userMessage, screenshot);
           const fullHistory = [
             ...(history || []),
             { role: 'user', parts: userParts },
@@ -111,7 +110,7 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
           const followUpResponse = followUpResult.response;
           const fullText = followUpResponse.text();
 
-          const emotionMatch = fullText.match(/^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i);
+          const emotionMatch = fullText.match(EMOTION_REGEX);
           const animMatch = fullText.match(/\[animation:([^\]]+)\]/i);
 
           let text = emotionMatch ? emotionMatch[3].trim() : fullText.trim();
@@ -129,7 +128,7 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
 
         const fullText = response.text();
 
-        const emotionMatch = fullText.match(/^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i);
+        const emotionMatch = fullText.match(EMOTION_REGEX);
         const animMatch = fullText.match(/\[animation:([^\]]+)\]/i);
 
         let text = emotionMatch ? emotionMatch[3].trim() : fullText.trim();
@@ -214,4 +213,150 @@ function buildUserParts(userMessage, screenshot) {
   ];
 }
 
-export default { chat };
+/**
+ * Streaming chat — yields tokens as they arrive from Gemini.
+ * When web search triggers, yields `{ type: 'search', query }`,
+ * then continues yielding tokens after search results are injected.
+ */
+export async function* chatStream({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb, forceSearch, screenshot }) {
+  const key = (apiKey && apiKey.trim()) || (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.trim());
+
+  if (!key) {
+    throw new Error('No API key configured.');
+  }
+
+  const client = getClient(key);
+
+  const fallbackModels = [
+    'gemini-2.0-flash-lite',
+    'gemini-2.5-flash',
+    'gemini-2.5-flash-lite'
+  ];
+
+  const modelsToTry = preferredModel
+    ? [preferredModel, ...fallbackModels.filter(m => m !== preferredModel)]
+    : fallbackModels;
+
+  let lastError = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      const modelConfig = {
+        model: modelName,
+        systemInstruction: systemPrompt,
+        tools: WEB_SEARCH_TOOL,
+        generationConfig: {
+          temperature: 0.7,
+          topP: 0.95,
+          topK: 40,
+          maxOutputTokens: 8192,
+        },
+      };
+      if (forceSearch) {
+        modelConfig.tool_config = {
+          function_calling_config: {
+            mode: 'ANY',
+            allowed_function_names: ['web_search'],
+          },
+        };
+      }
+
+      const model = client.getGenerativeModel(modelConfig);
+      const chatSession = model.startChat({ history: history || [] });
+      const userParts = buildUserParts(userMessage, screenshot);
+
+      const result = await chatSession.sendMessageStream(userParts);
+
+      let fullText = '';
+      let functionCall = null;
+      let preamble = [];
+
+      for await (const chunk of result.stream) {
+        const funcCall = chunk.functionCalls?.[0];
+        if (funcCall) {
+          functionCall = funcCall;
+          break;
+        }
+        const chunkText = chunk.text();
+        if (chunkText) {
+          preamble.push(chunkText);
+        }
+      }
+
+      if (functionCall?.name === 'web_search' && searchWeb) {
+        yield { type: 'search', query: functionCall.args.query };
+
+        const searchResults = await searchWeb(functionCall.args.query);
+        const searchContent = searchResults || 'No results found';
+
+        const replyModel = client.getGenerativeModel({
+          model: modelName,
+          systemInstruction: systemPrompt,
+          tools: WEB_SEARCH_TOOL,
+          generationConfig: {
+            temperature: 0.7,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 8192,
+          },
+        });
+
+        const fullHistory = [
+          ...(history || []),
+          { role: 'user', parts: userParts },
+          { role: 'model', parts: [{ functionCall: { name: 'web_search', args: { query: functionCall.args.query } } }] },
+          { role: 'function', parts: [{ functionResponse: { name: 'web_search', response: { results: searchContent } } }] },
+        ];
+
+        const replyChat = replyModel.startChat({ history: fullHistory });
+        const followUpResult = await replyChat.sendMessageStream('Now respond to the user based on the search results above.');
+
+        for await (const chunk of followUpResult.stream) {
+          const chunkText = chunk.text();
+          if (chunkText) {
+            fullText += chunkText;
+            yield { type: 'token', text: chunkText };
+          }
+        }
+      } else {
+        fullText = preamble.join('');
+        for (const token of preamble) {
+          yield { type: 'token', text: token };
+        }
+      }
+
+      const emotionMatch = fullText.match(EMOTION_REGEX);
+      const animMatch = fullText.match(/\[animation:([^\]]+)\]/i);
+
+      let text = emotionMatch ? emotionMatch[3].trim() : fullText.trim();
+      let animation = animMatch ? animMatch[1].toLowerCase().replace(/\.vrma$/i, '') + '.vrma' : null;
+
+      if (animation) {
+        text = text.replace(/\[animation:[^\]]+\]/gi, '').trim();
+      }
+
+      yield {
+        type: 'done',
+        emotion: emotionMatch ? emotionMatch[2].toLowerCase() : 'neutral',
+        animation,
+        text,
+      };
+      return;
+    } catch (error) {
+      lastError = error;
+      const errorMessage = error.message || '';
+      console.warn(`Gemini stream attempt with ${modelName} failed:`, errorMessage);
+      yield { type: 'error', message: errorMessage };
+      if (errorMessage.includes('API_KEY_INVALID') || errorMessage.includes('API key not valid')) {
+        throw new Error('INVALID_API_KEY');
+      }
+      continue;
+    }
+  }
+
+  throw new Error(lastError?.message || 'All Gemini models failed');
+}
+
+const EMOTION_REGEX = /^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i;
+
+export default { chat, chatStream };

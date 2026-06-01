@@ -1,17 +1,18 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
-const MODEL_FILES = [
-  { key: 'model_ljspeech', label: 'LJSpeech Model', size: '310 MB' },
-  { key: 'model_libritts', label: 'LibriTTS Model', size: '310 MB' },
-  { key: 'config_ljspeech', label: 'LJSpeech Config', size: '4 KB' },
-  { key: 'config_libritts', label: 'LibriTTS Config', size: '4 KB' },
-  { key: 'voices', label: 'Voice Pack', size: '27 MB' },
-];
+const ALL_FILE_LABELS = {
+  'kokoro_model': 'Kokoro ONNX Model',
+  'kokoro_voices': 'Kokoro Voices',
+};
 
 const BACKENDS = [
   { id: 'cpu', label: 'CPU', desc: 'Universal — works on all systems' },
-  { id: 'cuda', label: 'NVIDIA GPU (CUDA)', desc: 'Fastest on NVIDIA hardware' },
-  { id: 'vulkan', label: 'AMD GPU (Vulkan)', desc: 'Optimized for AMD GPUs' },
+  { id: 'cuda', label: 'NVIDIA GPU (CUDA)', desc: 'Fastest on NVIDIA GPUs' },
+  { id: 'vulkan', label: 'AMD GPU (ROCm)', desc: 'Optimized for AMD GPUs with ROCm' },
+];
+
+const ENGINES = [
+  { id: 'kokoro', label: 'Kokoro ONNX', desc: 'Lightweight, 54 built-in voices (368 MB model files)' },
 ];
 
 function logTime() {
@@ -25,25 +26,32 @@ function getFileState(state) {
   return state;
 }
 
-export default function DownloadStep({ onNext, onSkip }) {
+export default function DownloadStep({ onNext, onSkip, backend: initialBackend }) {
   const [started, setStarted] = useState(false);
   const [fileStates, setFileStates] = useState({});
   const [allComplete, setAllComplete] = useState(false);
   const [hasFailed, setHasFailed] = useState(false);
   const [connected, setConnected] = useState(true);
   const [logs, setLogs] = useState([]);
-  const [backend, setBackend] = useState('cuda');
+  const [backend, setBackend] = useState(initialBackend || 'cuda');
   const receivedComplete = useRef(false);
   const eventSourceRef = useRef(null);
   const logEndRef = useRef(null);
 
+  const modelFiles = useMemo(() => {
+    return [
+      { key: 'kokoro_model', label: 'Kokoro ONNX Model', size: '325 MB' },
+      { key: 'kokoro_voices', label: 'Kokoro Voices', size: '41 MB' },
+    ];
+  }, []);
+
   const files = useMemo(() => {
     const backendLabel = BACKENDS.find(b => b.id === backend)?.label || backend;
     return [
-      ...MODEL_FILES,
+      ...modelFiles,
       { key: 'backend_package', label: `${backendLabel} Runtime`, size: '' },
     ];
-  }, [backend]);
+  }, [modelFiles, backend]);
 
   function addLog(message) {
     setLogs(prev => [...prev, { time: logTime(), message }]);
@@ -64,7 +72,7 @@ export default function DownloadStep({ onNext, onSkip }) {
     receivedComplete.current = false;
     setConnected(true);
 
-    const es = new EventSource(`/api/setup/download?backend=${backendParam || backend}`);
+    const es = new EventSource('/api/setup/download?engine=kokoro');
     eventSourceRef.current = es;
 
     es.addEventListener('verify', (e) => {
@@ -79,8 +87,7 @@ export default function DownloadStep({ onNext, onSkip }) {
     es.addEventListener('start', (e) => {
       const { key, size } = JSON.parse(e.data);
       setFileStates(prev => ({ ...prev, [key]: { status: 'downloading', percent: 0 } }));
-      const file = MODEL_FILES.find(f => f.key === key);
-      const label = file?.label || key;
+      const label = ALL_FILE_LABELS[key] || key;
       addLog(`Downloading ${label}...`);
     });
 
@@ -99,8 +106,7 @@ export default function DownloadStep({ onNext, onSkip }) {
     es.addEventListener('done', (e) => {
       const { key, elapsed, size } = JSON.parse(e.data);
       setFileStates(prev => ({ ...prev, [key]: 'done' }));
-      const file = MODEL_FILES.find(f => f.key === key);
-      const label = file?.label || key;
+      const label = ALL_FILE_LABELS[key] || key;
       addLog(`${label} done (${elapsed}s)`);
     });
 
@@ -111,8 +117,7 @@ export default function DownloadStep({ onNext, onSkip }) {
 
     es.addEventListener('retry', (e) => {
       const { key, attempt, maxRetries, reason } = JSON.parse(e.data);
-      const file = MODEL_FILES.find(f => f.key === key);
-      const label = file?.label || key;
+      const label = ALL_FILE_LABELS[key] || key;
       addLog(`${label} stalled, retry ${attempt}/${maxRetries}`);
     });
 
@@ -120,8 +125,7 @@ export default function DownloadStep({ onNext, onSkip }) {
       const { key, error } = JSON.parse(e.data);
       setFileStates(prev => ({ ...prev, [key]: 'error' }));
       setHasFailed(true);
-      const file = MODEL_FILES.find(f => f.key === key);
-      addLog(`${file ? file.label : key} failed: ${error}`);
+      addLog(`${ALL_FILE_LABELS[key] || key} failed: ${error}`);
     });
 
     es.addEventListener('complete', (e) => {
@@ -201,7 +205,8 @@ export default function DownloadStep({ onNext, onSkip }) {
 
       {/* Backend selector — shown before downloads start */}
       {!started && (
-        <div className="w-full max-w-lg">
+        <div className="w-full max-w-lg flex flex-col gap-6">
+          <div>
           <p className="text-xs text-white/30 uppercase tracking-widest font-semibold mb-3">Select your hardware</p>
           <div className="flex flex-col gap-2">
             {BACKENDS.map(b => (
@@ -232,6 +237,7 @@ export default function DownloadStep({ onNext, onSkip }) {
                 </div>
               </button>
             ))}
+          </div>
           </div>
         </div>
       )}

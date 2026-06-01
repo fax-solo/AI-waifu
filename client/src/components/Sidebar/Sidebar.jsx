@@ -1,6 +1,8 @@
-import { useState, useEffect, memo } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { MessageSquare, Plus, Trash2, Settings, Pin, PinOff, Search } from 'lucide-react';
+import ThemeToggle from './ThemeToggle.jsx';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
+import * as api from '../../utils/api.js';
 
 function loadPinned() {
   try {
@@ -20,23 +22,56 @@ function Sidebar({
   onNewChat,
   onDeleteConversation,
   onOpenSettings,
+  onToggleTheme,
+  theme,
   onClose,
 }) {
   const { t } = useLanguage();
   const [search, setSearch] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
+  const [isSearching, setIsSearching] = useState(false);
   const [pinnedIds, setPinnedIds] = useState(loadPinned);
+  const debounceRef = useRef(null);
 
   useEffect(() => { savePinned(pinnedIds); }, [pinnedIds]);
 
-  const filtered = conversations
-    .filter(c => !search || c.title.toLowerCase().includes(search.toLowerCase()))
-    .sort((a, b) => {
-      const aPinned = pinnedIds.includes(a.id);
-      const bPinned = pinnedIds.includes(b.id);
-      if (aPinned && !bPinned) return -1;
-      if (!aPinned && bPinned) return 1;
-      return 0;
-    });
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (!search.trim()) {
+      setSearchResults(null);
+      setIsSearching(false);
+      return;
+    }
+
+    setIsSearching(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const results = await api.searchConversations(search.trim());
+        setSearchResults(results);
+      } catch (e) {
+        console.error('Search failed:', e);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [search]);
+
+  const displayList = searchResults !== null ? searchResults : conversations;
+  const isSearchingMode = searchResults !== null;
+
+  const sorted = isSearchingMode
+    ? displayList
+    : [...displayList].sort((a, b) => {
+        const aPinned = pinnedIds.includes(a.id);
+        const bPinned = pinnedIds.includes(b.id);
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+        return 0;
+      });
 
   const togglePin = (id, e) => {
     e.stopPropagation();
@@ -47,7 +82,6 @@ function Sidebar({
 
   return (
     <>
-      {/* Mobile overlay */}
       {isOpen && (
         <div
           className="sidebar-overlay mobile-overlay"
@@ -57,7 +91,6 @@ function Sidebar({
       )}
 
       <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
-        {/* Header */}
         <div className="sidebar-header">
           <div className="sidebar-logo">✦</div>
           <div>
@@ -66,7 +99,6 @@ function Sidebar({
           </div>
         </div>
 
-        {/* New Chat Button */}
         <button
           id="new-chat-button"
           className="new-chat-btn"
@@ -76,13 +108,12 @@ function Sidebar({
           {t('common.newChat')}
         </button>
 
-        {/* Search Bar */}
         <div className="sidebar-search-wrapper">
           <Search size={14} className="sidebar-search-icon" />
           <input
             className="sidebar-search"
             type="text"
-            placeholder="Search conversations..."
+            placeholder="Search conversations & messages..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -91,43 +122,53 @@ function Sidebar({
           )}
         </div>
 
-        {/* Conversation List */}
         <div className="conversation-list">
-          {conversations.length === 0 ? (
+          {!search && conversations.length === 0 ? (
             <div className="sidebar-empty">
               <MessageSquare size={32} className="sidebar-empty-icon" />
               <p>{t('sidebar.noConversations')}</p>
-              <p className="sidebar-empty-sub">
-                {t('sidebar.startNewChat')}
-              </p>
+              <p className="sidebar-empty-sub">{t('sidebar.startNewChat')}</p>
             </div>
-          ) : filtered.length === 0 ? (
+          ) : isSearching ? (
+            <div className="sidebar-empty">
+              <p>Searching...</p>
+            </div>
+          ) : sorted.length === 0 ? (
             <div className="sidebar-empty">
               <Search size={24} className="sidebar-empty-icon" />
-              <p>No conversations match "{search}"</p>
+              <p>{search ? `No matches for "${search}"` : 'No conversations'}</p>
             </div>
           ) : (
-            filtered.map((conv) => {
-              const isPinned = pinnedIds.includes(conv.id);
+            sorted.map((conv) => {
+              const isPinned = !isSearchingMode && pinnedIds.includes(conv.id);
               return (
                 <div
                   key={conv.id}
                   className={`conversation-item ${activeConversationId === conv.id ? 'active' : ''} ${isPinned ? 'pinned' : ''}`}
                   onClick={() => {
                     onSelectConversation(conv.id);
+                    setSearch('');
+                    setSearchResults(null);
                     onClose?.();
                   }}
                 >
-                  <button
-                    className={`conv-pin ${isPinned ? 'pinned' : ''}`}
-                    onClick={(e) => togglePin(conv.id, e)}
-                    title={isPinned ? 'Unpin conversation' : 'Pin conversation'}
-                    aria-label={isPinned ? 'Unpin conversation' : 'Pin conversation'}
-                  >
-                    {isPinned ? <PinOff size={12} /> : <Pin size={12} />}
-                  </button>
+                  {!isSearchingMode && (
+                    <button
+                      className={`conv-pin ${isPinned ? 'pinned' : ''}`}
+                      onClick={(e) => togglePin(conv.id, e)}
+                      title={isPinned ? 'Unpin conversation' : 'Pin conversation'}
+                      aria-label={isPinned ? 'Unpin conversation' : 'Pin conversation'}
+                    >
+                      {isPinned ? <PinOff size={12} /> : <Pin size={12} />}
+                    </button>
+                  )}
                   <MessageSquare size={16} className="conv-icon" />
-                  <span className="conv-title">{conv.title}</span>
+                  <div className="conv-content">
+                    <span className="conv-title">{conv.title}</span>
+                    {isSearchingMode && conv.match_preview && (
+                      <span className="conv-match-preview">{conv.match_preview.slice(0, 80)}</span>
+                    )}
+                  </div>
                   <button
                     className="conv-delete"
                     onClick={(e) => {
@@ -145,8 +186,8 @@ function Sidebar({
           )}
         </div>
 
-        {/* Footer */}
         <div className="sidebar-footer">
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <button
             id="settings-button"
             className="settings-btn"

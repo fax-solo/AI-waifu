@@ -62,6 +62,45 @@ router.post('/', (req, res) => {
 });
 
 /**
+ * GET /api/conversations/search?q=query
+ * Search across conversation titles and message content.
+ */
+router.get('/search', (req, res) => {
+  const userId = req.headers['x-user-id'];
+  const { q } = req.query;
+
+  if (!q || !q.trim()) {
+    return res.json([]);
+  }
+
+  const searchPattern = `%${q.trim()}%`;
+
+  // Search conversations by title or message content
+  const results = db.prepare(`
+    SELECT DISTINCT
+      c.id,
+      c.title,
+      c.created_at,
+      c.updated_at,
+      (SELECT COUNT(*) FROM messages WHERE conversation_id = c.id) as message_count,
+      (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) as last_message,
+      (
+        SELECT content FROM messages
+        WHERE conversation_id = c.id AND content LIKE ?
+        ORDER BY created_at ASC LIMIT 1
+      ) as match_preview
+    FROM conversations c
+    LEFT JOIN messages m ON m.conversation_id = c.id
+    WHERE c.user_id = ?
+      AND (c.title LIKE ? OR m.content LIKE ?)
+    ORDER BY c.updated_at DESC
+    LIMIT 50
+  `).all(searchPattern, userId, searchPattern, searchPattern);
+
+  res.json(results);
+});
+
+/**
  * GET /api/conversations/:id
  * Get a conversation with all its messages.
  */

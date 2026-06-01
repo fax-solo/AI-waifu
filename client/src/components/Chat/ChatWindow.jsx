@@ -158,6 +158,7 @@ const ChatWindow = forwardRef(function ChatWindow({
       <MessageInput
         ref={ref}
         onSend={onSend}
+        isSending={isSending}
         disabled={isSending || (rateLimit && rateLimit.remaining <= 0 && !rateLimit.bypassed)}
         placeholder={t('chat.typeMessage')}
         audioInputDevice={audioInputDevice}

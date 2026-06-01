@@ -64,7 +64,8 @@ Examples with animation:
 - Speak warmly, use emoticons (◕‿◕)(≧◡≦)♡, show genuine emotions, remember user details, address as "${userName}".
 - Search Results: if [SEARCH RESULTS] appears, treat it as ground truth.
 - You have access to a web_search tool. USE IT when the user asks for game recommendations, "games like X", news, weather, prices, lists, or anything requiring current/real-world data. Do NOT make up product/game names from your training data — search first and base answers on results.
-- Conciseness: when the user asks for information or recommendations, get straight to the point. Give the answer first, then optionally add a brief friendly line. No filler, no padding.`;
+- Conciseness: when the user asks for information or recommendations, get straight to the point. Give the answer first, then optionally add a brief friendly line. No filler, no padding.
+- **Silent search**: the web_search tool runs invisibly in the background. Never say "I'll search", "let me look that up", "give me a moment", or anything similar — just search and deliver the answer directly.`;
 
   if (memories.length > 0) {
     prompt += `\n\n## Memories about ${userName}\n${memories.map((m) => `- ${m}`).join('\n')}`;

@@ -21,16 +21,50 @@ function getProjectRoot() {
 }
 
 function checkGpu() {
+  // NVIDIA CUDA
   try {
     const out = execSync('nvidia-smi --query-gpu=name,driver_version --format=csv,noheader', {
       encoding: 'utf8',
       timeout: 5000,
     }).trim();
     const parts = out.split(',').map(s => s.trim());
-    return { status: 'ok', name: parts[0] || null, driver: parts[1] || null };
-  } catch {
-    return { status: 'missing', name: null, driver: null };
-  }
+    return {
+      status: 'ok',
+      name: `NVIDIA ${parts[0] || ''}`,
+      driver: parts[1] || null,
+      backend: 'cuda',
+      env: 'python-env-gpu',
+    };
+  } catch {}
+  // AMD ROCm
+  try {
+    const out = execSync('rocm-smi --showproductname 2>/dev/null', {
+      encoding: 'utf8',
+      timeout: 5000,
+    }).trim();
+    const name = out.split('\n').filter(l => l.includes('GPU'))[0]?.trim() || 'AMD GPU';
+    return { status: 'ok', name, driver: 'ROCm', backend: 'rocm', env: 'python-env-rocm' };
+  } catch {}
+  // Vulkan (AMD/Intel/Virtual)
+  try {
+    const out = execSync('vulkaninfo --summary 2>/dev/null | grep "deviceName"', {
+      encoding: 'utf8',
+      timeout: 5000,
+    }).trim();
+    const name = out.split('=').pop()?.trim() || null;
+    if (name) {
+      const isAmd = /amd|radeon/i.test(name);
+      const isIntel = /intel|arc/i.test(name);
+      return {
+        status: 'ok',
+        name,
+        driver: 'Vulkan',
+        backend: isAmd ? 'rocm' : isIntel ? 'vulkan' : 'vulkan',
+        env: isAmd ? 'python-env-rocm' : 'python-env-cpu',
+      };
+    }
+  } catch {}
+  return { status: 'missing', name: null, driver: null, backend: null, env: 'python-env-cpu' };
 }
 
 function checkPython() {
@@ -83,6 +117,7 @@ router.post('/check', (req, res) => {
     res.json({
       checks: { gpu, python, tts },
       allPassed: gpu.status === 'ok' && python.status === 'ok' && tts.status === 'ok',
+      recommendedEnv: gpu.env || 'python-env-cpu',
     });
   } catch (err) {
     console.error('[Setup] Check failed:', err);
@@ -261,9 +296,17 @@ router.get('/download', async (req, res) => {
     }
 
     const tts = modelsConfig.tts || {};
-    const entries = Object.entries(tts);
+    const engine = req.query.engine || 'kokoro';
 
-    console.log(`[Setup] Starting verify phase for ${entries.length} files...`);
+    // Only download models relevant to the selected TTS engine
+    let entries = Object.entries(tts);
+    if (engine === 'kokoro') {
+      entries = entries.filter(([key]) => key === 'kokoro_model' || key === 'kokoro_voices');
+    } else {
+      entries = entries.filter(([key]) => key !== 'kokoro_model' && key !== 'kokoro_voices');
+    }
+
+    console.log(`[Setup] Starting verify phase for ${entries.length} files (engine=${engine})...`);
 
     // Phase 1: Verify all files
     const needsDownload = [];
@@ -383,9 +426,21 @@ router.get('/download', async (req, res) => {
   }
 });
 
+router.get('/status', (req, res) => {
+  try {
+    const row = db.prepare("SELECT value FROM setup_state WHERE key = 'completed'").get();
+    res.json({ completed: row?.value === 'true' });
+  } catch (err) {
+    console.error('[Setup] Status check failed:', err);
+    res.json({ completed: false });
+  }
+});
+
 router.post('/complete', async (req, res) => {
   try {
+    const userId = req.headers['x-user-id'];
     const { backend } = req.body;
+
     db.exec(`
       CREATE TABLE IF NOT EXISTS setup_state (
         key TEXT PRIMARY KEY,
@@ -395,6 +450,14 @@ router.post('/complete', async (req, res) => {
     db.prepare('INSERT OR REPLACE INTO setup_state (key, value) VALUES (?, ?)').run('completed', 'true');
     if (backend) {
       db.prepare('INSERT OR REPLACE INTO setup_state (key, value) VALUES (?, ?)').run('backend', backend);
+    }
+
+    if (userId) {
+      const existing = db.prepare('SELECT user_id FROM companion_settings WHERE user_id = ?').get(userId);
+      if (backend && existing) {
+        const device = (backend === 'cuda' || backend === 'vulkan') ? 'gpu' : 'cpu';
+        db.prepare('UPDATE companion_settings SET tts_device = ? WHERE user_id = ?').run(device, userId);
+      }
     }
 
     res.json({ completed: true });

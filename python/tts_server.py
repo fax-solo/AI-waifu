@@ -2,7 +2,6 @@ import os
 import sys
 import tempfile
 
-# Inject NVIDIA CUDA libraries into LD_LIBRARY_PATH before importing torch
 def ensure_nvidia_libs():
     if sys.platform != "linux":
         return
@@ -15,7 +14,6 @@ def ensure_nvidia_libs():
                 lib_path = os.path.join(sp, 'nvidia', pkg, 'lib')
                 if os.path.exists(lib_path):
                     nvidia_paths.append(lib_path)
-
         if nvidia_paths:
             current_ld = os.environ.get('LD_LIBRARY_PATH', '')
             new_ld = ':'.join(nvidia_paths)
@@ -38,8 +36,6 @@ import soundfile as sf
 import hashlib
 import time
 import re
-import contextlib
-import numpy as np
 import json
 
 def safe_print(msg):
@@ -59,105 +55,99 @@ try:
 except Exception:
     pass
 
-model = None
-engine_loaded = False
-engine_error = None
-current_device = "cpu"
+kokoro_model = None
+kokoro_loaded = False
+kokoro_error = None
+kokoro_device = "cpu"
+available_devices = {"cpu": True, "cuda": False, "rocm": False}
 CACHE_DIR = "tts_cache"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-VOICES_DIR = os.path.join(SCRIPT_DIR, "voices")
-VOICES_MANIFEST = os.path.join(VOICES_DIR, "manifest.json")
+KOKORO_MODEL_PATH = os.path.join(SCRIPT_DIR, "kokoro-v1.0.onnx")
+KOKORO_VOICES_PATH = os.path.join(SCRIPT_DIR, "voices-v1.0.bin")
 
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
-if not os.path.exists(VOICES_DIR):
-    os.makedirs(VOICES_DIR)
 
-def load_voices_manifest():
-    if os.path.exists(VOICES_MANIFEST):
-        try:
-            with open(VOICES_MANIFEST, 'r') as f:
-                return json.load(f)
-        except:
-            pass
-    return []
-
-voices_manifest = load_voices_manifest()
-
-def find_checkpoint():
-    paths = [
-        os.path.join(SCRIPT_DIR, 'styletts2-libritts.pth'),
-        os.path.join(SCRIPT_DIR, '..', 'python', 'styletts2-libritts.pth'),
-        os.path.join(SCRIPT_DIR, 'styletts2-ljspeech.pth'),
-        os.path.join(SCRIPT_DIR, '..', 'python', 'styletts2-ljspeech.pth'),
-    ]
-    for p in paths:
-        if os.path.exists(p):
-            return p
-    return None
-
-def find_config():
-    paths = [
-        os.path.join(SCRIPT_DIR, 'styletts2-config-libritts.yml'),
-        os.path.join(SCRIPT_DIR, '..', 'python', 'styletts2-config-libritts.yml'),
-        os.path.join(SCRIPT_DIR, 'styletts2-config-ljspeech.yml'),
-        os.path.join(SCRIPT_DIR, '..', 'python', 'styletts2-config-ljspeech.yml'),
-    ]
-    for p in paths:
-        if os.path.exists(p):
-            return p
-    return None
-
-def init_engine():
-    global model, engine_loaded, engine_error, current_device
-
-    if model or engine_loaded:
-        return
-
-    start_time = time.time()
-    checkpoint_path = find_checkpoint()
-    config_path = find_config()
-
-    if not checkpoint_path or not config_path:
-        safe_print("[TTS] No local model files found yet. Waiting for setup to finish...")
-        return
-
-    safe_print(f"[TTS] Initializing StyleTTS2 from {os.path.basename(checkpoint_path)}...")
+def detect_devices():
+    global available_devices
+    available_devices["cpu"] = True
     try:
-        from styletts2 import tts
+        import torch
+        available_devices["cuda"] = torch.cuda.is_available()
+        available_devices["rocm"] = hasattr(torch.version, 'hip') and torch.version.hip is not None
+    except ImportError:
+        available_devices["cuda"] = False
+        available_devices["rocm"] = False
 
-        safe_print(f"[TTS] Loading model from {os.path.basename(checkpoint_path)}")
-        model = tts.StyleTTS2(
-            model_checkpoint_path=checkpoint_path,
-            config_path=config_path
-        )
+def resolve_device(requested):
+    if requested in ("gpu", "cuda"):
+        if available_devices["cuda"]:
+            return "cuda"
+        if available_devices["rocm"]:
+            return "cuda"
+    if requested == "rocm" and available_devices["rocm"]:
+        return "cuda"
+    return "cpu"
 
-        engine_loaded = True
-        safe_print(f"[TTS] Engine loaded in {time.time() - start_time:.2f}s")
+def find_kokoro_models():
+    return os.path.exists(KOKORO_MODEL_PATH) and os.path.exists(KOKORO_VOICES_PATH)
+
+def init_kokoro(target_device=None):
+    global kokoro_model, kokoro_loaded, kokoro_error, kokoro_device
+
+    if kokoro_loaded and kokoro_model is not None:
+        return
+
+    if target_device is None:
+        target_device = resolve_device("gpu")
+
+    if not find_kokoro_models():
+        kokoro_error = "Kokoro model files not found"
+        safe_print(f"[TTS] {kokoro_error}")
+        return
+
+    safe_print(f"[TTS] Initializing Kokoro ONNX on {target_device}...")
+    start_time = time.time()
+    try:
+        import onnxruntime
+        if target_device == "cuda":
+            providers = [
+                ("CUDAExecutionProvider", {"device_id": 0}),
+                "CPUExecutionProvider",
+            ]
+            available_providers = onnxruntime.get_available_providers()
+            if "CUDAExecutionProvider" not in available_providers:
+                safe_print("[TTS] Kokoro: CUDA not available in ONNX Runtime, using CPU")
+                providers = ["CPUExecutionProvider"]
+                kokoro_device = "cpu"
+            else:
+                kokoro_device = "cuda"
+        else:
+            providers = ["CPUExecutionProvider"]
+            kokoro_device = "cpu"
+
+        from kokoro_onnx import Kokoro
+        kokoro_model = Kokoro(KOKORO_MODEL_PATH, KOKORO_VOICES_PATH)
+        kokoro_loaded = True
+        safe_print(f"[TTS] Kokoro ONNX loaded on {kokoro_device} in {time.time() - start_time:.2f}s")
     except Exception as e:
-        engine_error = str(e)
-        safe_print(f"[TTS] Failed to load engine: {e}")
+        kokoro_error = str(e)
+        kokoro_loaded = False
+        safe_print(f"[TTS] Failed to load Kokoro: {e}")
         import traceback
         traceback.print_exc()
 
-def watch_for_models():
-    global model, engine_loaded, engine_error
-    while True:
-        time.sleep(30)
-        if not engine_loaded and model is None:
-            checkpoint_path = find_checkpoint()
-            config_path = find_config()
-            if checkpoint_path and config_path:
-                safe_print("[TTS] Model files detected. Loading engine...")
-                init_engine()
+def unload_kokoro():
+    global kokoro_model, kokoro_loaded, kokoro_error
+    if kokoro_model is not None:
+        del kokoro_model
+        kokoro_model = None
+    kokoro_loaded = False
+    kokoro_error = None
+    import gc
+    gc.collect()
 
-@contextlib.asynccontextmanager
-async def lifespan(app: FastAPI):
-    import threading
-    threading.Thread(target=watch_for_models, daemon=True).start()
-    yield
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -169,15 +159,12 @@ app.add_middleware(
 
 class TTSRequest(BaseModel):
     text: str
-    voice: str = "default"
-    speed: float = 1.0
+    voice: str = "af_nicole"
+    speed: float = 0.9
     pitch: float = 1.0
     volume: float = 1.0
-    device: str = "cpu"
-    alpha: float = 0.3
-    beta: float = 0.7
-    diffusion_steps: int = 5
-    embedding_scale: float = 1.0
+    device: str = "gpu"
+    engine: str = "kokoro"
 
 def clean_text_for_tts(text):
     text = re.sub(r'\*.*?\*', '', text)
@@ -186,39 +173,23 @@ def clean_text_for_tts(text):
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
-def resolve_voice_path(voice_id):
-    if voice_id == "default" or not voice_id:
-        return None
-    if voice_id.startswith("/") or voice_id.startswith("\\"):
-        return voice_id
-    candidate = os.path.join(VOICES_DIR, voice_id)
-    if os.path.exists(candidate):
-        return candidate
-    for entry in voices_manifest:
-        if entry.get("id") == voice_id:
-            fname = entry.get("path", "")
-            candidate2 = os.path.join(VOICES_DIR, fname)
-            if os.path.exists(candidate2):
-                return candidate2
-    return None
-
 @app.post("/tts")
 async def text_to_speech(request: TTSRequest):
-    global model, engine_loaded
+    global kokoro_model, kokoro_loaded, kokoro_device
 
-    if not engine_loaded:
-        init_engine()
-        if not engine_loaded and model is None:
-            detail = engine_error or "TTS Engine not initialized"
-            raise HTTPException(status_code=503, detail=detail)
+    requested_device = resolve_device(request.device)
+    if not kokoro_loaded:
+        init_kokoro(requested_device)
+    if not kokoro_loaded or kokoro_model is None:
+        detail = kokoro_error or "Kokoro engine not initialized"
+        raise HTTPException(status_code=503, detail=detail)
 
     clean_text = clean_text_for_tts(request.text)
     if not clean_text:
-        safe_print(f"[TTS] Skipping message with no speakable content")
         raise HTTPException(status_code=400, detail="No speakable content")
 
     cache_key = hashlib.md5(
-        f"{clean_text}|{request.voice}|{request.speed}|{request.pitch}|{request.volume}|{request.alpha}|{request.beta}|{request.diffusion_steps}|{request.embedding_scale}".encode()
+        f"kokoro|{clean_text}|{request.voice}|{request.speed}|{request.volume}|{kokoro_device}".encode()
     ).hexdigest()
     cache_path = os.path.join(CACHE_DIR, f"{cache_key}.wav")
 
@@ -228,48 +199,23 @@ async def text_to_speech(request: TTSRequest):
 
     try:
         start_time = time.time()
+        voice_id = request.voice
+        if voice_id == "default" or not voice_id:
+            voice_id = "af_nicole"
+        speed = request.speed
+        audio, sr = kokoro_model.create(clean_text, voice=voice_id, speed=speed, lang="en-us")
 
-        voice_path = resolve_voice_path(request.voice)
-
-        samples = model.inference(
-            clean_text,
-            target_voice_path=voice_path,
-            alpha=request.alpha,
-            beta=request.beta,
-            diffusion_steps=request.diffusion_steps,
-            embedding_scale=request.embedding_scale,
-        )
-
-        if samples is None or len(samples) == 0:
+        if audio is None or len(audio) == 0:
             raise HTTPException(status_code=500, detail="No audio generated")
 
-        sample_rate = 24000
+        gen_time = time.time() - start_time
+        safe_print(f"[TTS] Kokoro generated audio in {gen_time:.2f}s (voice: {voice_id}, speed: {speed}, device: {kokoro_device})")
 
         if request.volume != 1.0:
-            samples = samples * max(0.0, min(2.0, request.volume))
-
-        if request.speed != 1.0:
-            orig_len = len(samples)
-            step = request.speed
-            indices = np.arange(0, orig_len, step)
-            indices = indices[indices < orig_len]
-            if len(indices) > 0:
-                samples = np.interp(indices, np.arange(orig_len), samples).astype(samples.dtype)
-
-        if request.pitch != 1.0:
-            orig_len = len(samples)
-            step = request.pitch
-            indices = np.arange(0, orig_len, step)
-            indices = indices[indices < orig_len]
-            if len(indices) > 0:
-                samples = np.interp(indices, np.arange(orig_len), samples).astype(samples.dtype)
-
-        gen_time = time.time() - start_time
-        voice_label = request.voice if request.voice != "default" else "default"
-        safe_print(f"[TTS] Generated audio in {gen_time:.2f}s (voice: {voice_label})")
+            audio = audio * max(0.0, min(2.0, request.volume))
 
         buffer = io.BytesIO()
-        sf.write(buffer, samples, sample_rate, format='WAV')
+        sf.write(buffer, audio, sr, format='WAV')
         audio_data = buffer.getvalue()
 
         with open(cache_path, "wb") as f:
@@ -279,57 +225,56 @@ async def text_to_speech(request: TTSRequest):
     except HTTPException:
         raise
     except Exception as e:
-        safe_print(f"[TTS] Error during generation: {e}")
+        safe_print(f"[TTS] Kokoro error during generation: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/health")
 async def health():
-    status = "ok" if engine_loaded else ("error" if engine_error else "loading")
+    status = "ok" if kokoro_loaded else ("error" if kokoro_error else "loading")
     return {
         "status": status,
-        "device": current_device,
-        "engine": "styletts2",
-        "loaded": engine_loaded,
-        "error": engine_error,
+        "device": kokoro_device,
+        "engine": "kokoro",
+        "loaded": kokoro_loaded,
+        "error": kokoro_error,
+        "available_devices": available_devices,
     }
 
-@app.post("/reload")
-async def reload_engine():
-    global model, engine_loaded, engine_error
-    # Properly free the old model memory before reloading
-    if model is not None:
-        try:
-            if hasattr(model, 'unload'):
-                model.unload()
-        except Exception:
-            pass
-        del model
-        model = None
-    import gc
-    gc.collect()
-    try:
-        import torch
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except ImportError:
-        pass
-    engine_loaded = False
-    engine_error = None
-    import threading
-    threading.Thread(target=init_engine, daemon=True).start()
-    return {"status": "reloading"}
+class SetDeviceRequest(BaseModel):
+    device: str
+
+@app.post("/set_device")
+async def set_device(req: SetDeviceRequest):
+    global kokoro_device
+    requested = resolve_device(req.device)
+    if requested != kokoro_device or not kokoro_loaded:
+        safe_print(f"[TTS] Switching Kokoro from {kokoro_device} to {requested}...")
+        unload_kokoro()
+        init_kokoro(requested)
+    return {"status": "ok", "device": kokoro_device}
 
 @app.get("/voices")
-async def list_voices():
+async def list_kokoro_voices():
+    if not kokoro_loaded or kokoro_model is None:
+        try:
+            from kokoro_onnx import Kokoro
+            if find_kokoro_models():
+                tmp = Kokoro(KOKORO_MODEL_PATH, KOKORO_VOICES_PATH)
+                all_voices = tmp.get_voices()
+                del tmp
+            else:
+                all_voices = []
+        except Exception:
+            all_voices = []
+    else:
+        all_voices = kokoro_model.get_voices()
     entries = []
-    entries.append({"id": "default", "name": "Default Voice", "path": ""})
-    for entry in voices_manifest:
-        vid = entry.get("id", "")
-        vname = entry.get("name", vid)
-        vpath = entry.get("path", "")
-        entries.append({"id": vid, "name": vname, "path": vpath})
+    entries.append({"id": "default", "name": "Default Voice (af_nicole)", "engine": "kokoro"})
+    for v in all_voices:
+        display = v.replace("_", " ").title()
+        entries.append({"id": v, "name": display, "engine": "kokoro"})
     return entries
 
 class STTRequest(BaseModel):
@@ -371,4 +316,5 @@ async def speech_to_text(req: STTRequest):
             os.unlink(tmp_wav.name)
 
 if __name__ == "__main__":
+    detect_devices()
     uvicorn.run(app, host="127.0.0.1", port=5000)

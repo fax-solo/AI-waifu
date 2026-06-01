@@ -6,6 +6,8 @@ export default function MessageBubble({ message }) {
     minute: '2-digit',
   });
 
+  if (message.isStreaming && !message.content) return null;
+
   return (
     <div className={`message ${message.role}`}>
       <div className="message-avatar" aria-hidden="true">
@@ -28,7 +30,7 @@ export default function MessageBubble({ message }) {
                 blockquote: ({ children }) => <blockquote>{children}</blockquote>,
               }}
             >
-              {message.content}
+              {message.isStreaming ? message.content || '' : message.content}
             </ReactMarkdown>
           ) : (
             <p>{message.content}</p>
@@ -36,7 +38,7 @@ export default function MessageBubble({ message }) {
         </div>
         <div className="message-info">
           <span className="message-time">{time}</span>
-          {message.isSearching && (
+          {!message.isStreaming && message.isSearching && (
             <span className="search-indicator">🔎 Using live web data</span>
           )}
         </div>
