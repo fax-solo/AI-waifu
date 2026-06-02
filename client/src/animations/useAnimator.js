@@ -612,8 +612,9 @@ export function useAnimator({ getTexture, onVFX } = {}) {
        }
      }
 
-     // 10b. Lip sync from audio analyser
-    if (state.isTalking && state.analyser) {
+      // 10b. Lip sync from audio analyser
+    const lips = lipSync.current;
+    if (state.isTalking && state.analyser && state.lipSyncEnabled) {
       const bins = state.analyser.frequencyBinCount;
       if (!lipWave.current || lipWave.current.length !== bins) {
         lipWave.current = new Uint8Array(bins);
@@ -627,7 +628,6 @@ export function useAnimator({ getTexture, onVFX } = {}) {
 
       const wave = lipWave.current;
       const freq = lipFreq.current;
-      const lips = lipSync.current;
 
       let sumSq = 0;
       for (let i = 0; i < bins; i++) {
@@ -694,6 +694,11 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       }
       hasActiveFacial = true;
       queueBlendSpeed = Math.max(queueBlendSpeed, 14);
+    } else if (!state.lipSyncEnabled) {
+      const decay = Math.min(1, dt * 12);
+      for (const k of ['open', 'aa', 'ih', 'ou', 'ee', 'oh']) {
+        lips[k] -= lips[k] * decay;
+      }
     }
 
     if (proxy && proxy.getRawEm()) {
@@ -952,11 +957,13 @@ export function useAnimator({ getTexture, onVFX } = {}) {
     const emotion = state.emotion || 'neutral';
     if (emotion !== lastEmotion.current && state.autoAnimate && !state.isTesting) {
       lastEmotion.current = emotion;
-      lastMouth.current = state.mouthExpression || null;
+      if (state.lipSyncEnabled) {
+        lastMouth.current = state.mouthExpression || null;
+      }
       lastEye.current = state.eyeExpression || null;
       const facialFile = EMOTION_FACIAL[emotion] || `${emotion}.json`;
       playFacial(facialFile, { blendSpeed: 10 });
-      if (!state.mouthExpression) {
+      if (!state.mouthExpression && state.lipSyncEnabled) {
         const overlay = EMOTION_TO_OVERLAY[emotion];
         if (overlay?.mouth) {
           const mouthFile = MOUTH_FACIAL[overlay.mouth];
@@ -972,7 +979,7 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       }
     }
 
-    if (state.mouthExpression !== undefined && state.mouthExpression !== lastMouth.current) {
+    if (state.mouthExpression !== undefined && state.mouthExpression !== lastMouth.current && state.lipSyncEnabled) {
       lastMouth.current = state.mouthExpression;
       if (state.mouthExpression) {
         const mouthFile = MOUTH_FACIAL[state.mouthExpression];

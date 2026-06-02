@@ -35,6 +35,7 @@ router.get('/', (req, res) => {
         tone: companion?.tone || 'cute, friendly, emotional',
         personality: companion?.personality || 'You are a loving and caring companion who deeply cares about the user.',
         backstory: companion?.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
+        lipSyncEnabled: !!(companion?.lip_sync_enabled ?? 1),
         ttsEnabled: !!(companion?.tts_enabled ?? 1),
         ttsVoice: companion?.tts_voice || 'default',
         audioInputDevice: companion?.audio_input_device || 'default',
@@ -83,6 +84,7 @@ router.put('/', (req, res) => {
               personality = COALESCE(?, personality),
               backstory = COALESCE(?, backstory),
               tts_enabled = COALESCE(?, tts_enabled),
+              lip_sync_enabled = COALESCE(?, lip_sync_enabled),
               tts_voice = COALESCE(?, tts_voice),
               audio_input_device = COALESCE(?, audio_input_device),
               audio_output_device = COALESCE(?, audio_output_device),
@@ -102,6 +104,7 @@ router.put('/', (req, res) => {
           companion.personality || null,
           companion.backstory || null,
           companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : null,
+          companion.lipSyncEnabled !== undefined ? (companion.lipSyncEnabled ? 1 : 0) : null,
           companion.ttsVoice || null,
           companion.audioInputDevice || null,
           companion.audioOutputDevice || null,
@@ -117,8 +120,8 @@ router.put('/', (req, res) => {
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_speed, tts_pitch, tts_volume, tts_max_chars, llm_model, llm_provider, shortcuts)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, lip_sync_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_speed, tts_pitch, tts_volume, tts_max_chars, llm_model, llm_provider, shortcuts)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
           companion.name || 'Aria',
@@ -126,6 +129,7 @@ router.put('/', (req, res) => {
           companion.personality || 'You are a loving and caring companion who deeply cares about the user.',
           companion.backstory || 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
           companion.ttsEnabled !== undefined ? (companion.ttsEnabled ? 1 : 0) : 1,
+          companion.lipSyncEnabled !== undefined ? (companion.lipSyncEnabled ? 1 : 0) : 1,
           companion.ttsVoice || 'default',
           companion.audioInputDevice || 'default',
           companion.audioOutputDevice || 'default',

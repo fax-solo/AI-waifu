@@ -79,6 +79,7 @@ export default {
     },
     voice: {
       enableTTS: 'تفعيل مُركّب الصوت',
+      enableLipSync: 'تفعيل مزامنة الشفاه',
       mic: 'الميكروفون (إدخال)',
       speaker: 'مكبر الصوت (إخراج)',
       hardwareAccel: 'تسريع الأجهزة',

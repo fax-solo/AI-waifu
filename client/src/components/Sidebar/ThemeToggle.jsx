@@ -38,34 +38,28 @@ export default function ThemeToggle({ theme, onToggle }) {
   const btnRef = useRef(null);
   const [squishing, setSquishing] = useState(false);
 
-  const triggerRipple = useCallback((x, y) => {
-    const diameter = Math.sqrt(
-      Math.max(x, window.innerWidth - x) ** 2 +
-      Math.max(y, window.innerHeight - y) ** 2
-    ) * 2;
+  const triggerFade = useCallback(() => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark';
 
-    const ripple = document.createElement('div');
-    ripple.className = 'theme-page-ripple';
-    ripple.style.setProperty('--x', `${x}px`);
-    ripple.style.setProperty('--y', `${y}px`);
-    ripple.style.setProperty('--diameter', `${diameter}px`);
-    document.body.appendChild(ripple);
+    const probe = document.createElement('div');
+    probe.setAttribute('data-theme', newTheme);
+    probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
+    document.body.appendChild(probe);
+    const newBg = getComputedStyle(probe).getPropertyValue('--color-bg-primary').trim() || '#f5f3fa';
+    document.body.removeChild(probe);
 
-    ripple.addEventListener('animationend', () => ripple.remove(), { once: true });
-  }, []);
+    const overlay = document.createElement('div');
+    overlay.className = 'theme-fade-overlay';
+    overlay.style.background = newBg;
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('animationend', () => overlay.remove(), { once: true });
+  }, [theme]);
 
   const handleClick = (e) => {
-    const btn = btnRef.current;
-    if (!btn) return;
-
-    const rect = btn.getBoundingClientRect();
-    const cx = e.clientX;
-    const cy = e.clientY;
-
-    triggerRipple(cx, cy);
+    triggerFade();
     setSquishing(true);
     setTimeout(() => setSquishing(false), 450);
-
     onToggle();
   };
 

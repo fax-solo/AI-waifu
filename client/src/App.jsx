@@ -17,6 +17,7 @@ const DEFAULT_PANEL_WIDTH = 400;
 
 export default function App() {
   const [showSetup, setShowSetup] = useState(null);
+  const [hasVRM, setHasVRM] = useState(false);
   const {
     conversations,
     activeConversationId,
@@ -38,26 +39,18 @@ export default function App() {
   } = useChat();
 
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [companionSettings, setCompanionSettings] = useState({
-    name: 'Aria',
-    backstory: 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
-    ttsEnabled: true,
-    ttsVoice: 'default',
-    audioInputDevice: 'default',
-    audioOutputDevice: 'default',
-    shortcuts: DEFAULT_SHORTCUTS
-  });
-  const [currentEmotion, setCurrentEmotion] = useState('neutral');
-  const [mouthExpression, setMouthExpression] = useState(null);
-  const [eyeExpression, setEyeExpression] = useState(null);
-  const { addToast } = useToast();
+  const [companionSettings, setCompanionSettings] = useState({});
   const [screenshot, setScreenshot] = useState(null);
   const [screenshotError, setScreenshotError] = useState('');
-  const [avatarCollapsed, setAvatarCollapsed] = useState(false);
+  const { addToast } = useToast();
   const { speak, isPlaying, analyser } = useTTS();
   const messageInputRef = useRef(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('waifu-theme') || 'dark');
+  const [currentEmotion, setCurrentEmotion] = useState('neutral');
+  const [mouthExpression, setMouthExpression] = useState(null);
+  const [eyeExpression, setEyeExpression] = useState(null);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -83,7 +76,7 @@ export default function App() {
   const toggleTheme = useCallback(() => {
     setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   }, []);
-  
+
   // Resizing state — use ref during drag to avoid re-renders
   const [panelWidth, setPanelWidth] = useState(() => {
     const saved = localStorage.getItem('waifu-panel-width');
@@ -92,98 +85,16 @@ export default function App() {
   const [isResizing, setIsResizing] = useState(false);
   const panelWidthRef = useRef(panelWidth);
   const pendingWidthRef = useRef(null);
-  
+
+  // Sidebar controls
+  const handleToggleSidebar = () => setSidebarOpen(prev => !prev);
+  const [avatarCollapsed, setAvatarCollapsed] = useState(false);
+
   const avatarRef = useRef(null);
   const settingsReqId = useRef(0);
   const shortcutsOverridden = useRef(false);
 
-  // Sidebar controls
-  const handleToggleSidebar = () => setSidebarOpen(prev => !prev);
-  const resizerRef = useRef(null);
-
-  useEffect(() => {
-    const reqId = ++settingsReqId.current;
-
-    async function loadSettings() {
-      try {
-        const data = await api.getSettings();
-        if (reqId !== settingsReqId.current) return; // stale response
-        setCompanionSettings(prev => {
-          if (shortcutsOverridden.current) {
-            shortcutsOverridden.current = false;
-            return { ...data.companion, shortcuts: prev.shortcuts };
-          }
-          return data.companion;
-        });
-      } catch (err) {
-        // Ignore
-      }
-    }
-
-    loadSettings();
-  }, [loadRateLimit]);
-
-  // Load last used avatar
-  useEffect(() => {
-    async function loadActiveAvatar() {
-      const savedId = localStorage.getItem('waifu-vrm-id');
-
-      try {
-        const avatars = await api.getAvatars();
-        if (avatars.length === 0) return;
-
-        let active = null;
-        if (savedId) {
-          active = avatars.find(a => a.id === savedId);
-        }
-
-        // Fallback: If no saved avatar or saved avatar was deleted, use the first one from the list
-        if (!active) {
-          active = avatars[0];
-          localStorage.setItem('waifu-vrm-id', active.id);
-          localStorage.setItem('waifu-vrm-name', active.name);
-        }
-
-        if (active && avatarRef.current) {
-          const url = api.getUploadUrl(active.file_path);
-          const ok = await avatarRef.current.loadFile(url);
-          if (!ok) {
-            console.warn('Failed to load avatar, removing stale entry:', active.id);
-            // Remove broken entry from server and clear localStorage
-            try { await api.deleteAvatar(active.id); } catch {}
-            if (localStorage.getItem('waifu-vrm-id') === active.id) {
-              localStorage.removeItem('waifu-vrm-id');
-              localStorage.removeItem('waifu-vrm-name');
-            }
-            // Try the next avatar if available
-            const remaining = avatars.filter(a => a.id !== active.id);
-            if (remaining.length > 0 && avatarRef.current) {
-              const next = remaining[0];
-              localStorage.setItem('waifu-vrm-id', next.id);
-              localStorage.setItem('waifu-vrm-name', next.name);
-              await avatarRef.current.loadFile(api.getUploadUrl(next.file_path));
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Failed to auto-load avatar:', err);
-      }
-    }
-    
-    // Small delay to ensure AvatarViewport is ready
-    const timer = setTimeout(loadActiveAvatar, 500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Check if setup was completed on first launch
-  useEffect(() => {
-    api.checkSetupStatus().then(data => {
-      if (!data.completed) setShowSetup(true);
-      else setShowSetup(false);
-    }).catch(() => setShowSetup(false));
-  }, []);
-
-  // Resizing logic — updates ref during drag, commits to state + localStorage on mouseup
+  // Resizing logic
   const startResizing = useCallback((e) => {
     e.preventDefault();
     panelWidthRef.current = panelWidth;
@@ -234,6 +145,90 @@ export default function App() {
     };
   }, [isResizing, resize, stopResizing]);
 
+  useEffect(() => {
+    const reqId = ++settingsReqId.current;
+
+    async function loadSettings() {
+      try {
+        const data = await api.getSettings();
+        if (reqId !== settingsReqId.current) return; // stale response
+        setCompanionSettings(prev => {
+          if (shortcutsOverridden.current) {
+            shortcutsOverridden.current = false;
+            return { ...data.companion, shortcuts: prev.shortcuts };
+          }
+          return data.companion;
+        });
+      } catch (err) {
+        // Ignore
+      }
+    }
+
+    loadSettings();
+  }, [loadRateLimit]);
+
+  // Load last used avatar
+  useEffect(() => {
+    async function loadActiveAvatar() {
+      const savedId = localStorage.getItem('waifu-vrm-id');
+
+      try {
+        const avatars = await api.getAvatars();
+        if (avatars.length === 0) return;
+
+        let active = null;
+        if (savedId) {
+          active = avatars.find(a => a.id === savedId);
+        }
+
+        // Fallback: If no saved avatar or saved avatar was deleted, use the first one from the list
+        if (!active) {
+          active = avatars[0];
+          localStorage.setItem('waifu-vrm-id', active.id);
+          localStorage.setItem('waifu-vrm-name', active.name);
+        }
+
+        if (active && avatarRef.current) {
+          const url = api.getUploadUrl(active.file_path);
+          const ok = await avatarRef.current.loadFile(url);
+          if (ok) {
+            setHasVRM(true);
+          } else {
+            console.warn('Failed to load avatar, removing stale entry:', active.id);
+            // Remove broken entry from server and clear localStorage
+            try { await api.deleteAvatar(active.id); } catch {}
+            if (localStorage.getItem('waifu-vrm-id') === active.id) {
+              localStorage.removeItem('waifu-vrm-id');
+              localStorage.removeItem('waifu-vrm-name');
+            }
+            // Try the next avatar if available
+            const remaining = avatars.filter(a => a.id !== active.id);
+            if (remaining.length > 0 && avatarRef.current) {
+              const next = remaining[0];
+              localStorage.setItem('waifu-vrm-id', next.id);
+              localStorage.setItem('waifu-vrm-name', next.name);
+              await avatarRef.current.loadFile(api.getUploadUrl(next.file_path));
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Failed to auto-load avatar:', err);
+      }
+    }
+    
+    // Small delay to ensure AvatarViewport is ready
+    const timer = setTimeout(loadActiveAvatar, 500);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Check if setup was completed on first launch
+  useEffect(() => {
+    api.checkSetupStatus().then(data => {
+      if (!data.completed) setShowSetup(true);
+      else setShowSetup(false);
+    }).catch(() => setShowSetup(false));
+  }, []);
+
   const handleNewChat = async () => {
     await createConversation();
     setSidebarOpen(false);
@@ -241,6 +236,7 @@ export default function App() {
 
   const handleSettingsClose = () => {
     setShowSettings(false);
+    setSettingsInitialTab(null);
     loadRateLimit();
     api.getSettings().then(data => {
       if (data?.companion) {
@@ -261,6 +257,11 @@ export default function App() {
   };
 
   const handleVRMFileSelected = (file) => {
+    if (!file) {
+      setHasVRM(false);
+      return;
+    }
+    setHasVRM(true);
     if (avatarRef.current) {
       avatarRef.current.loadFile(file);
     }
@@ -327,6 +328,11 @@ export default function App() {
     const cleanText = userContent.replace(/\n\n\[📷 Screenshot attached\]$/, '');
     handleSendMessage(cleanText);
   }, [messages, removeMessage, handleSendMessage]);
+
+  const handleEditMessage = useCallback((messageId, newText) => {
+    removeMessage(messageId);
+    handleSendMessage(newText);
+  }, [removeMessage, handleSendMessage]);
 
   const handleCopy = useCallback((content) => {
     navigator.clipboard.writeText(content).then(() => {
@@ -416,6 +422,17 @@ export default function App() {
     return () => cleanup?.();
   }, []);
 
+  const handleToggleLipSync = async () => {
+    const newState = !companionSettings.lipSyncEnabled;
+    const updated = { ...companionSettings, lipSyncEnabled: newState };
+    setCompanionSettings(updated);
+    try {
+      await api.updateSettings({ companion: { lipSyncEnabled: newState } });
+    } catch (err) {
+      console.error('Failed to save lip sync setting:', err);
+    }
+  };
+
   const handleToggleTTS = async () => {
     const newState = !companionSettings.ttsEnabled;
     const updated = { ...companionSettings, ttsEnabled: newState };
@@ -476,7 +493,7 @@ export default function App() {
 
       <div className="main-content">
         {/* Avatar Panel */}
-        <div 
+        <div
           className={`avatar-panel ${avatarCollapsed ? 'collapsed' : ''}`}
           style={{ width: avatarCollapsed ? 0 : panelWidth }}
         >
@@ -488,6 +505,8 @@ export default function App() {
             isThinking={isSending}
             isTalking={isPlaying}
             analyser={analyser}
+            lipSyncEnabled={companionSettings.lipSyncEnabled}
+            onOpenSettings={() => { setSettingsInitialTab('avatar'); setShowSettings(true); }}
           />
         </div>
 
@@ -505,7 +524,7 @@ export default function App() {
 
         {/* Resizer Handle */}
         {!avatarCollapsed && (
-          <div 
+          <div
             className={`layout-resizer ${isResizing ? 'dragging' : ''}`}
             onMouseDown={startResizing}
             onKeyDown={handleResizerKeyDown}
@@ -534,12 +553,15 @@ export default function App() {
           onToggleSidebar={() => setSidebarOpen((p) => !p)}
           ttsEnabled={companionSettings.ttsEnabled}
           onToggleTTS={handleToggleTTS}
+          lipSyncEnabled={companionSettings.lipSyncEnabled}
+          onToggleLipSync={handleToggleLipSync}
           audioInputDevice={companionSettings.audioInputDevice}
           screenshot={screenshot}
           screenshotError={screenshotError}
           onCaptureScreenshot={captureScreenshot}
           onClearScreenshot={clearScreenshot}
           onRegenerate={handleRegenerate}
+          onEditMessage={handleEditMessage}
           onCopy={handleCopy}
         />
       </div>
@@ -552,6 +574,7 @@ export default function App() {
             avatarRef={avatarRef}
             onShortcutsChange={handleShortcutsChange}
             onTriggerSetup={handleTriggerSetup}
+            initialTab={settingsInitialTab}
           />
         </Suspense>
       )}

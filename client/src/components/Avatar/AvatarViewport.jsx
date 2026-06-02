@@ -57,6 +57,8 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   analyser,
   mouthExpression,
   eyeExpression,
+  lipSyncEnabled = true,
+  onOpenSettings,
 }, ref) {
   const canvasRef = useRef(null);
   const rendererRef = useRef(null);
@@ -209,6 +211,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     emotion: currentEmotion,
     mouthExpression: null,
     eyeExpression: null,
+    lipSyncEnabled: true,
     autoAnimate: avatarSettings.autoAnimate,
     isTesting: false,
     mouseX: 0,
@@ -248,6 +251,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
       emotion: currentEmotion,
       mouthExpression: mouthExpression || null,
       eyeExpression: eyeExpression || null,
+      lipSyncEnabled,
       autoAnimate: avatarSettings.autoAnimate,
       isTesting: testingRef.current,
       mouseX: mousePosRef.current.x,
@@ -255,7 +259,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
       mouseMoving: mouseMovingRef.current,
       restPose,
     };
-  }, [isThinking, isTalking, analyser, avatarSettings.autoAnimate, currentEmotion, mouthExpression, eyeExpression, restPose]);
+  }, [isThinking, isTalking, analyser, avatarSettings.autoAnimate, currentEmotion, mouthExpression, eyeExpression, lipSyncEnabled, restPose]);
 
   // Wire emotion changes → spring bone physics
   useEffect(() => {
@@ -708,8 +712,14 @@ const AvatarViewport = forwardRef(function AvatarViewport({
       {/* Empty State */}
       {!hasModel && !loading && (
         <div className="avatar-empty">
-          <div className="avatar-empty-icon">🎭</div>
-          <p>Load a VRM model in <strong>Settings</strong></p>
+          <div className="avatar-empty-card">
+            <div className="avatar-empty-card-glow" />
+            <div className="avatar-empty-icon">🎭</div>
+            <p className="avatar-empty-text">No VRM model loaded</p>
+            <button className="avatar-empty-cta" onClick={onOpenSettings}>
+              Open Settings
+            </button>
+          </div>
         </div>
       )}
 

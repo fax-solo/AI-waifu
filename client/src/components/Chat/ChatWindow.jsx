@@ -1,5 +1,5 @@
 import { useEffect, useState, forwardRef, memo } from 'react';
-import { Menu, Volume2, VolumeX } from 'lucide-react';
+import { Menu, Volume2, VolumeX, AudioLines, Search, X as XIcon } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import MessageBubble from './MessageBubble.jsx';
 import MessageInput from './MessageInput.jsx';
@@ -22,10 +22,13 @@ const ChatWindow = forwardRef(function ChatWindow({
   messagesEndRef,
   companionName,
   onSend,
+  onEditMessage,
   onError,
   onToggleSidebar,
   ttsEnabled,
   onToggleTTS,
+  lipSyncEnabled,
+  onToggleLipSync,
   audioInputDevice,
   screenshot,
   screenshotError,
@@ -36,6 +39,9 @@ const ChatWindow = forwardRef(function ChatWindow({
 }, ref) {
   const { t } = useLanguage();
   const [showError, setShowError] = useState(false);
+  const [editMessage, setEditMessage] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
   useEffect(() => {
     if (error) {
@@ -53,6 +59,39 @@ const ChatWindow = forwardRef(function ChatWindow({
     : rateLimit.remaining <= 10 ? 'low'
     : ''
     : '';
+
+  const handleRequestEdit = (id, content) => {
+    setEditMessage({ id, text: content });
+  };
+
+  const handleEdit = (id, newText) => {
+    if (id && newText) onEditMessage?.(id, newText);
+    setEditMessage(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditMessage(null);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f' && messages.length > 0) {
+        e.preventDefault();
+        setShowSearch(p => !p);
+        if (!showSearch) setSearchQuery('');
+      }
+      if (e.key === 'Escape' && showSearch) {
+        setShowSearch(false);
+        setSearchQuery('');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [messages.length, showSearch]);
+
+  const filteredMessages = searchQuery.trim()
+    ? messages.filter(m => m.content?.toLowerCase().includes(searchQuery.toLowerCase()))
+    : messages;
 
   return (
     <div className="chat-area">
@@ -74,6 +113,16 @@ const ChatWindow = forwardRef(function ChatWindow({
         </div>
 
         <div className="chat-header-actions">
+          {messages.length > 0 && (
+            <button
+              className={`chat-search-toggle ${showSearch ? 'active' : ''}`}
+              onClick={() => setShowSearch(p => !p)}
+              title="Search messages (Ctrl+F)"
+              aria-label="Toggle message search"
+            >
+              <Search size={16} />
+            </button>
+          )}
           {rateLimit && !rateLimit.bypassed && (
             <div className={`rate-limit-badge ${rateLimitClass}`} title="Messages remaining today">
               {rateLimit.remaining}/{rateLimit.limit} left
@@ -94,8 +143,43 @@ const ChatWindow = forwardRef(function ChatWindow({
           >
             {ttsEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
           </button>
+
+          <button
+            className={`tts-toggle-btn ${lipSyncEnabled ? 'enabled' : 'disabled'}`}
+            onClick={onToggleLipSync}
+            title={lipSyncEnabled ? 'Disable lip sync' : 'Enable lip sync'}
+            aria-label={lipSyncEnabled ? 'Disable lip sync animation' : 'Enable lip sync animation'}
+            aria-pressed={lipSyncEnabled}
+          >
+            <AudioLines size={18} />
+          </button>
         </div>
       </div>
+
+      {/* Search Bar */}
+      {showSearch && (
+        <div className="chat-search-bar">
+          <Search size={14} className="chat-search-bar-icon" />
+          <input
+            className="chat-search-bar-input"
+            type="text"
+            placeholder="Search messages..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            autoFocus
+          />
+          <span className="chat-search-bar-count">
+            {searchQuery.trim() ? `${filteredMessages.length}/${messages.length}` : `${messages.length}`}
+          </span>
+          <button
+            className="chat-search-bar-close"
+            onClick={() => { setShowSearch(false); setSearchQuery(''); }}
+            aria-label="Close search"
+          >
+            <XIcon size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Error Toast */}
       {showError && error && (
@@ -148,9 +232,20 @@ const ChatWindow = forwardRef(function ChatWindow({
         </div>
       ) : (
         <div className="messages-container" role="log" aria-live="polite" aria-relevant="additions" aria-label="Chat messages">
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} onRegenerate={onRegenerate} onCopy={onCopy} />
-          ))}
+          {filteredMessages.length === 0 && searchQuery.trim() ? (
+            <div className="messages-search-empty">No messages match "{searchQuery}"</div>
+          ) : (
+            filteredMessages.map((msg) => (
+              <MessageBubble
+                key={msg.id}
+                message={msg}
+                onRegenerate={onRegenerate}
+                onCopy={onCopy}
+                onRequestEdit={handleRequestEdit}
+                searchQuery={searchQuery}
+              />
+            ))
+          )}
           {isSending && <TypingIndicator isSearching={isSearching} />}
           <div ref={messagesEndRef} />
         </div>
@@ -160,6 +255,8 @@ const ChatWindow = forwardRef(function ChatWindow({
       <MessageInput
         ref={ref}
         onSend={onSend}
+        onEdit={handleEdit}
+        editMessage={editMessage}
         isSending={isSending}
         disabled={isSending || (rateLimit && rateLimit.remaining <= 0 && !rateLimit.bypassed)}
         placeholder={t('chat.typeMessage')}

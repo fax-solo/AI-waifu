@@ -27,7 +27,7 @@ function deepEqual(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-export default function useSettings({ onShortcutsChange, onVRMFileSelected, avatarRef: extAvatarRef }) {
+export default function useSettings({ onShortcutsChange, onVRMFileSelected, avatarRef: extAvatarRef, initialTab }) {
   const { speak, isPlaying: isTestingVoice } = useTTS();
   const [settings, setSettings] = useState(null);
   const [settingsLoading, setSettingsLoading] = useState(true);
@@ -38,6 +38,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     personality: '',
     backstory: '',
     ttsEnabled: true,
+    lipSyncEnabled: true,
     ttsVoice: 'default',
     audioInputDevice: 'default',
     audioOutputDevice: 'default',
@@ -91,7 +92,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
   const [micTestStatus, setMicTestStatus] = useState('idle');
   const [ttsStatus, setTtsStatus] = useState({ status: 'unknown', device: 'cpu' });
   const [voices, setVoices] = useState([{ id: 'default', name: 'Default Voice', path: '' }]);
-  const [activeTab, setActiveTab] = useState('profile');
+  const [activeTab, setActiveTab] = useState(initialTab || 'profile');
   const [settingsSearch, setSettingsSearch] = useState('');
 
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
@@ -167,6 +168,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
           personality: data.companion.personality,
           backstory: data.companion.backstory,
           ttsEnabled: data.companion.ttsEnabled ?? true,
+          lipSyncEnabled: data.companion.lipSyncEnabled ?? true,
           ttsVoice: data.companion.ttsVoice ?? 'default',
           audioInputDevice: data.companion.audioInputDevice ?? 'default',
           audioOutputDevice: data.companion.audioOutputDevice ?? 'default',

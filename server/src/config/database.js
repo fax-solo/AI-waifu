@@ -79,6 +79,7 @@ async function initDb() {
       backstory TEXT DEFAULT 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
       custom_api_key_encrypted TEXT,
       tts_enabled INTEGER DEFAULT 1,
+      lip_sync_enabled INTEGER DEFAULT 1,
       tts_voice TEXT DEFAULT 'default',
       audio_input_device TEXT DEFAULT 'default',
       audio_output_device TEXT DEFAULT 'default',
@@ -145,6 +146,7 @@ async function initDb() {
   }
 
   const requiredCols = [
+    { table: 'companion_settings', name: 'lip_sync_enabled', type: 'INTEGER DEFAULT 1' },
     { table: 'companion_settings', name: 'tts_enabled', type: 'INTEGER DEFAULT 1' },
     { table: 'companion_settings', name: 'tts_voice', type: 'TEXT DEFAULT "default"' },
     { table: 'companion_settings', name: 'audio_input_device', type: 'TEXT DEFAULT "default"' },

@@ -79,6 +79,7 @@ export default {
     },
     voice: {
       enableTTS: 'Enable Voice Synthesizer',
+      enableLipSync: 'Enable Lip Sync',
       mic: 'Microphone (Input)',
       speaker: 'Speaker (Output)',
       hardwareAccel: 'Hardware Acceleration',

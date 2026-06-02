@@ -1,7 +1,18 @@
 import ReactMarkdown from 'react-markdown';
 import { useState } from 'react';
+import { Pencil } from 'lucide-react';
 
-export default function MessageBubble({ message, onRegenerate, onCopy }) {
+function highlightText(text, query) {
+  if (!query || !text) return text;
+  const parts = text.split(new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi'));
+  return parts.map((part, i) =>
+    part.toLowerCase() === query.toLowerCase()
+      ? `<mark class="search-highlight">${part}</mark>`
+      : part
+  ).join('');
+}
+
+export default function MessageBubble({ message, onRegenerate, onCopy, onRequestEdit, searchQuery }) {
   const [hovered, setHovered] = useState(false);
   const time = new Date(message.created_at).toLocaleTimeString([], {
     hour: '2-digit',
@@ -38,10 +49,10 @@ export default function MessageBubble({ message, onRegenerate, onCopy }) {
                 blockquote: ({ children }) => <blockquote>{children}</blockquote>,
               }}
             >
-              {message.isStreaming ? message.content || '' : message.content}
+              {message.isStreaming ? message.content || '' : searchQuery ? highlightText(message.content, searchQuery) : message.content}
             </ReactMarkdown>
           ) : (
-            <p>{message.content}</p>
+            <p dangerouslySetInnerHTML={{ __html: searchQuery ? highlightText(message.content, searchQuery) : message.content }} />
           )}
         </div>
         <div className="message-info">
@@ -49,24 +60,38 @@ export default function MessageBubble({ message, onRegenerate, onCopy }) {
           {!message.isStreaming && message.isSearching && (
             <span className="search-indicator">🔎 Using live web data</span>
           )}
-          {isAssistant && !message.isStreaming && hovered && (
+          {!message.isStreaming && hovered && (
             <span className="message-actions">
-              <button
-                className="message-action-btn"
-                onClick={() => onCopy?.(message.content)}
-                title="Copy"
-                aria-label="Copy message"
-              >
-                📋
-              </button>
-              <button
-                className="message-action-btn"
-                onClick={() => onRegenerate?.(message.id)}
-                title="Regenerate"
-                aria-label="Regenerate response"
-              >
-                ↻
-              </button>
+              {!isAssistant && (
+                <button
+                  className="message-action-btn"
+                  onClick={() => onRequestEdit?.(message.id, message.content)}
+                  title="Edit message"
+                  aria-label="Edit message"
+                >
+                  <Pencil size={13} />
+                </button>
+              )}
+              {isAssistant && (
+                <>
+                  <button
+                    className="message-action-btn"
+                    onClick={() => onCopy?.(message.content)}
+                    title="Copy"
+                    aria-label="Copy message"
+                  >
+                    📋
+                  </button>
+                  <button
+                    className="message-action-btn"
+                    onClick={() => onRegenerate?.(message.id)}
+                    title="Regenerate"
+                    aria-label="Regenerate response"
+                  >
+                    ↻
+                  </button>
+                </>
+              )}
             </span>
           )}
         </div>

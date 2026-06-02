@@ -42,6 +42,16 @@ export default function VoiceTab({
         <label htmlFor="tts-enabled" className="switch-label">{t('settings.voice.enableTTS')}</label>
       </div>
 
+      <div className="form-group switch-group">
+        <input
+          type="checkbox"
+          id="lip-sync-enabled"
+          checked={companion.lipSyncEnabled}
+          onChange={(e) => setCompanion({ ...companion, lipSyncEnabled: e.target.checked })}
+        />
+        <label htmlFor="lip-sync-enabled" className="switch-label">{t('settings.voice.enableLipSync')}</label>
+      </div>
+
       {companion.ttsEnabled && (
         <>
           <div className="settings-voice-grid">

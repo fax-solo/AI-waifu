@@ -30,9 +30,9 @@ const TAB_CONFIG = [
   { id: 'data', icon: Database, labelKey: 'settings.data.title' },
 ];
 
-export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShortcutsChange, onTriggerSetup }) {
+export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShortcutsChange, onTriggerSetup, initialTab }) {
   const { t } = useLanguage();
-  const settings = useSettings({ onShortcutsChange, onVRMFileSelected, avatarRef });
+  const settings = useSettings({ onShortcutsChange, onVRMFileSelected, avatarRef, initialTab });
   const {
     activeTab, setActiveTab, settingsSearch, setSettingsSearch,
     displayName, setDisplayName, companion, setCompanion,
