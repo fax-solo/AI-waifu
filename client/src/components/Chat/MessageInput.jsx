@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { Send, Mic, MicOff, Loader2, ScanEye, X } from 'lucide-react';
+import { Send, Mic, MicOff, Loader2, ScanEye, Image, X } from 'lucide-react';
 import { sendSTT } from '../../utils/api.js';
 
 const MessageInput = forwardRef(({
@@ -18,6 +18,28 @@ const MessageInput = forwardRef(({
   const [sttError, setSttError] = useState('');
   const sttErrorTimer = useRef(null);
   const textareaRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [imageError, setImageError] = useState('');
+
+  const handleAttachImage = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileSelected = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setImageError('Please select an image file');
+      setTimeout(() => setImageError(''), 3000);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      onCaptureScreenshot?.(ev.target.result);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }, [onCaptureScreenshot]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -276,6 +298,22 @@ const MessageInput = forwardRef(({
             disabled={disabled}
             rows={1}
           />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleFileSelected}
+            style={{ display: 'none' }}
+          />
+          <button
+            className="attach-btn"
+            onClick={handleAttachImage}
+            title="Attach image"
+            aria-label="Attach image"
+            disabled={disabled}
+          >
+            <Image size={20} />
+          </button>
           <button
             className={`screenshot-btn${activeScreenshot ? ' has-screenshot' : ''}`}
             onClick={() => onCaptureScreenshot?.()}
@@ -303,15 +341,16 @@ const MessageInput = forwardRef(({
           <button
             id="send-button"
             className={`send-btn${isSending ? ' loading' : ''}`}
+            onClick={handleSubmit}
             disabled={(!text.trim() && !activeScreenshot) || disabled}
           >
             {isSending ? <div className="send-btn-spinner" /> : <Send size={20} />}
           </button>
         </div>
       </div>
-      {(sttError || screenshotError) && (
+      {(sttError || screenshotError || imageError) && (
         <div className="error-toast" role="alert">
-          {sttError || screenshotError}
+          {sttError || screenshotError || imageError}
         </div>
       )}
     </>

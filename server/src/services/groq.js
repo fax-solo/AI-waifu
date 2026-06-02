@@ -60,8 +60,7 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
         body: JSON.stringify({
           model: modelName,
           messages: groqMessages,
-          tools: WEB_SEARCH_TOOL,
-          tool_choice: forceSearch ? 'required' : 'auto',
+          ...(forceSearch ? { tools: WEB_SEARCH_TOOL, tool_choice: 'required' } : {}),
            temperature: 0.7,
            max_tokens: 8192,
            top_p: 1,
@@ -151,7 +150,7 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
 }
 
 function parseResponse(fullText) {
-  const emotionMatch = fullText.match(/^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i);
+  const emotionMatch = fullText.match(/^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*([\s\S]*)/i);
   const animMatch = fullText.match(/\[animation:([^\]]+)\]/i);
 
   let text = emotionMatch ? emotionMatch[3].trim() : fullText.trim();
@@ -212,8 +211,7 @@ export async function* groqChatStream({ apiKey, systemPrompt, history, userMessa
         body: JSON.stringify({
           model: modelName,
           messages: groqMessages,
-          tools: WEB_SEARCH_TOOL,
-          tool_choice: forceSearch ? 'required' : 'auto',
+          ...(forceSearch ? { tools: WEB_SEARCH_TOOL, tool_choice: 'required' } : {}),
           temperature: 0.7,
           max_tokens: 8192,
           top_p: 1,

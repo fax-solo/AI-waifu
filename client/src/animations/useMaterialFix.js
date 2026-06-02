@@ -15,12 +15,14 @@ const DATA_TEX_PATTERNS = [
   /ao\b/i, /_g$/i, /_r$/i, /bump/i, /normal/i, /nrml?/i,
   /specular/i, /roughness/i, /metalness/i, /gloss/i, /disp/i,
   /opacity/i, /translucency/i, /thickness/i,
+  /shade_?map/i, /sphere_?add/i, /rim_?map/i, /shading_?grade/i,
 ];
 
 // Diffuse/albedo texture filename patterns (real color maps)
 const DIFFUSE_TEX_PATTERNS = [
   /_tex/i, /_diffuse/i, /_diff$/i, /_skin/i, /_color/i,
   /_base/i, /_albedo/i, /_d\./i, /_c\./i,
+  /_col$/i, /_base_/i, /_skin_/i, /_main/i,
   /body/i, /face/i, /head/i,
 ];
 
@@ -196,7 +198,7 @@ function isDataTexturePixels(tex) {
   const variance = vals.reduce((sumV, v) => sumV + (v - avg) ** 2, 0) / vals.length;
   // Data textures: very low max luminance, narrow range, low avg, near-zero variance
   // Higher thresholds and variance check prevents false-flagging dark skin
-  return maxL < 0.25 && (maxL - minL) < 0.25 && avg < 0.15 && variance < 0.02;
+  return maxL < 0.30 && (maxL - minL) < 0.30 && avg < 0.18 && variance < 0.025;
 }
 
 function isSuspectTexture(tex) {

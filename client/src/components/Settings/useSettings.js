@@ -45,6 +45,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     ttsSpeed: 1.0,
     ttsPitch: 1.0,
     ttsVolume: 1.0,
+    ttsMaxChars: 500,
     llmModel: 'gemini-2.0-flash-lite',
     llmProvider: 'gemini',
     shortcuts: DEFAULT_SHORTCUTS
@@ -173,6 +174,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
           ttsSpeed: data.companion.ttsSpeed ?? 1.0,
           ttsPitch: data.companion.ttsPitch ?? 1.0,
           ttsVolume: data.companion.ttsVolume ?? 1.0,
+          ttsMaxChars: data.companion.ttsMaxChars ?? 500,
           llmModel: data.companion.llmModel ?? 'gemini-2.0-flash-lite',
           llmProvider: data.companion.llmProvider ?? 'gemini',
           shortcuts: hasCustomShortcuts ? loadedShortcuts : DEFAULT_SHORTCUTS

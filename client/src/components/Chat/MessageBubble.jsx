@@ -1,6 +1,8 @@
 import ReactMarkdown from 'react-markdown';
+import { useState } from 'react';
 
-export default function MessageBubble({ message }) {
+export default function MessageBubble({ message, onRegenerate, onCopy }) {
+  const [hovered, setHovered] = useState(false);
   const time = new Date(message.created_at).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
@@ -8,14 +10,20 @@ export default function MessageBubble({ message }) {
 
   if (message.isStreaming && !message.content) return null;
 
+  const isAssistant = message.role === 'assistant';
+
   return (
-    <div className={`message ${message.role}`}>
+    <div
+      className={`message ${message.role}`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <div className="message-avatar" aria-hidden="true">
-        {message.role === 'assistant' ? '✦' : '◆'}
+        {isAssistant ? '✦' : '◆'}
       </div>
       <div>
         <div className="message-bubble">
-          {message.role === 'assistant' ? (
+          {isAssistant ? (
             <ReactMarkdown
               components={{
                 p: ({ children }) => <p>{children}</p>,
@@ -40,6 +48,26 @@ export default function MessageBubble({ message }) {
           <span className="message-time">{time}</span>
           {!message.isStreaming && message.isSearching && (
             <span className="search-indicator">🔎 Using live web data</span>
+          )}
+          {isAssistant && !message.isStreaming && hovered && (
+            <span className="message-actions">
+              <button
+                className="message-action-btn"
+                onClick={() => onCopy?.(message.content)}
+                title="Copy"
+                aria-label="Copy message"
+              >
+                📋
+              </button>
+              <button
+                className="message-action-btn"
+                onClick={() => onRegenerate?.(message.id)}
+                title="Regenerate"
+                aria-label="Regenerate response"
+              >
+                ↻
+              </button>
+            </span>
           )}
         </div>
       </div>

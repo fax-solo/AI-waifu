@@ -111,8 +111,6 @@ router.post('/', async (req, res) => {
     }
 
     const ttsVoice = voice || 'af_nicole';
-    const ttsEmotion = emotion || 'neutral';
-    const ttsIntensity = intensity ?? 0.5;
 
     const response = await fetch(`${TTS_SERVER_URL}/tts`, {
       method: 'POST',
@@ -125,8 +123,8 @@ router.post('/', async (req, res) => {
         volume: volume ?? 1.0,
         device,
         engine: 'kokoro',
-        emotion: ttsEmotion,
-        intensity: ttsIntensity,
+        emotion: 'neutral',
+        intensity: 0,
       }),
     });
 

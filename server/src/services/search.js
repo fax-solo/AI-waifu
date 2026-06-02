@@ -35,6 +35,7 @@ const SEARCH_KEYWORDS = [
   'movies like', 'shows like', 'something like',
   'like what', 'similar artists', 'similar songs',
   'recommend me', 'suggest me',
+  'lyrics', 'lyrics for', 'song lyrics', 'lyrics of',
 ];
 
 /**
@@ -119,8 +120,9 @@ export async function searchWeb(query) {
       body: JSON.stringify({
         api_key: TAVILY_API_KEY,
         query: query,
-        search_depth: 'basic',
-        include_answer: true,
+        search_depth: 'advanced',
+        include_answer: false,
+        include_raw_content: false,
         max_results: 5
       })
     });
@@ -131,9 +133,18 @@ export async function searchWeb(query) {
     }
 
     const data = await response.json();
-    
-    // Tavily's "answer" is a nice summary of the results
-    const result = data.answer || data.results.map(r => `${r.title}: ${r.content}`).join('\n\n');
+
+    const MAX_RESULT_CHARS = 1200;
+    const MAX_TOTAL_CHARS = 4000;
+
+    let result = data.results.map(r => {
+      const text = (r.content || '').slice(0, MAX_RESULT_CHARS);
+      return `${r.title}: ${text}`;
+    }).join('\n\n');
+
+    if (result.length > MAX_TOTAL_CHARS) {
+      result = result.slice(0, MAX_TOTAL_CHARS) + '\n\n[results truncated]';
+    }
 
     // Update cache
     searchCache.set(query, {

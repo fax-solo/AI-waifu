@@ -4,6 +4,8 @@ import { useChat } from './hooks/useChat.js';
 import Sidebar from './components/Sidebar/Sidebar.jsx';
 import ChatWindow from './components/Chat/ChatWindow.jsx';
 const Settings = lazy(() => import('./components/Settings/Settings.jsx'));
+import ErrorBoundary from './components/ErrorBoundary.jsx';
+import { useToast } from './contexts/ToastContext.jsx';
 import AvatarViewport from './components/Avatar/AvatarViewport.jsx';
 import { useTTS } from './hooks/useTTS.js';
 import useShortcuts, { DEFAULT_SHORTCUTS } from './hooks/useShortcuts.js';
@@ -30,6 +32,7 @@ export default function App() {
     sendMessage,
     sendMessageStream,
     removeConversation,
+    removeMessage,
     setError,
     loadRateLimit,
   } = useChat();
@@ -48,6 +51,7 @@ export default function App() {
   const [currentEmotion, setCurrentEmotion] = useState('neutral');
   const [mouthExpression, setMouthExpression] = useState(null);
   const [eyeExpression, setEyeExpression] = useState(null);
+  const { addToast } = useToast();
   const [screenshot, setScreenshot] = useState(null);
   const [screenshotError, setScreenshotError] = useState('');
   const [avatarCollapsed, setAvatarCollapsed] = useState(false);
@@ -292,6 +296,7 @@ export default function App() {
           device: companionSettings.ttsDevice || 'cpu',
           emotion: result.emotion || 'neutral',
           intensity: companionSettings.ttsEmotionIntensity ?? 0.5,
+          maxChars: companionSettings.ttsMaxChars ?? 500,
         });
       }
     };
@@ -303,6 +308,33 @@ export default function App() {
       },
     });
   };
+
+  const handleRegenerate = useCallback((messageId) => {
+    const msgIdx = messages.findIndex(m => m.id === messageId);
+    if (msgIdx === -1) return;
+
+    let userContent = null;
+    for (let i = msgIdx - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        userContent = messages[i].content;
+        break;
+      }
+    }
+    if (!userContent) return;
+
+    removeMessage(messageId);
+
+    const cleanText = userContent.replace(/\n\n\[📷 Screenshot attached\]$/, '');
+    handleSendMessage(cleanText);
+  }, [messages, removeMessage, handleSendMessage]);
+
+  const handleCopy = useCallback((content) => {
+    navigator.clipboard.writeText(content).then(() => {
+      addToast('Copied to clipboard', 'success', 2000);
+    }).catch(() => {
+      addToast('Failed to copy', 'error', 2000);
+    });
+  }, [addToast]);
 
   const captureScreenshot = useCallback(async (dataUrl) => {
     if (typeof dataUrl === 'string') {
@@ -427,6 +459,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary>
     <div className={`app-layout ${isResizing ? 'resizing' : ''}`}>
       <Sidebar
         conversations={conversations}
@@ -506,6 +539,8 @@ export default function App() {
           screenshotError={screenshotError}
           onCaptureScreenshot={captureScreenshot}
           onClearScreenshot={clearScreenshot}
+          onRegenerate={handleRegenerate}
+          onCopy={handleCopy}
         />
       </div>
 
@@ -521,5 +556,6 @@ export default function App() {
         </Suspense>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

@@ -148,8 +148,23 @@ export function getMemories(userId, limit = 50) {
 }
 
 /**
+ * Simple keyword relevance scoring based on word overlap.
+ * Used as fallback when embeddings are unavailable.
+ */
+function keywordScore(memory, queryWords) {
+  const text = memory.toLowerCase();
+  let score = 0;
+  for (const word of queryWords) {
+    if (word.length < 3) continue;
+    const count = (text.match(new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+    if (count > 0) score += count * (word.length > 5 ? 2 : 1);
+  }
+  return score;
+}
+
+/**
  * Retrieve semantically relevant memories using vector search.
- * Falls back to recent memories if embeddings are not available.
+ * Falls back to keyword matching, then to recent memories.
  *
  * @param {string} userId
  * @param {string} query - The user's message to find relevant context for
@@ -158,20 +173,16 @@ export function getMemories(userId, limit = 50) {
  * @returns {Promise<string[]>} Array of relevant memory strings
  */
 export async function getRelevantMemories(userId, query, apiKey, maxResults = 5) {
-  // Generate embedding for the query
   const queryEmbedding = await generateEmbedding(query, apiKey);
 
-  // Load memories with embeddings first (up to 200 for vector search recall)
   const rows = db.prepare(
     'SELECT id, content, embedding FROM user_memories WHERE user_id = ? ORDER BY created_at DESC LIMIT 200'
   ).all(userId);
 
   if (!rows.length) return [];
 
-  // If we have a query embedding, do vector search
   if (queryEmbedding) {
     const scored = [];
-
     for (const row of rows) {
       if (row.embedding) {
         const vec = bufferToFloats(row.embedding);
@@ -179,18 +190,23 @@ export async function getRelevantMemories(userId, query, apiKey, maxResults = 5)
         scored.push({ content: row.content, score });
       }
     }
-
-    // Sort by similarity (descending) and return top results
     scored.sort((a, b) => b.score - a.score);
     const results = scored.slice(0, maxResults).map(r => r.content);
-
-    // If we got good results, return them
     if (results.length >= 2) return results;
-
-    // Otherwise also include recent memories as fallback
   }
 
-  // Fallback: return most recent memories
+  // Keyword fallback: score memories by word overlap with query
+  const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  if (queryWords.length > 0) {
+    const keywordScored = rows
+      .map(r => ({ content: r.content, score: keywordScore(r.content, queryWords) }))
+      .filter(r => r.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxResults)
+      .map(r => r.content);
+    if (keywordScored.length >= 1) return keywordScored;
+  }
+
   return rows.slice(0, maxResults).map(r => r.content);
 }
 

@@ -53,11 +53,9 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
 
     while (retries <= maxRetries) {
       try {
-        // When forceSearch is true, force the model to call web_search
         const modelConfig = {
           model: modelName,
           systemInstruction: systemPrompt,
-          tools: WEB_SEARCH_TOOL,
           generationConfig: {
             temperature: 0.7,
             topP: 0.95,
@@ -66,6 +64,7 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
           },
         };
         if (forceSearch) {
+          modelConfig.tools = WEB_SEARCH_TOOL;
           modelConfig.tool_config = {
             function_calling_config: {
               mode: 'ANY',
@@ -89,7 +88,6 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
           const replyModel = client.getGenerativeModel({
             model: modelName,
             systemInstruction: systemPrompt,
-            tools: WEB_SEARCH_TOOL,
             generationConfig: {
               temperature: 0.7,
               topP: 0.95,
@@ -240,32 +238,32 @@ export async function* chatStream({ apiKey, systemPrompt, history, userMessage, 
   let lastError = null;
 
   for (const modelName of modelsToTry) {
-    try {
-      const modelConfig = {
-        model: modelName,
-        systemInstruction: systemPrompt,
-        tools: WEB_SEARCH_TOOL,
-        generationConfig: {
-          temperature: 0.7,
-          topP: 0.95,
-          topK: 40,
-          maxOutputTokens: 8192,
-        },
-      };
-      if (forceSearch) {
-        modelConfig.tool_config = {
-          function_calling_config: {
-            mode: 'ANY',
-            allowed_function_names: ['web_search'],
+      try {
+        const modelConfig = {
+          model: modelName,
+          systemInstruction: systemPrompt,
+          generationConfig: {
+            temperature: 0.7,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 8192,
           },
         };
-      }
+        if (forceSearch) {
+          modelConfig.tools = WEB_SEARCH_TOOL;
+          modelConfig.tool_config = {
+            function_calling_config: {
+              mode: 'ANY',
+              allowed_function_names: ['web_search'],
+            },
+          };
+        }
 
-      const model = client.getGenerativeModel(modelConfig);
-      const chatSession = model.startChat({ history: history || [] });
-      const userParts = buildUserParts(userMessage, screenshot);
+        const model = client.getGenerativeModel(modelConfig);
+        const chatSession = model.startChat({ history: history || [] });
+        const userParts = buildUserParts(userMessage, screenshot);
 
-      const result = await chatSession.sendMessageStream(userParts);
+        const result = await chatSession.sendMessageStream(userParts);
 
       let fullText = '';
       let functionCall = null;
@@ -292,7 +290,6 @@ export async function* chatStream({ apiKey, systemPrompt, history, userMessage, 
         const replyModel = client.getGenerativeModel({
           model: modelName,
           systemInstruction: systemPrompt,
-          tools: WEB_SEARCH_TOOL,
           generationConfig: {
             temperature: 0.7,
             topP: 0.95,
@@ -357,6 +354,6 @@ export async function* chatStream({ apiKey, systemPrompt, history, userMessage, 
   throw new Error(lastError?.message || 'All Gemini models failed');
 }
 
-const EMOTION_REGEX = /^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*(.*)/i;
+const EMOTION_REGEX = /^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*([\s\S]*)/i;
 
 export default { chat, chatStream };

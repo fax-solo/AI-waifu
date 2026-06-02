@@ -130,6 +130,16 @@ export default function VoiceTab({
           </div>
 
           <div className="form-group">
+            <label>Max TTS Characters: {companion.ttsMaxChars ?? 500}</label>
+            <input
+              type="range" min="100" max="5000" step="100"
+              value={companion.ttsMaxChars ?? 500}
+              onChange={(e) => setCompanion({ ...companion, ttsMaxChars: parseInt(e.target.value) })}
+            />
+            <div className="hint">Responses longer than this limit will skip TTS playback.</div>
+          </div>
+
+          <div className="form-group">
             <label>{t('settings.voice.testVoice')}</label>
             <div className="settings-test-row">
               <input

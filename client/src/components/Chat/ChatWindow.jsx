@@ -31,6 +31,8 @@ const ChatWindow = forwardRef(function ChatWindow({
   screenshotError,
   onCaptureScreenshot,
   onClearScreenshot,
+  onRegenerate,
+  onCopy,
 }, ref) {
   const { t } = useLanguage();
   const [showError, setShowError] = useState(false);
@@ -147,7 +149,7 @@ const ChatWindow = forwardRef(function ChatWindow({
       ) : (
         <div className="messages-container" role="log" aria-live="polite" aria-relevant="additions" aria-label="Chat messages">
           {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} />
+            <MessageBubble key={msg.id} message={msg} onRegenerate={onRegenerate} onCopy={onCopy} />
           ))}
           {isSending && <TypingIndicator isSearching={isSearching} />}
           <div ref={messagesEndRef} />

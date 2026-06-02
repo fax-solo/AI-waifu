@@ -203,9 +203,18 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
   try {
     const data = await prepareChatData(req);
 
-    const { text, emotion, animation } = await (
+    let { text, emotion, animation } = await (
       data.provider === 'groq' ? groqChat(data.chatOptions) : geminiChat(data.chatOptions)
     );
+
+    if (!text?.trim() && data.chatOptions.userMessage.includes('[SEARCH RESULTS]')) {
+      console.log('[Chat] AI returned empty with search results — retrying without them');
+      const retryOptions = { ...data.chatOptions, userMessage: req.body.message?.trim(), searchWeb: undefined, forceSearch: false };
+      const retry = await (data.provider === 'groq' ? groqChat(retryOptions) : geminiChat(retryOptions));
+      text = retry.text;
+      emotion = retry.emotion;
+      animation = retry.animation;
+    }
 
     saveMessage(data.conversationId, 'assistant', text);
 
@@ -281,6 +290,16 @@ router.post('/stream', rateLimitMiddleware, async (req, res) => {
       res.write(`event: error\ndata: ${JSON.stringify({ message: lastError })}\n\n`);
       res.end();
       return;
+    }
+
+    if (!fullText?.trim() && data.chatOptions.userMessage.includes('[SEARCH RESULTS]')) {
+      console.log('[Chat] Stream returned empty with search results — retrying without them');
+      const retryOptions = { ...data.chatOptions, userMessage: req.body.message?.trim(), searchWeb: undefined, forceSearch: false };
+      const retry = await (data.provider === 'groq' ? groqChat(retryOptions) : geminiChat(retryOptions));
+      fullText = retry.text || '';
+      finalEmotion = retry.emotion || 'neutral';
+      finalAnimation = retry.animation;
+      res.write(`event: token\ndata: ${JSON.stringify({ text: fullText })}\n\n`);
     }
 
     saveMessage(data.conversationId, 'assistant', fullText);

@@ -307,6 +307,11 @@ export function useChat() {
     }
   }, [activeConversationId]);
 
+  // Remove a specific message by ID
+  const removeMessage = useCallback((messageId) => {
+    setMessages((prev) => prev.filter((m) => m.id !== messageId));
+  }, []);
+
   return {
     conversations,
     activeConversationId,
@@ -322,6 +327,7 @@ export function useChat() {
     sendMessage,
     sendMessageStream,
     removeConversation,
+    removeMessage,
     setError,
     loadRateLimit,
     setActiveConversationId,

@@ -43,6 +43,7 @@ router.get('/', (req, res) => {
         ttsSpeed: companion?.tts_speed ?? 1.0,
         ttsPitch: companion?.tts_pitch ?? 1.0,
         ttsVolume: companion?.tts_volume ?? 1.0,
+        ttsMaxChars: companion?.tts_max_chars ?? 500,
         llmModel: companion?.llm_model || 'gemini-2.0-flash-lite',
         llmProvider: companion?.llm_provider || 'gemini',
         shortcuts,
@@ -89,6 +90,7 @@ router.put('/', (req, res) => {
               tts_speed = COALESCE(?, tts_speed),
               tts_pitch = COALESCE(?, tts_pitch),
               tts_volume = COALESCE(?, tts_volume),
+              tts_max_chars = COALESCE(?, tts_max_chars),
               llm_model = COALESCE(?, llm_model),
               llm_provider = COALESCE(?, llm_provider),
               shortcuts = COALESCE(?, shortcuts),
@@ -107,6 +109,7 @@ router.put('/', (req, res) => {
           companion.ttsSpeed !== undefined ? companion.ttsSpeed : null,
           companion.ttsPitch !== undefined ? companion.ttsPitch : null,
           companion.ttsVolume !== undefined ? companion.ttsVolume : null,
+          companion.ttsMaxChars ?? null,
           companion.llmModel || null,
           companion.llmProvider || null,
           companion.shortcuts ? JSON.stringify(companion.shortcuts) : null,
@@ -114,8 +117,8 @@ router.put('/', (req, res) => {
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_speed, tts_pitch, tts_volume, llm_model, llm_provider, shortcuts)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_speed, tts_pitch, tts_volume, tts_max_chars, llm_model, llm_provider, shortcuts)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
           companion.name || 'Aria',
@@ -130,6 +133,7 @@ router.put('/', (req, res) => {
           companion.ttsSpeed ?? 1.0,
           companion.ttsPitch ?? 1.0,
           companion.ttsVolume ?? 1.0,
+          companion.ttsMaxChars ?? 500,
           companion.llmModel || 'gemini-2.0-flash-lite',
           companion.llmProvider || 'gemini',
           companion.shortcuts ? JSON.stringify(companion.shortcuts) : null
@@ -282,6 +286,7 @@ router.get('/character/export', (req, res) => {
     ttsSpeed: companion.tts_speed ?? 1.0,
     ttsPitch: companion.tts_pitch ?? 1.0,
     ttsVolume: companion.tts_volume ?? 1.0,
+    ttsMaxChars: companion.tts_max_chars ?? 500,
     llmModel: companion.llm_model || 'gemini-2.0-flash-lite',
     llmProvider: companion.llm_provider || 'gemini',
   };
@@ -315,6 +320,7 @@ router.post('/character/import', (req, res) => {
     ttsSpeed: character.ttsSpeed ?? 1.0,
     ttsPitch: character.ttsPitch ?? 1.0,
     ttsVolume: character.ttsVolume ?? 1.0,
+    ttsMaxChars: character.ttsMaxChars ?? 500,
     llmModel: character.llmModel || 'gemini-2.0-flash-lite',
     llmProvider: character.llmProvider || 'gemini',
   };
@@ -324,23 +330,23 @@ router.post('/character/import', (req, res) => {
       UPDATE companion_settings
       SET name = ?, tone = ?, personality = ?, backstory = ?,
           tts_voice = ?, tts_speed = ?, tts_pitch = ?, tts_volume = ?,
-          llm_model = ?, llm_provider = ?, updated_at = CURRENT_TIMESTAMP
+          tts_max_chars = ?, llm_model = ?, llm_provider = ?, updated_at = CURRENT_TIMESTAMP
       WHERE user_id = ?
     `).run(
       data.name, data.tone, data.personality, data.backstory,
       data.ttsVoice, data.ttsSpeed, data.ttsPitch, data.ttsVolume,
-      data.llmModel, data.llmProvider,
+      data.ttsMaxChars, data.llmModel, data.llmProvider,
       userId
     );
   } else {
     db.prepare(`
-      INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_voice, tts_speed, tts_pitch, tts_volume, llm_model, llm_provider)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_voice, tts_speed, tts_pitch, tts_volume, tts_max_chars, llm_model, llm_provider)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       userId,
       data.name, data.tone, data.personality, data.backstory,
       data.ttsVoice, data.ttsSpeed, data.ttsPitch, data.ttsVolume,
-      data.llmModel, data.llmProvider
+      data.ttsMaxChars, data.llmModel, data.llmProvider
     );
   }
 

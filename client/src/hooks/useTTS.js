@@ -52,8 +52,6 @@ export function useTTS() {
     setIsPlaying(false);
   }, []);
 
-  const MAX_TTS_CHARS = 2000;
-
   const speak = useCallback(async (text, options = {}) => {
     const {
       enabled = true,
@@ -65,10 +63,11 @@ export function useTTS() {
       device = 'cpu',
       emotion = 'neutral',
       intensity = 0.5,
+      maxChars = 500,
     } = options;
 
     if (!enabled || !text || text.trim().length === 0) return;
-    if (text.length > MAX_TTS_CHARS) return;
+    if (text.length > maxChars) return;
 
     initAudioCtx();
     stop();
