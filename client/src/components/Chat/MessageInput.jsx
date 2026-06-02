@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { useState, useRef, useEffect, useCallback, forwardRef, useImperativeHandle, memo } from 'react';
 import { Send, Mic, MicOff, Loader2, ScanEye, Image, X, Bold, Italic, Code, Link, Pencil } from 'lucide-react';
 import { sendSTT } from '../../utils/api.js';
 
@@ -474,4 +474,4 @@ const MessageInput = forwardRef(({
 });
 
 MessageInput.displayName = 'MessageInput';
-export default MessageInput;
+export default memo(MessageInput);

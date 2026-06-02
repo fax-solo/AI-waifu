@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { CheckCircle, XCircle, X } from 'lucide-react';
 
-export default function Toast({ message, type = 'success', onDismiss }) {
+const Toast = memo(function Toast({ message, type = 'success', onDismiss }) {
   if (!message) return null;
 
   return (
@@ -12,4 +13,6 @@ export default function Toast({ message, type = 'success', onDismiss }) {
       </button>
     </div>
   );
-}
+});
+
+export default Toast;

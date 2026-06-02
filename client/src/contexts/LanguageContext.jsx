@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import en from '../translations/en';
 import ar from '../translations/ar';
 
@@ -21,30 +21,31 @@ export const LanguageProvider = ({ children }) => {
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
   }, [language]);
 
-  const t = (key) => {
+  const t = useCallback((key) => {
     const keys = key.split('.');
     let value = translations[language];
     for (const k of keys) {
       if (value && typeof value === 'object' && k in value) {
         value = value[k];
       } else {
-        // Fallback to English if key is missing in Arabic
         let fallbackValue = translations['en'];
         for (const fk of keys) {
             if (fallbackValue && typeof fallbackValue === 'object' && fk in fallbackValue) {
                 fallbackValue = fallbackValue[fk];
             } else {
-                return key; // Return key if not found in fallback either
+                return key;
             }
         }
         return fallbackValue;
       }
     }
     return value;
-  };
+  }, [language]);
+
+  const value = useMemo(() => ({ language, setLanguage, t }), [language, t]);
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+    <LanguageContext.Provider value={value}>
       {children}
     </LanguageContext.Provider>
   );

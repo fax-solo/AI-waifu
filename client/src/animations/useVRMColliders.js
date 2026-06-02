@@ -316,6 +316,14 @@ export function useVRMColliders() {
   const hasCustomColliders = useRef(false);
   const cursorAssignedJoints = useRef(new WeakSet());
 
+  const _cursorVec2 = new THREE.Vector2();
+  const _cursorDir = new THREE.Vector3();
+  const _cursorCenterDir = new THREE.Vector3();
+  const _cursorPlaneNormal = new THREE.Vector3();
+  const _cursorCenterAt = new THREE.Vector3();
+  const _cursorTarget = new THREE.Vector3();
+  const _cursorPlane = new THREE.Plane();
+
   // ── Build body colliders with proper VRMSpringBoneCollider instances ──
   function setupBodyColliders(vrm) {
     bodyColliderGroups.current = [];
@@ -436,17 +444,25 @@ export function useVRMColliders() {
   const updateCursorFromScreen = useCallback((mouseX, mouseY, camera, targetDistance = 2.5) => {
     if (!cursorDummyNode.current) return;
     const ray = raycaster.current;
-    ray.setFromCamera(new THREE.Vector2(mouseX, mouseY), camera);
-    const centerRay = new THREE.Ray(camera.position, camera.getWorldDirection(new THREE.Vector3()).normalize());
-    const lookAtPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
-    lookAtPlane.normal.copy(centerRay.direction).negate();
-    lookAtPlane.constant = -centerRay.direction.dot(centerRay.at(targetDistance, new THREE.Vector3()));
-    const targetPoint = new THREE.Vector3();
-    ray.ray.intersectPlane(lookAtPlane, targetPoint);
-    if (targetPoint) {
-      const dist = camera.position.distanceTo(targetPoint);
+    _cursorVec2.set(mouseX, mouseY);
+    ray.setFromCamera(_cursorVec2, camera);
+
+    const dir = camera.getWorldDirection(_cursorDir);
+    _cursorDir.copy(dir);
+    _cursorCenterDir.copy(dir);
+
+    _cursorPlaneNormal.copy(dir).negate();
+    _cursorCenterDir.multiplyScalar(targetDistance);
+    _cursorCenterAt.copy(camera.position).add(_cursorCenterDir);
+    _cursorCenterDir.copy(dir);
+
+    const planeConstant = -dir.dot(_cursorCenterAt);
+    _cursorPlane.set(_cursorPlaneNormal, planeConstant);
+    ray.ray.intersectPlane(_cursorPlane, _cursorTarget);
+    if (_cursorTarget) {
+      const dist = camera.position.distanceTo(_cursorTarget);
       if (dist > 0.5 && dist < 10.0) {
-        cursorWorldPos.current.copy(targetPoint);
+        cursorWorldPos.current.copy(_cursorTarget);
       }
     }
   }, []);

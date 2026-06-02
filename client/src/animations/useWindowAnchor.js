@@ -2,8 +2,10 @@ import { useRef, useCallback } from 'react';
 import * as THREE from 'three';
 
 const JUMP_THRESHOLD_SQ = 0.01;
-const CANVAS_JUMP_THRESHOLD_SQ = 2500; // 50px squared — canvas moved more than 50px in one frame
+const CANVAS_JUMP_THRESHOLD_SQ = 2500;
 const DT_BUFFER_SIZE = 3;
+
+const _worldPos = new THREE.Vector3();
 
 export function useWindowAnchor() {
   const vrmRef = useRef(null);
@@ -36,15 +38,14 @@ export function useWindowAnchor() {
     const dt = sum / dtCount.current;
 
     // Check model world-position jump (e.g. nav mesh teleport)
-    const worldPos = new THREE.Vector3();
-    vrm.scene.getWorldPosition(worldPos);
+    vrm.scene.getWorldPosition(_worldPos);
     if (hasPrevPos.current) {
-      const distSq = worldPos.distanceToSquared(prevWorldPos.current);
+      const distSq = _worldPos.distanceToSquared(prevWorldPos.current);
       if (distSq > JUMP_THRESHOLD_SQ) {
         vrm.springBoneManager?.reset();
       }
     }
-    prevWorldPos.current.copy(worldPos);
+    prevWorldPos.current.copy(_worldPos);
     hasPrevPos.current = true;
 
     // Check canvas bounding-rect jump — skip the first frame to avoid

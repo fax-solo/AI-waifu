@@ -145,14 +145,13 @@ router.get('/', (req, res) => {
     const avatars = db.prepare('SELECT * FROM vrm_models WHERE user_id = ? ORDER BY created_at DESC').all(userId);
 
     // Remove stale entries whose files no longer exist on disk
-    const deleteStale = db.prepare('DELETE FROM vrm_models WHERE id = ? AND user_id = ?');
     let cleaned = false;
     for (const a of avatars) {
       const relativePath = a.file_path.replace(/^\/uploads\//, '');
       const absPath = path.join(UPLOADS_BASE, relativePath);
       if (!fs.existsSync(absPath)) {
         console.log(`[Avatars] Removing stale avatar ${a.id} (${a.name}): file not found at ${absPath}`);
-        deleteStale.run(a.id, userId);
+        _deleteStale.run(a.id, userId);
         cleaned = true;
       }
     }
@@ -377,9 +376,13 @@ router.get('/gallery', (req, res) => {
         }
       }
 
-      // Sync new/changed files
+      // Sync new/changed files (batch-load existing entries to avoid N+1)
+      const existingByPath = new Map(
+        db.prepare('SELECT id, pfp_path, file_path, name FROM gallery_vrm_models').all()
+          .map(e => [e.file_path, e])
+      );
       for (const m of models) {
-        const existing = db.prepare('SELECT id, pfp_path, file_path, name FROM gallery_vrm_models WHERE file_path = ?').get(m.filePath);
+        const existing = existingByPath.get(m.filePath);
         if (!existing) {
           const id = uuidv4();
           const pfp_path = findGalleryPfp(GALLERY_DIR, m.name);
@@ -389,12 +392,10 @@ router.get('/gallery', (req, res) => {
           `).run(id, m.name, m.filePath, pfp_path, '');
           console.log(`[Gallery] Auto-discovered: ${m.name} → ${m.filePath}`);
         } else {
-          // Update name if file was renamed (use the directory name for subdir models)
           if (existing.name !== m.name) {
             db.prepare('UPDATE gallery_vrm_models SET name = ? WHERE id = ?').run(m.name, existing.id);
             console.log(`[Gallery] Renamed: ${existing.name} -> ${m.name}`);
           }
-          // Verify pfp
           const currentPfp = findGalleryPfp(GALLERY_DIR, m.name);
           if (currentPfp !== existing.pfp_path) {
             db.prepare('UPDATE gallery_vrm_models SET pfp_path = ? WHERE id = ?').run(currentPfp, existing.id);
@@ -515,4 +516,6 @@ router.post('/gallery/:id/download', (req, res) => {
 });
 
 export default router;
+const _deleteStale = db.prepare('DELETE FROM vrm_models WHERE id = ? AND user_id = ?');
+
 export { UPLOADS_BASE };

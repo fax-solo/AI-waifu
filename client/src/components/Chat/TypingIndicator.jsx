@@ -1,4 +1,6 @@
-export default function TypingIndicator({ isSearching }) {
+import { memo } from 'react';
+
+const TypingIndicator = memo(function TypingIndicator({ isSearching }) {
   return (
     <div className="typing-indicator" style={{ flexDirection: 'column', alignItems: 'flex-start' }} role="status" aria-live="polite" aria-label={isSearching ? 'Searching the web and typing' : 'Companion is typing'}>
       <div style={{ display: 'flex', gap: 12 }}>
@@ -34,5 +36,7 @@ export default function TypingIndicator({ isSearching }) {
       )}
     </div>
   );
-}
+});
+
+export default TypingIndicator;
 

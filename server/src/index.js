@@ -7,6 +7,7 @@
 
 import 'dotenv/config';
 import express from 'express';
+import compression from 'compression';
 import path from 'path';
 import cors from 'cors';
 import fs from 'fs';
@@ -37,10 +38,9 @@ const PORT = process.env.PORT || 3005;
 
 // ─── Middleware ─────────────────────────────────────────────────────
 
+app.use(compression());
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow requests with no origin (curl, server-to-server) and
-    // null origin (Electron loads via file:// protocol).
     if (!origin || origin === 'null') return cb(null, true);
     cb(null, true);
   },
@@ -265,7 +265,6 @@ function startServer(port) {
     // Auto-start sidecars in background (only when not in Electron — Electron's main.js handles it)
     if (!process.versions.electron) {
       ensureSidecar('TTS', 5000, 'server.py', process.env.TTS_SERVER_URL || 'http://127.0.0.1:5000');
-      ensureSidecar('STT', 5001, 'stt_server.py', process.env.STT_SERVER_URL || 'http://127.0.0.1:5001');
     }
   });
   server.on('error', (err) => {

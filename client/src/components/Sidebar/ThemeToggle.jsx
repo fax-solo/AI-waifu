@@ -1,7 +1,7 @@
-import { useState, useRef, useCallback } from 'react';
+import { memo, useState, useRef, useCallback } from 'react';
 import { Sun, Moon } from 'lucide-react';
 
-function StarSVG({ style }) {
+const StarSVG = memo(function StarSVG({ style }) {
   return (
     <svg
       width="12" height="12" viewBox="0 0 12 12"
@@ -15,7 +15,7 @@ function StarSVG({ style }) {
       />
     </svg>
   );
-}
+});
 
 function CloudSVG({ style }) {
   return (
@@ -33,7 +33,7 @@ function CloudSVG({ style }) {
   );
 }
 
-export default function ThemeToggle({ theme, onToggle }) {
+const ThemeToggle = memo(function ThemeToggle({ theme, onToggle }) {
   const isDark = theme === 'dark';
   const btnRef = useRef(null);
   const [squishing, setSquishing] = useState(false);
@@ -98,4 +98,6 @@ export default function ThemeToggle({ theme, onToggle }) {
       </div>
     </button>
   );
-}
+});
+
+export default ThemeToggle;

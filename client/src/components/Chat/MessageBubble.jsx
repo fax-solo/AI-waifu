@@ -1,5 +1,5 @@
 import ReactMarkdown from 'react-markdown';
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Pencil } from 'lucide-react';
 
 function highlightText(text, query) {
@@ -12,7 +12,7 @@ function highlightText(text, query) {
   ).join('');
 }
 
-export default function MessageBubble({ message, onRegenerate, onCopy, onRequestEdit, searchQuery }) {
+const MessageBubble = memo(function MessageBubble({ message, onRegenerate, onCopy, onRequestEdit, searchQuery }) {
   const [hovered, setHovered] = useState(false);
   const time = new Date(message.created_at).toLocaleTimeString([], {
     hour: '2-digit',
@@ -98,4 +98,6 @@ export default function MessageBubble({ message, onRegenerate, onCopy, onRequest
       </div>
     </div>
   );
-}
+});
+
+export default MessageBubble;

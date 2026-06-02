@@ -23,10 +23,6 @@ const GROQ_MODELS = [
 
 const GITHUB_REPO = 'fax-solo/AI-waifu';
 
-function deepEqual(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
 export default function useSettings({ onShortcutsChange, onVRMFileSelected, avatarRef: extAvatarRef, initialTab }) {
   const { speak, isPlaying: isTestingVoice } = useTTS();
   const [settings, setSettings] = useState(null);

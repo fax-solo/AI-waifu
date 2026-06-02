@@ -455,19 +455,28 @@ export {
   injectTexturePack,
 };
 
+function clearCache(cache) {
+  for (const [, tex] of cache) {
+    if (tex?.dispose) tex.dispose();
+  }
+  cache.clear();
+}
+
 export function useExpressionTextures(vrm) {
   const cacheRef = useRef(new Map());
   const loggedRef = useRef(false);
   const [ready, setReady] = useState(false);
-  const alignmentRef = useRef(null); // detected face region alignment
-
-  const loadedRef = useRef(false);
+  const alignmentRef = useRef(null);
+  const loadedVrmRef = useRef(null);
 
   useEffect(() => {
     if (!vrm?.scene || !vrm.materials) return;
-    if (loadedRef.current) return;
-    loadedRef.current = true;
+    if (loadedVrmRef.current === vrm) return;
+    loadedVrmRef.current = vrm;
     let cancelled = false;
+
+    clearCache(cacheRef.current);
+    alignmentRef.current = null;
 
     if (!ready) setReady(true);
 
@@ -529,7 +538,7 @@ export function useExpressionTextures(vrm) {
     async function loadAll() {
       if (canCompositeFace) {
         const baseImg = faceMat.map.image;
-        for (const overlay of FACE_OVERLAYS) {
+        const promises = FACE_OVERLAYS.map(async (overlay) => {
           try {
             const overlayImg = await loadImage(getTextureURL('face', overlay.file));
             if (cancelled) return;
@@ -538,9 +547,10 @@ export function useExpressionTextures(vrm) {
           } catch (e) {
             console.warn('[Tex] Failed face overlay:', overlay.file);
           }
-        }
+        });
+        await Promise.all(promises);
       } else if (faceMat && baseImage && baseImage.width > 1 && !isBodyAtlas(baseW, baseH)) {
-        for (const overlay of FACE_OVERLAYS) {
+        const promises = FACE_OVERLAYS.map(async (overlay) => {
           try {
             const overlayImg = await loadImage(getTextureURL('face', overlay.file));
             if (cancelled) return;
@@ -549,14 +559,17 @@ export function useExpressionTextures(vrm) {
           } catch (e) {
             console.warn('[Tex] Failed face overlay (fallback):', overlay.file);
           }
-        }
+        });
+        await Promise.all(promises);
       }
-
-
     }
 
     loadAll();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clearCache(cacheRef.current);
+      loadedVrmRef.current = null;
+    };
   }, [vrm]);
 
   const getTexture = useCallback((name) => {

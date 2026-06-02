@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { CheckCircle, AlertTriangle, XCircle, ChevronDown, ChevronUp, Cpu, Mic, Key, Database, Volume2 } from 'lucide-react';
 
 const STATUS_OK = 'ok';
@@ -25,7 +25,7 @@ const ICON_MAP = {
   mic: Mic,
 };
 
-export default function SystemStatusBanner({ ttsStatus, hasCustomKey, hasGroqKey }) {
+const SystemStatusBanner = memo(function SystemStatusBanner({ ttsStatus, hasCustomKey, hasGroqKey }) {
   const [expanded, setExpanded] = useState(false);
   const hasApiKey = hasCustomKey || hasGroqKey;
 
@@ -86,4 +86,6 @@ export default function SystemStatusBanner({ ttsStatus, hasCustomKey, hasGroqKey
       )}
     </div>
   );
-}
+});
+
+export default SystemStatusBanner;

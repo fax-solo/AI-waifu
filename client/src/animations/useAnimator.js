@@ -284,6 +284,8 @@ export function useAnimator({ getTexture, onVFX } = {}) {
   const proxyRef = useRef(null);
   const blendQueueRef = useRef(null);
   const lookAtRef = useRef(null);
+  const boneCache = useRef({});
+  const nanCheckNeeded = useRef(false);
 
   // Captured rest pose (synced from state.restPose each frame)
   const restPoseRef = useRef({});
@@ -450,6 +452,8 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       materialBlend.current = {};
       materialLookup.current = {};
       originalMapsRef.current = {};
+      boneCache.current = {};
+      nanCheckNeeded.current = true;
     }
 
     if (state.restPose?.current) restPoseRef.current = state.restPose.current;
@@ -459,8 +463,9 @@ export function useAnimator({ getTexture, onVFX } = {}) {
     const dt = windowAnchor.update(rawDt, vrm);
 
     // 1. Apply base pose to bones (VRM uses restPose, GLB keeps inherent rest pose)
+    const cache = boneCache.current;
     for (const name of SKELETON_BONES) {
-      const node = getBone(vrm, name);
+      const node = cache[name] || (cache[name] = getBone(vrm, name));
       if (!node) continue;
       if (isVRM) {
         const pose = state.restPose?.current?.[name];
@@ -497,7 +502,7 @@ export function useAnimator({ getTexture, onVFX } = {}) {
         for (const j of ['Proximal', 'Intermediate', 'Distal']) {
           for (const s of ['left', 'right']) {
             const name = `${s}${f}${j}`;
-            const node = getBone(vrm, name);
+            const node = cache[name] || (cache[name] = getBone(vrm, name));
             if (node) node.rotation.set(0, 0, 0);
           }
         }
@@ -536,23 +541,23 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       vrm.materials.forEach((material) => { if (material.update) material.update(dt); });
     }
 
-    // 8. Ensure world matrices are current
-    vrm.scene.updateMatrixWorld(true);
+    // 8. NaN guard — only runs after known unsafe operations (VRM load/swap)
+    if (nanCheckNeeded.current) {
+      vrm.scene?.traverse?.((child) => {
+        if (!child.isBone) return;
+        const q = child.quaternion;
+        if (!isFinite(q.x) || !isFinite(q.y) || !isFinite(q.z) || !isFinite(q.w)) {
+          q.identity();
+        }
+        const p = child.position;
+        if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) {
+          p.set(0, 0, 0);
+        }
+      });
+      nanCheckNeeded.current = false;
+    }
 
-    // 9. NaN guard — reset any bone with NaN/Infinity quaternions
-    vrm.scene?.traverse?.((child) => {
-      if (!child.isBone) return;
-      const q = child.quaternion;
-      if (!isFinite(q.x) || !isFinite(q.y) || !isFinite(q.z) || !isFinite(q.w)) {
-        q.identity();
-      }
-      const p = child.position;
-      if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.z)) {
-        p.set(0, 0, 0);
-      }
-    });
-
-    // 10. Update world matrices once before spring bone physics (replaces per-collider per-joint O(n*m) iteration)
+    // 9. Update world matrices once before spring bone physics
     vrm.scene.updateMatrixWorld(true);
 
     // 11. Process facial queue (blend shapes from JSON keyframes)
@@ -579,13 +584,15 @@ export function useAnimator({ getTexture, onVFX } = {}) {
       if (!frame) continue;
       if (frame.bones) {
         for (const [name, axes] of Object.entries(frame.bones)) {
-          const node = getBone(vrm, name);
+          const cache = boneCache.current;
+          const node = cache[name] || (cache[name] = getBone(vrm, name));
           if (!node) continue;
           if (axes.x !== undefined) node.rotation.x += axes.x;
           if (axes.y !== undefined) node.rotation.y += axes.y;
           if (axes.z !== undefined) node.rotation.z += axes.z;
           if (name === 'hips' && axes.y !== undefined) node.position.y += axes.y;
         }
+        nanCheckNeeded.current = true;
       }
        if (frame.expressions) {
           hasActiveFacial = true;

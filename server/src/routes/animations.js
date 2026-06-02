@@ -21,6 +21,20 @@ const router = Router();
 
 const ALLOWED_EXTENSIONS = ['.json', '.vrma'];
 
+let _animCache = null;
+
+function invalidateCache() {
+  _animCache = null;
+}
+
+function getCachedFiles() {
+  if (_animCache) return _animCache;
+  const facial = listAnimationFiles(FACIAL_DIR);
+  const body = listAnimationFiles(BODY_DIR);
+  _animCache = { facial, body };
+  return _animCache;
+}
+
 function isAllowed(file) {
   const ext = path.extname(file).toLowerCase();
   return ALLOWED_EXTENSIONS.includes(ext);
@@ -131,9 +145,7 @@ const upload = multer({
 });
 
 router.get('/', (req, res) => {
-  const facial = listAnimationFiles(FACIAL_DIR);
-  const body = listAnimationFiles(BODY_DIR);
-  res.json({ facial, body });
+  res.json(getCachedFiles());
 });
 
 router.post('/upload/:type', upload.single('animation'), (req, res) => {
@@ -162,6 +174,7 @@ router.post('/upload/:type', upload.single('animation'), (req, res) => {
   }
 
   refreshFileIndex();
+  invalidateCache();
 
   res.json({
     filename: req.file.filename,
@@ -211,6 +224,7 @@ router.delete('/:type/:filename', (req, res) => {
   try {
     fs.unlinkSync(filePath);
     refreshFileIndex();
+    invalidateCache();
     res.json({ success: true });
   } catch {
     res.status(500).json({ error: 'Failed to delete animation file' });
