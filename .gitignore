@@ -1,7 +1,6 @@
 # Node.js
 node_modules/
 npm-debug.log*
-package-lock.json
 
 # Environment Variables
 .env
@@ -42,6 +41,10 @@ python/*.bin
 server/data/*.sqlite
 server/data/*.sqlite-journal
 *.db
+server/data/backups/
+
+# User Uploads (avatars, profile pictures)
+server/data/uploads/
 
 # Data folders (textures, assets, etc.)
 Assets/
@@ -54,3 +57,10 @@ server/data/textures/
 Thumbs.db
 desktop.ini
 tts_cache/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Generated documentation artifacts
+summary.md
