@@ -356,10 +356,17 @@ const MessageInput = forwardRef(({
     }
   };
 
+  const startSTTDirect = useCallback(async () => {
+    if (!isListening) {
+      await startListening();
+    }
+  }, [isListening, startListening]);
+
   useImperativeHandle(ref, () => ({
     toggleMic: toggleVoiceMode,
     isListening,
-  }), [isListening, toggleVoiceMode]);
+    startSTT: startSTTDirect,
+  }), [isListening, toggleVoiceMode, startSTTDirect]);
 
   const activeScreenshot = screenshot;
 

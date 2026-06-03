@@ -106,7 +106,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
   const renderTabContent = () => {
     if (settingsLoading) {
       return (
-        <div className="settings-skeleton">
+        <div className="settings-skeleton" key="skeleton">
           <div className="skeleton-line wide" />
           <div className="skeleton-line medium" />
           <div className="skeleton-block" />
@@ -232,7 +232,9 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
           </div>
 
           <div className="settings-content">
-            {renderTabContent()}
+            <div key={activeTab}>
+              {renderTabContent()}
+            </div>
           </div>
         </div>
 

@@ -12,7 +12,7 @@ const DEFAULT_PERSONALITY = {
   backstory: 'A cheerful AI companion who loves chatting, learning about the user, and making their day brighter.',
 };
 
-export function buildSystemPrompt(settings = {}, memories = [], userName = 'User') {
+export function buildSystemPrompt(settings = {}, memories = [], userName = 'User', vrmModelName = null) {
   const companion = { ...DEFAULT_PERSONALITY, ...settings };
 
   let prompt = `You are ${companion.name}, a close friend and companion.
@@ -69,6 +69,44 @@ Examples with animation:
 
   if (memories.length > 0) {
     prompt += `\n\n## Memories about ${userName}\n${memories.map((m) => `- ${m}`).join('\n')}`;
+  }
+
+  if (vrmModelName && vrmModelName !== companion.name) {
+    prompt += `\n\n## Your Current Embodiment
+You are currently rendered as a VRM 3D character model named: ${vrmModelName}.
+If someone asks about your origins, what character model you are, where you come from, or who created you, use the web_search tool to look up information about "${vrmModelName}".`;
+  }
+
+  if (companion.desktop_companion_mode) {
+    prompt += `\n\n## Desktop Companion Mode — JSON Response Format (MANDATORY)
+You MUST respond with a valid JSON object on a single line. Do NOT include markdown, code fences, or any text outside the JSON.
+
+### JSON Schema:
+{
+  "text": "Your natural conversational response here, starting with [emotion] and optionally [animation:...].",
+  "toggles": {
+    "trigger_image_search": true,
+    "share_screenshot": false,
+    "screen_preview": false,
+    "speech_to_text": false
+  },
+  "search_query": "Optimized search keywords if trigger_image_search is true, otherwise empty string"
+}
+
+### Toggle Activation Rules:
+- **trigger_image_search (true)**: when the user explicitly asks to see an image, photo, example, reference, visual layout, design concept, UI aesthetic, or anything where a visual aid would help. Set search_query to precise descriptive keywords (e.g., "glassmorphism UI dashboard dark theme").
+- **share_screenshot (true)**: when the user commands you to take a screenshot, capture the screen, or clip a window.
+- **screen_preview (true)**: when the user asks you to look at their screen, start a screen preview, monitor their desktop, or check their current active window.
+- **speech_to_text (true)**: when the user asks to speak to you directly, turn on microphone, or initiate voice/dictation mode.
+
+### Standard Fallback (no toggles active):
+{"text":"[emotion] your message","toggles":{"trigger_image_search":false,"share_screenshot":false,"screen_preview":false,"speech_to_text":false},"search_query":""}
+
+### Important:
+- The "text" field MUST still start with [emotion] tag (and optionally [animation:...]) as described above.
+- Keep your conversational style, personality, and emotion tags inside the "text" field.
+- search_query must be empty string if trigger_image_search is false.
+- If no toggles need activating, use the Standard Fallback above.`;
   }
 
   prompt += `\n\n## Hard Rules

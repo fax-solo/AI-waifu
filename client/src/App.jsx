@@ -1,8 +1,10 @@
 import { useLanguage } from './contexts/LanguageContext.jsx';
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
 import { useChat } from './hooks/useChat.js';
+import { useToggles } from './hooks/useToggles.js';
 import Sidebar from './components/Sidebar/Sidebar.jsx';
 import ChatWindow from './components/Chat/ChatWindow.jsx';
+import ScreenPreview from './components/Chat/ScreenPreview.jsx';
 const Settings = lazy(() => import('./components/Settings/Settings.jsx'));
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import { useToast } from './contexts/ToastContext.jsx';
@@ -51,6 +53,34 @@ export default function App() {
   const [currentEmotion, setCurrentEmotion] = useState('neutral');
   const [mouthExpression, setMouthExpression] = useState(null);
   const [eyeExpression, setEyeExpression] = useState(null);
+  const [screenPreviewActive, setScreenPreviewActive] = useState(false);
+
+  const captureScreenshotRef = useRef(null);
+
+  const handleStartScreenPreview = useCallback(() => {
+    setScreenPreviewActive(true);
+  }, []);
+
+  const handleStopScreenPreview = useCallback(() => {
+    setScreenPreviewActive(false);
+  }, []);
+
+  const handleStartSTT = useCallback(() => {
+    messageInputRef.current?.startSTT?.();
+  }, []);
+
+  const {
+    activeToggles,
+    images: toggleImages,
+    searchQuery,
+    processToggles,
+    clearToggles,
+  } = useToggles({
+    onCaptureScreenshot: (...args) => captureScreenshotRef.current?.(...args),
+    onStartSTT: handleStartSTT,
+    onStartScreenPreview: handleStartScreenPreview,
+    onStopScreenPreview: handleStopScreenPreview,
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -274,6 +304,12 @@ export default function App() {
     }
 
     const handleResponse = (result) => {
+      if (result?.toggles) {
+        processToggles(result.toggles, result.images, result.search_query);
+      } else {
+        clearToggles();
+      }
+
       if (result?.animation && avatarRef.current) {
         avatarRef.current.triggerAnimation('body', result.animation, { loop: result.loopAnimation ?? false });
       }
@@ -403,6 +439,8 @@ export default function App() {
       setTimeout(() => setScreenshotError(''), 4000);
     }
   }, []);
+
+  captureScreenshotRef.current = captureScreenshot;
 
   const clearScreenshot = useCallback(() => {
     setScreenshot(null);
@@ -563,7 +601,13 @@ export default function App() {
           onRegenerate={handleRegenerate}
           onEditMessage={handleEditMessage}
           onCopy={handleCopy}
+          images={toggleImages}
+          searchQuery={searchQuery}
+          onClearImages={clearToggles}
         />
+        {screenPreviewActive && (
+          <ScreenPreview onClose={handleStopScreenPreview} />
+        )}
       </div>
 
       {showSettings && (

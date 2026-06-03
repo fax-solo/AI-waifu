@@ -15,11 +15,16 @@ async function isTTSServerRunning() {
     const resp = await fetch(`${TTS_SERVER_URL}/health`, { signal: AbortSignal.timeout(2000) });
     if (resp.ok) {
       const data = await resp.json();
-      return { running: true, loaded: data.loaded === true, error: data.error || null };
+      return {
+        running: true,
+        loaded: data.loaded === true,
+        device: data.device || 'cpu',
+        error: data.error || null,
+      };
     }
-    return { running: false, loaded: false, error: 'Health check failed' };
+    return { running: false, loaded: false, device: 'cpu', error: 'Health check failed' };
   } catch {
-    return { running: false, loaded: false, error: 'Connection refused' };
+    return { running: false, loaded: false, device: 'cpu', error: 'Connection refused' };
   }
 }
 

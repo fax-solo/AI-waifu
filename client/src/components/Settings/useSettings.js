@@ -45,6 +45,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     ttsMaxChars: 500,
     llmModel: 'gemini-2.0-flash-lite',
     llmProvider: 'gemini',
+    desktopCompanionMode: false,
     shortcuts: DEFAULT_SHORTCUTS
   });
   const [apiKeyInput, setApiKeyInput] = useState('');
@@ -175,6 +176,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
           ttsMaxChars: data.companion.ttsMaxChars ?? 500,
           llmModel: data.companion.llmModel ?? 'gemini-2.0-flash-lite',
           llmProvider: data.companion.llmProvider ?? 'gemini',
+          desktopCompanionMode: data.companion.desktopCompanionMode ?? false,
           shortcuts: hasCustomShortcuts ? loadedShortcuts : DEFAULT_SHORTCUTS
         };
         setCompanion(comp);

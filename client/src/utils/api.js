@@ -112,11 +112,19 @@ export function getUploadUrl(path) {
 
 // ─── Chat API ──────────────────────────────────────────────────
 
+function getVRMModelName() {
+  return localStorage.getItem('waifu-vrm-embedded-name')
+    || localStorage.getItem('waifu-vrm-name')
+    || '';
+}
+
 export async function sendMessage(conversationId, message, screenshot) {
   const body = {
     conversationId: String(conversationId || ''),
     message: String(message || ''),
   };
+  const vrmModelName = getVRMModelName();
+  if (vrmModelName) body.vrmModelName = vrmModelName;
   if (screenshot) {
     body.screenshot = String(screenshot);
   }
@@ -150,6 +158,8 @@ export function sendMessageStream(conversationId, message, screenshot, callbacks
     conversationId: String(conversationId || ''),
     message: String(message || ''),
   };
+  const vrmModelName = getVRMModelName();
+  if (vrmModelName) body.vrmModelName = vrmModelName;
   if (screenshot) body.screenshot = String(screenshot);
 
   const start = Date.now();

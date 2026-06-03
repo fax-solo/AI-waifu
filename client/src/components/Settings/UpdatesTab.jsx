@@ -41,7 +41,7 @@ export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, upd
         )}
 
         {updateStatus === 'available' && (
-          <div className="settings-empty update-available" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div className="settings-empty update-available">
             <Download size={24} className="update-icon" />
             <p className="update-text">{t('settings.updates.available')}</p>
             <p>{t('settings.updates.latestVersion')}: {latestVersion}</p>
@@ -60,18 +60,18 @@ export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, upd
         )}
 
         {updateStatus === 'downloading' && (
-          <div className="settings-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div className="settings-empty">
             <Download size={24} className="update-icon" />
             <p>Downloading Update…</p>
-            <div className="progress-bar-container" style={{ width: '100%', marginTop: '1rem' }}>
+            <div className="progress-bar-container">
               <div className="progress-bar-fill" style={{ width: `${updateProgress}%` }}></div>
             </div>
-            <p className="text-muted" style={{ marginTop: '0.5rem' }}>{Math.floor(updateProgress)}%</p>
+            <p className="text-muted">{Math.floor(updateProgress)}%</p>
           </div>
         )}
 
         {updateStatus === 'downloaded' && (
-          <div className="settings-empty update-available" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div className="settings-empty update-available">
             <Download size={24} className="update-icon" />
             <p className="update-text">Update Ready</p>
             <p>The update has been downloaded and is ready to install.</p>
@@ -90,7 +90,7 @@ export default function UpdatesTab({ updateStatus, latestVersion, updateUrl, upd
         )}
       </div>
 
-      <div className="settings-section" style={{ marginTop: '2rem', borderTop: '1px solid var(--color-border)', paddingTop: '1rem' }}>
+      <div className="settings-section setup-wizard-section">
         <div className="settings-section-title">
           <Download size={18} className="icon" />
           Setup Wizard

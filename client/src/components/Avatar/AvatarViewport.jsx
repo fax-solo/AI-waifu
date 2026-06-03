@@ -187,6 +187,12 @@ const AvatarViewport = forwardRef(function AvatarViewport({
           setHasModel(false);
           return true;
         }
+        if (result) {
+          const embeddedName = result?.meta?.name || result?.scene?.userData?.title;
+          if (embeddedName) {
+            localStorage.setItem('waifu-vrm-embedded-name', embeddedName);
+          }
+        }
         return !!result;
       } catch {
         return false;

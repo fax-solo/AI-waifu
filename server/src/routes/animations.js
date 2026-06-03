@@ -44,8 +44,6 @@ function getVrmaDuration(fullPath) {
   try {
     const buf = fs.readFileSync(fullPath);
     const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-    // Parse GLB header
-    const version = dv.getUint32(4, true);
     const totalLen = dv.getUint32(8, true);
     let cursor = 12;
     let jsonStr = null;
@@ -53,27 +51,31 @@ function getVrmaDuration(fullPath) {
     while (cursor < totalLen) {
       const chunkLen = dv.getUint32(cursor, true); cursor += 4;
       const chunkType = dv.getUint32(cursor, true); cursor += 4;
-      if (chunkType === 0x4E4F534A) { // JSON
+      if (chunkType === 0x4E4F534A) {
         jsonStr = new TextDecoder().decode(new Uint8Array(buf.buffer, buf.byteOffset + cursor, chunkLen));
-      } else if (chunkType === 0x004E4942) { // BIN\0
+      } else if (chunkType === 0x004E4942) {
         binStart = buf.byteOffset + cursor;
       }
-      cursor += chunkLen;
+      cursor += (chunkLen + 3) & ~3; // skip padding to 4-byte alignment
     }
     if (!jsonStr) return 0;
-    const gltf = JSON.parse(jsonStr);
+    const gltf = JSON.parse(jsonStr.replace(/\0+$/, ''));
     const anim = gltf.animations?.[0];
     if (!anim?.samplers?.length) return 0;
-    const sampler = anim.samplers[0];
-    const inputAccessor = gltf.accessors?.[sampler.input];
-    if (!inputAccessor) return 0;
-    const bufView = gltf.bufferViews?.[inputAccessor.bufferView];
-    if (!bufView) return 0;
-    const count = inputAccessor.count;
-    const byteOffset = (bufView.byteOffset || 0) + (inputAccessor.byteOffset || 0);
-    const lastFloatOffset = byteOffset + (count - 1) * 4;
-    const timeBuf = new DataView(buf.buffer, binStart + lastFloatOffset, 4);
-    return timeBuf.getFloat32(0, true);
+    let maxDuration = 0;
+    for (const sampler of anim.samplers) {
+      const inputAccessor = gltf.accessors?.[sampler.input];
+      if (!inputAccessor) continue;
+      const bufView = gltf.bufferViews?.[inputAccessor.bufferView];
+      if (!bufView) continue;
+      const count = inputAccessor.count;
+      const byteOffset = (bufView.byteOffset || 0) + (inputAccessor.byteOffset || 0);
+      const lastFloatOffset = byteOffset + (count - 1) * 4;
+      const timeBuf = new DataView(buf.buffer, binStart + lastFloatOffset, 4);
+      const t = timeBuf.getFloat32(0, true);
+      if (t > maxDuration) maxDuration = t;
+    }
+    return maxDuration;
   } catch { return 0; }
 }
 

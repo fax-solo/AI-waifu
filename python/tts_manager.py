@@ -95,7 +95,10 @@ class KokoroTTSManager:
                 self.device = "cpu"
 
             from kokoro_onnx import Kokoro
-            self.model = Kokoro(KOKORO_MODEL_PATH, KOKORO_VOICES_PATH)
+            self.model = Kokoro.from_session(
+                onnxruntime.InferenceSession(KOKORO_MODEL_PATH, providers=providers),
+                KOKORO_VOICES_PATH,
+            )
             self.loaded = True
             _safe_print(
                 f"[TTS] Kokoro ONNX loaded on {self.device} in {time.time() - start:.2f}s"

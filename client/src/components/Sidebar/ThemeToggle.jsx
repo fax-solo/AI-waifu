@@ -1,6 +1,8 @@
 import { memo, useState, useRef, useCallback } from 'react';
 import { Sun, Moon } from 'lucide-react';
 
+const supportsViewTransition = typeof document !== 'undefined' && 'startViewTransition' in document;
+
 const StarSVG = memo(function StarSVG({ style }) {
   return (
     <svg
@@ -38,29 +40,24 @@ const ThemeToggle = memo(function ThemeToggle({ theme, onToggle }) {
   const btnRef = useRef(null);
   const [squishing, setSquishing] = useState(false);
 
-  const triggerFade = useCallback(() => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark';
-
-    const probe = document.createElement('div');
-    probe.setAttribute('data-theme', newTheme);
-    probe.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none';
-    document.body.appendChild(probe);
-    const newBg = getComputedStyle(probe).getPropertyValue('--color-bg-primary').trim() || '#f5f3fa';
-    document.body.removeChild(probe);
-
-    const overlay = document.createElement('div');
-    overlay.className = 'theme-fade-overlay';
-    overlay.style.background = newBg;
-    document.body.appendChild(overlay);
-
-    overlay.addEventListener('animationend', () => overlay.remove(), { once: true });
-  }, [theme]);
-
   const handleClick = (e) => {
-    triggerFade();
     setSquishing(true);
     setTimeout(() => setSquishing(false), 450);
-    onToggle();
+
+    if (supportsViewTransition) {
+      document.startViewTransition(() => onToggle());
+    } else {
+      const currentBg = getComputedStyle(document.documentElement).getPropertyValue('--color-bg-primary').trim() || '#0a0a0f';
+      const overlay = document.createElement('div');
+      overlay.style.cssText = `position:fixed;inset:0;z-index:9999;pointer-events:none;background:${currentBg};opacity:0;transition:opacity 0.3s ease`;
+      document.body.appendChild(overlay);
+      requestAnimationFrame(() => { overlay.style.opacity = '1'; });
+      setTimeout(() => {
+        onToggle();
+        requestAnimationFrame(() => { overlay.style.opacity = '0'; });
+        overlay.addEventListener('transitionend', () => overlay.remove(), { once: true });
+      }, 150);
+    }
   };
 
   return (

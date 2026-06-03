@@ -3,6 +3,8 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
 import * as THREE from 'three';
 
+const FALLBACK_URL = '/animations/body/Relax.vrma';
+
 export function useVRMA() {
   const loaderRef = useRef(null);
   const stateRef = useRef({
@@ -13,11 +15,28 @@ export function useVRMA() {
     duration: 0,
     loop: false,
   });
+  const fallbackRef = useRef(null);
 
   useEffect(() => {
     const loader = new GLTFLoader();
     loader.register((parser) => new VRMAnimationLoaderPlugin(parser));
     loaderRef.current = loader;
+
+    // Preload fallback VRMA for filling missing bone tracks
+    const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+    const fallbackUrl = isFileProtocol ? FALLBACK_URL : `http://127.0.0.1:3005${FALLBACK_URL}`;
+    loader.load(
+      fallbackUrl,
+      (gltf) => {
+        fallbackRef.current = gltf.userData?.vrmAnimations?.[0] ?? null;
+        if (fallbackRef.current) {
+          console.log(`[VRMA] Fallback loaded: ${fallbackRef.current.humanoidTracks.rotation.size} bone tracks`);
+        }
+      },
+      undefined,
+      () => { console.warn('[VRMA] Failed to load fallback, missing bones will stay at rest pose'); },
+    );
+
     return () => {
       if (stateRef.current.mixer) {
         stateRef.current.mixer.stopAllAction();
@@ -34,7 +53,6 @@ export function useVRMA() {
     const s = stateRef.current;
     if (s.mixer) {
       s.mixer.stopAllAction();
-      // Remove any previous clips from the mixer to avoid accumulation
       if (s.action) {
         s.mixer.uncacheClip(s.action.getClip());
       }
@@ -56,18 +74,40 @@ export function useVRMA() {
         return;
       }
 
-      const clip = createVRMAnimationClip(anims[0], vrm);
+      const anim = anims[0];
+
+      // Fill missing bone tracks from fallback so unanimated bones aren't stuck at T-pose
+      const fallback = fallbackRef.current;
+      if (fallback) {
+        for (const [name, track] of fallback.humanoidTracks.rotation) {
+          if (!anim.humanoidTracks.rotation.has(name)) {
+            anim.humanoidTracks.rotation.set(name, track);
+          }
+        }
+        for (const [name, track] of fallback.humanoidTracks.translation) {
+          if (!anim.humanoidTracks.translation.has(name)) {
+            anim.humanoidTracks.translation.set(name, track);
+          }
+        }
+      }
+
+      const clip = createVRMAnimationClip(anim, vrm);
       if (!clip) {
         console.warn('[VRMA] createVRMAnimationClip returned null for:', filename);
         return;
       }
 
-      console.log(`[VRMA] Playing ${filename} (${clip.duration.toFixed(2)}s, ${loop ? 'loop' : 'once'})`);
+      const boneTracks = clip.tracks.filter(t => t.name.endsWith('.quaternion'));
+      console.log(`[VRMA] ${filename}: ${clip.tracks.length} tracks (${boneTracks.length} bone rotations), duration=${clip.duration.toFixed(3)}s`);
+      if (boneTracks.length < 20) {
+        console.log(`[VRMA] Tracks:`, boneTracks.map(t => t.name));
+      } else {
+        console.log(`[VRMA] First 5 tracks:`, boneTracks.slice(0,5).map(t => t.name));
+        console.log(`[VRMA] Last 5 tracks:`, boneTracks.slice(-5).map(t => t.name));
+      }
 
-      // Reuse the existing mixer if the scene is the same, otherwise create a new one
       let mixer = s.mixer;
       if (mixer) {
-        // Check if the mixer is still tied to this scene (mixer._root is the scene)
         if (mixer._root !== vrm.scene) {
           mixer = new THREE.AnimationMixer(vrm.scene);
         }

@@ -11,6 +11,8 @@ import { chat as groqChat } from '../services/groq.js';
 import { groqChatStream } from '../services/groq.js';
 import { buildSystemPrompt, extractMemoryHints } from '../services/personality.js';
 import { shouldSearch, searchWeb, extractSearchQuery } from '../services/search.js';
+import { searchImages } from '../services/imageSearch.js';
+import { parseResponse, getDefaultToggles } from '../utils/responseParser.js';
 import {
   getConversationHistory,
   getConversationSummary,
@@ -36,7 +38,7 @@ const MAX_RELEVANT_MEMORIES = 5;
  */
 async function prepareChatData(req) {
   const userId = req.headers['x-user-id'];
-  const { conversationId, message, screenshot } = req.body;
+  const { conversationId, message, screenshot, vrmModelName } = req.body;
 
   if (!message?.trim()) {
     throw new ChatError('Message cannot be empty.', 400);
@@ -86,7 +88,7 @@ async function prepareChatData(req) {
   const conversationSummary = getConversationSummary(conversationId);
   const history = getConversationHistory(conversationId, WINDOW_SIZE);
 
-  let systemPrompt = buildSystemPrompt(settings, relevantMemories, userName);
+  let systemPrompt = buildSystemPrompt(settings, relevantMemories, userName, vrmModelName);
   if (conversationSummary) {
     systemPrompt = `## Earlier Conversation Summary\n${conversationSummary}\n\nThe summary above captures the key points from earlier in this conversation. The most recent messages follow below.\n\n${systemPrompt}`;
   }
@@ -160,6 +162,8 @@ MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date i
     console.warn(`[Chat] Screenshot provided but provider is "${provider}" — screenshots only supported with Gemini`);
   }
 
+  const desktopCompanionMode = !!(settings.desktop_companion_mode);
+
   return {
     conversationId,
     userId,
@@ -170,6 +174,7 @@ MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date i
     finalUserMessage,
     isSearching,
     forceSearch,
+    desktopCompanionMode,
     chatOptions: {
       apiKey,
       systemPrompt,
@@ -216,17 +221,28 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
       animation = retry.animation;
     }
 
-    saveMessage(data.conversationId, 'assistant', text);
+    const parsed = data.desktopCompanionMode
+      ? parseResponse(text, true)
+      : { text, toggles: getDefaultToggles(), search_query: '', wasJson: false };
+
+    const finalText = parsed.text || text;
+
+    saveMessage(data.conversationId, 'assistant', finalText);
 
     checkAndTriggerSummarization(data.conversationId, {
       apiKey: data.apiKey,
       provider: data.provider,
     });
 
-    const resolvedAnim = resolveAnimation(data.finalUserMessage, text, emotion, animation);
+    const resolvedAnim = resolveAnimation(data.finalUserMessage, finalText, emotion, animation);
+
+    let images = [];
+    if (parsed.toggles.trigger_image_search && parsed.search_query) {
+      images = await searchImages(parsed.search_query);
+    }
 
     res.json({
-      message: text,
+      message: finalText,
       emotion,
       animation: resolvedAnim.animation,
       loopAnimation: resolvedAnim.loop,
@@ -235,6 +251,9 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
       isSearching: data.isSearching,
       conversationId: data.conversationId,
       rateLimit: data.rateLimit,
+      toggles: parsed.toggles,
+      search_query: parsed.search_query,
+      images,
     });
   } catch (error) {
     console.error('Chat error:', error.message);
@@ -302,14 +321,36 @@ router.post('/stream', rateLimitMiddleware, async (req, res) => {
       res.write(`event: token\ndata: ${JSON.stringify({ text: fullText })}\n\n`);
     }
 
-    saveMessage(data.conversationId, 'assistant', fullText);
+    const parsed = data.desktopCompanionMode
+      ? parseResponse(fullText, true)
+      : { text: fullText, toggles: getDefaultToggles(), search_query: '', wasJson: false };
+
+    const finalText = parsed.text || fullText;
+
+    saveMessage(data.conversationId, 'assistant', finalText);
 
     checkAndTriggerSummarization(data.conversationId, {
       apiKey: data.apiKey,
       provider: data.provider,
     });
 
-    const resolvedAnim = resolveAnimation(data.finalUserMessage, fullText, finalEmotion, finalAnimation);
+    if (parsed.wasJson) {
+      const emotionMatch = finalText.match(/^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]/i);
+      if (emotionMatch) {
+        finalEmotion = emotionMatch[2].toLowerCase();
+      }
+      const animMatch = finalText.match(/\[animation:([^\]]+)\]/i);
+      if (animMatch) {
+        finalAnimation = animMatch[1].toLowerCase().replace(/\.vrma$/i, '') + '.vrma';
+      }
+    }
+
+    const resolvedAnim = resolveAnimation(data.finalUserMessage, finalText, finalEmotion, finalAnimation);
+
+    let images = [];
+    if (parsed.toggles.trigger_image_search && parsed.search_query) {
+      images = await searchImages(parsed.search_query);
+    }
 
     res.write(`event: done\ndata: ${JSON.stringify({
       emotion: finalEmotion,
@@ -317,10 +358,13 @@ router.post('/stream', rateLimitMiddleware, async (req, res) => {
       loopAnimation: resolvedAnim.loop,
       mouthExpression: resolvedAnim.mouthExpression || null,
       eyeExpression: resolvedAnim.eyeExpression || null,
-      message: fullText,
+      message: finalText,
       isSearching: data.isSearching,
       conversationId: data.conversationId,
       rateLimit: data.rateLimit,
+      toggles: parsed.toggles,
+      search_query: parsed.search_query,
+      images,
     })}\n\n`);
     res.end();
   } catch (error) {

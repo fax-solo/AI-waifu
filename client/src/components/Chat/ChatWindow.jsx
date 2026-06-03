@@ -4,6 +4,7 @@ import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import MessageBubble from './MessageBubble.jsx';
 import MessageInput from './MessageInput.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
+import ImageResults from './ImageResults.jsx';
 
 const SUGGESTIONS = [
   "How's your day going? ✨",
@@ -36,6 +37,9 @@ const ChatWindow = forwardRef(function ChatWindow({
   onClearScreenshot,
   onRegenerate,
   onCopy,
+  images,
+  searchQuery: aiSearchQuery,
+  onClearImages,
 }, ref) {
   const { t } = useLanguage();
   const [showError, setShowError] = useState(false);
@@ -249,6 +253,14 @@ const ChatWindow = forwardRef(function ChatWindow({
           {isSending && <TypingIndicator isSearching={isSearching} />}
           <div ref={messagesEndRef} />
         </div>
+      )}
+
+      {images && images.length > 0 && (
+        <ImageResults
+            images={images}
+            searchQuery={aiSearchQuery}
+            onClear={onClearImages}
+        />
       )}
 
       {/* Input */}

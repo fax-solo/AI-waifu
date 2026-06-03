@@ -56,6 +56,21 @@ export default function CompanionTab({ companion, setCompanion }) {
         />
       </div>
 
+      <div className="form-group switch-group">
+        <input
+          type="checkbox"
+          id="desktop-companion-mode"
+          checked={!!companion.desktopCompanionMode}
+          onChange={(e) => setCompanion((p) => ({ ...p, desktopCompanionMode: e.target.checked ? 1 : 0 }))}
+        />
+        <label htmlFor="desktop-companion-mode" className="switch-label">
+          Desktop Companion Mode
+          <span className="hint" style={{ display: 'block', fontSize: '12px', opacity: 0.6, fontWeight: 400 }}>
+            AI can auto-trigger screenshots, screen preview, voice input, and image search
+          </span>
+        </label>
+      </div>
+
       <div className="character-io">
         <button
           className="char-export-btn"

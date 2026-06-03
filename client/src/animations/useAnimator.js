@@ -55,6 +55,8 @@ const BODY_TO_FACIAL = {
   spin: 'excited',
   Surprised: 'surprised',
   Thinking: 'thoughtful',
+  cute_idle: 'happy',
+  cute_idle_dreamy: 'happy',
 };
 
 const MOUTH_FACIAL = {

@@ -49,6 +49,8 @@ const TEXT_TO_BODY = [
   { patterns: ['full body', 'show myself', 'present', 'ta-da', 'dramatic reveal', 'look at me'], value: 'show full body.vrma' },
   { patterns: ['welcome', 'warm welcome', 'greet', 'greeting', 'nice to meet'], value: 'greeting.vrma' },
   { patterns: ['excited', 'excitement', 'so excited', 'thrilled', 'can hardly contain'], value: 'Jump.vrma' },
+  { patterns: ['cute', 'cutely', 'adorable', 'sweet', 'precious', 'lovely', 'cute idle', 'idle'], value: 'cute_idle.vrma' },
+  { patterns: ['dreamy', 'dreamily', 'daydream', 'dream like', 'in a daze', 'dazed', 'dreaming', 'spaced out', 'spacing out'], value: 'cute_idle_dreamy.vrma' },
 ];
 
 // Maps AI emotions to existing VRMA body animation files
