@@ -13,6 +13,66 @@
       "version": "1.0"
     }
   },
+  "gallery": {
+    "mavuika": {
+      "url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Mavuika.glb",
+      "path": "server/data/gallery/Mavuika.glb",
+      "size": 63997676,
+      "name": "Mavuika",
+      "pfp_url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Mavuika.jpg",
+      "pfp_path": "/gallery/Mavuika.jpg"
+    },
+    "yinlin": {
+      "url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Yinlin.glb",
+      "path": "server/data/gallery/Yinlin.glb",
+      "size": 41901712,
+      "name": "Yinlin",
+      "pfp_url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Yinlin.jpg",
+      "pfp_path": "/gallery/Yinlin.jpg"
+    },
+    "changli": {
+      "url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Changli.glb",
+      "path": "server/data/gallery/Changli.glb",
+      "size": 31423608,
+      "name": "Changli",
+      "pfp_url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Changli.jpg",
+      "pfp_path": "/gallery/Changli.jpg"
+    },
+    "furina": {
+      "url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Furina.glb",
+      "path": "server/data/gallery/Furina.glb",
+      "size": 11230284,
+      "name": "Furina",
+      "pfp_url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Furina.jpg",
+      "pfp_path": "/gallery/Furina.jpg"
+    },
+    "zhu_yuan": {
+      "url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Zhu%20Yuan.glb",
+      "path": "server/data/gallery/Zhu Yuan.glb",
+      "size": 9263920,
+      "name": "Zhu Yuan",
+      "pfp_url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Zhu%20Yuan.webp",
+      "pfp_path": "/gallery/Zhu Yuan.webp"
+    },
+    "hu_tao": {
+      "url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Hu%20Tao.glb",
+      "path": "server/data/gallery/Hu Tao.glb",
+      "size": 7721392,
+      "name": "Hu Tao",
+      "pfp_url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Hu%20Tao.jpg",
+      "pfp_path": "/gallery/Hu Tao.jpg"
+    },
+    "jane_doe": {
+      "url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Jane%20doe/Jane%20doe.glb",
+      "path": "server/data/gallery/Jane doe/Jane doe.glb",
+      "size": 8984612,
+      "name": "Jane doe",
+      "pfp_url": "https://raw.githubusercontent.com/fax-solo/AI-waifu/main/server/data/gallery/Jane%20doe/Jane%20doe.jpg",
+      "pfp_path": "/gallery/Jane doe/Jane doe.jpg",
+      "isSubdir": true,
+      "subdirName": "Jane doe"
+    }
+  },
   "__packages__": {
     "python-env-cpu": {
       "name": "Local AI Engine (CPU)",
@@ -55,11 +115,20 @@
     },
     "gallery-avatars": {
       "name": "3D Gallery Avatars",
-      "description": "Pre-installed anime-style avatars ready to use immediately.",
-      "sizeBytes": 0,
+      "description": "Anime-style 3D avatars ready to use. Downloaded on demand when you add them to your library.",
+      "sizeBytes": 168319204,
       "required": false,
       "icon": "Gallery",
-      "type": "preinstalled"
+      "type": "download",
+      "assets": [
+        "mavuika",
+        "yinlin",
+        "changli",
+        "furina",
+        "zhu_yuan",
+        "hu_tao",
+        "jane_doe"
+      ]
     }
   }
 }

@@ -21,6 +21,45 @@ const UPLOADS_BASE = isElectron
 const AVATARS_DIR = path.join(UPLOADS_BASE, 'avatars');
 const PFPS_DIR = path.join(UPLOADS_BASE, 'pfps');
 
+const MODELS_JSON_PATH = path.resolve(__dirname, '..', '..', '..', 'models.json');
+
+function loadGalleryManifest() {
+  try {
+    const content = fs.readFileSync(MODELS_JSON_PATH, 'utf8');
+    return JSON.parse(content).gallery || {};
+  } catch {
+    return {};
+  }
+}
+
+async function downloadFromUrl(url, destPath) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+  const reader = response.body.getReader();
+  const dir = path.dirname(destPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const partial = destPath + '.partial';
+  const writer = fs.createWriteStream(partial);
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      writer.write(value);
+    }
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+      writer.end();
+    });
+    if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+    fs.renameSync(partial, destPath);
+  } catch (err) {
+    writer.destroy();
+    try { fs.unlinkSync(partial); } catch {}
+    throw err;
+  }
+}
+
 // Ensure directories exist
 [UPLOADS_BASE, AVATARS_DIR, PFPS_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -359,13 +398,16 @@ router.post('/gallery/upload', upload.fields([
   }
 });
 
-// List gallery models (auto-discovers new files in gallery directory)
+// List gallery models (auto-discovers on-disk files + remote manifest entries)
 router.get('/gallery', (req, res) => {
   try {
     const GALLERY_DIR = resolveGalleryDir();
+    const onDiskNames = new Set();
+
     if (fs.existsSync(GALLERY_DIR)) {
       const models = discoverGalleryModels(GALLERY_DIR);
       const currentPaths = new Set(models.map(m => m.filePath));
+      models.forEach(m => onDiskNames.add(m.name));
 
       // Remove stale DB entries whose file is no longer on disk
       const allDb = db.prepare('SELECT id, file_path FROM gallery_vrm_models').all();
@@ -406,6 +448,26 @@ router.get('/gallery', (req, res) => {
     }
 
     const galleryModels = db.prepare('SELECT * FROM gallery_vrm_models ORDER BY name ASC').all();
+
+    // Merge remote models from manifest (not yet on disk)
+    const manifest = loadGalleryManifest();
+    for (const [key, entry] of Object.entries(manifest)) {
+      if (!onDiskNames.has(entry.name)) {
+        galleryModels.push({
+          id: `_remote_${key}`,
+          name: entry.name,
+          file_path: entry.path,
+          pfp_path: entry.pfp_path || null,
+          description: entry.description || '',
+          created_at: null,
+          download_url: entry.url,
+          size: entry.size,
+          pfp_url: entry.pfp_url || null,
+          on_disk: false,
+        });
+      }
+    }
+
     res.json(galleryModels);
   } catch (error) {
     console.error('Error fetching gallery models:', error);
@@ -414,15 +476,69 @@ router.get('/gallery', (req, res) => {
 });
 
 // Download a gallery model to the user's library
-router.post('/gallery/:id/download', (req, res) => {
+router.post('/gallery/:id/download', async (req, res) => {
   const userId = req.headers['x-user-id'];
   const { id } = req.params;
 
   try {
-    const galleryModel = db.prepare('SELECT * FROM gallery_vrm_models WHERE id = ?').get(id);
-    if (!galleryModel) return res.status(404).json({ error: 'Gallery model not found' });
-
     const GALLERY_DIR = resolveGalleryDir();
+    let galleryModel;
+    let manifestKey = null;
+
+    // Check if this is a remote model (prefixed with _remote_)
+    if (id.startsWith('_remote_')) {
+      manifestKey = id.slice(8);
+      const manifest = loadGalleryManifest();
+      const entry = manifest[manifestKey];
+      if (!entry) return res.status(404).json({ error: 'Gallery model not found in manifest' });
+
+      // Download the model file to gallery directory
+      const destPath = path.join(GALLERY_DIR, entry.path.replace(/^server\/data\/gallery\//, ''));
+      const destDir = path.dirname(destPath);
+      if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+      console.log(`[Gallery] Downloading ${entry.name} from ${entry.url}`);
+      await downloadFromUrl(entry.url, destPath);
+
+      // Download pfp if available
+      if (entry.pfp_url) {
+        const pfpDest = path.join(path.dirname(destPath), path.basename(entry.pfp_path));
+        try {
+          await downloadFromUrl(entry.pfp_url, pfpDest);
+        } catch (pfpErr) {
+          console.warn(`[Gallery] Failed to download pfp for ${entry.name}:`, pfpErr.message);
+        }
+      }
+
+      // Sync to DB
+      const models = discoverGalleryModels(GALLERY_DIR);
+      for (const m of models) {
+        if (m.name === entry.name) {
+          const existing = db.prepare('SELECT id FROM gallery_vrm_models WHERE file_path = ?').get(m.filePath);
+          if (!existing) {
+            const newId = uuidv4();
+            const pfp_path = findGalleryPfp(GALLERY_DIR, m.name);
+            db.prepare(`
+              INSERT INTO gallery_vrm_models (id, name, file_path, pfp_path, description)
+              VALUES (?, ?, ?, ?, ?)
+            `).run(newId, m.name, m.filePath, pfp_path, '');
+            galleryModel = db.prepare('SELECT * FROM gallery_vrm_models WHERE id = ?').get(newId);
+          } else {
+            galleryModel = db.prepare('SELECT * FROM gallery_vrm_models WHERE id = ?').get(existing.id);
+          }
+          break;
+        }
+      }
+
+      if (!galleryModel) {
+        return res.status(500).json({ error: 'Failed to register downloaded model' });
+      }
+    } else {
+      // On-disk model — look up in DB
+      galleryModel = db.prepare('SELECT * FROM gallery_vrm_models WHERE id = ?').get(id);
+      if (!galleryModel) return res.status(404).json({ error: 'Gallery model not found' });
+    }
+
     const srcPath = path.join(GALLERY_DIR, galleryModel.file_path);
 
     if (!fs.existsSync(srcPath)) {

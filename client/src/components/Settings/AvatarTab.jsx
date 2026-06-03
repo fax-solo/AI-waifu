@@ -170,7 +170,9 @@ export default function AvatarTab({
               return (
                 <div key={model.id} className="settings-avatar-card">
                   <div className="settings-avatar-pfp">
-                    {model.pfp_path ? (
+                    {model.pfp_url ? (
+                      <img src={model.pfp_url} alt={model.name} />
+                    ) : model.pfp_path ? (
                       <img src={api.getUploadUrl(model.pfp_path)} alt={model.name} />
                     ) : (
                       <Download size={24} style={{ opacity: 0.3 }} />
@@ -183,7 +185,11 @@ export default function AvatarTab({
                     <button className="btn btn-secondary btn-small btn-full"
                       onClick={() => handleDownloadGalleryAvatar(model)}
                       disabled={downloadingGalleryId === model.id}>
-                      {downloadingGalleryId === model.id ? 'Downloading...' : 'Download'}
+                      {downloadingGalleryId === model.id
+                        ? 'Downloading...'
+                        : model.size
+                          ? `Download (${(model.size / 1e6).toFixed(0)} MB)`
+                          : 'Download'}
                     </button>
                   )}
                 </div>

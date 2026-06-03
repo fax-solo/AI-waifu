@@ -1,6 +1,6 @@
 {
   "name": "waifu-ai-companion",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "private": true,
   "description": "AI Companion Chat powered by Gemini",
   "author": "User",
@@ -42,7 +42,7 @@
       "server/src/**/*",
       "server/node_modules/**/*",
       "!server/data/waifu.db",
-      "server/data/gallery/**/*",
+      "!server/data/gallery/**/*",
       "electron/**/*",
       "python/*.py",
       "!python/*.onnx",
