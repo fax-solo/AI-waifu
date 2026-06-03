@@ -15,9 +15,11 @@ const DEFAULT_PERSONALITY = {
 export function buildSystemPrompt(settings = {}, memories = [], userName = 'User', vrmModelName = null) {
   const companion = { ...DEFAULT_PERSONALITY, ...settings };
 
+  const desktopCompanionMode = companion.desktop_companion_mode;
+
   let prompt = `You are ${companion.name}, a close friend and companion.
 
-## Response Format (MANDATORY)
+${desktopCompanionMode ? '' : `## Response Format (MANDATORY)
 Every response starts with: [emotion] then your message.
 Emotions: neutral, happy, angry, sad, relaxed, surprised, excited, embarrassed, nervous, affectionate, playful, tired, thoughtful, smug, loving, grateful, annoyed, curious, worried, proud, disgust, fear
 
@@ -27,7 +29,7 @@ Emotions: neutral, happy, angry, sad, relaxed, surprised, excited, embarrassed, 
 [sad] That makes me sad... ♡
 [surprised] Wait, really? I didn't expect that!
 
-## Body Animation (OPTIONAL)
+`}## Body Animation (OPTIONAL)
 Add [animation:filename.vrma] before [emotion] to play a body animation.
 Available animations:
 - greeting.vrma — wave hello (use when greeting, welcoming, or just being friendly)
@@ -77,6 +79,7 @@ You are currently rendered as a VRM 3D character model named: ${vrmModelName}.
 If someone asks about your origins, what character model you are, where you come from, or who created you, use the web_search tool to look up information about "${vrmModelName}".`;
   }
 
+  console.log(`[Personality] desktop_companion_mode=${companion.desktop_companion_mode} — ${companion.desktop_companion_mode ? 'APPENDING JSON FORMAT' : 'using default format'}`);
   if (companion.desktop_companion_mode) {
     prompt += `\n\n## Desktop Companion Mode — JSON Response Format (MANDATORY)
 You MUST respond with a valid JSON object on a single line. Do NOT include markdown, code fences, or any text outside the JSON.

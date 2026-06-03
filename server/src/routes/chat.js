@@ -163,6 +163,7 @@ MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date i
   }
 
   const desktopCompanionMode = !!(settings.desktop_companion_mode);
+  console.log(`[Chat] desktopCompanionMode=${desktopCompanionMode} from settings.desktop_companion_mode=${settings.desktop_companion_mode}`);
 
   return {
     conversationId,
@@ -221,9 +222,11 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
       animation = retry.animation;
     }
 
+    console.log(`[Chat] POST parseResponse — desktopCompanionMode=${data.desktopCompanionMode}, text length=${text?.length}, first 80 chars="${text?.substring(0, 80).replace(/\n/g, '\\n')}"`);
     const parsed = data.desktopCompanionMode
       ? parseResponse(text, true)
       : { text, toggles: getDefaultToggles(), search_query: '', wasJson: false };
+    console.log(`[Chat] POST parsed — wasJson=${parsed.wasJson}, toggles=${JSON.stringify(parsed.toggles)}, search_query="${parsed.search_query}"`);
 
     const finalText = parsed.text || text;
 
@@ -289,10 +292,17 @@ router.post('/stream', rateLimitMiddleware, async (req, res) => {
     let finalAnimation = null;
     let lastError = null;
 
+    // When DCM is on, buffer tokens instead of forwarding raw JSON to the client
+    const dcmBuffer = data.desktopCompanionMode ? [] : null;
+
     for await (const event of stream) {
       if (event.type === 'token') {
         fullText += event.text;
-        res.write(`event: token\ndata: ${JSON.stringify({ text: event.text })}\n\n`);
+        if (dcmBuffer) {
+          dcmBuffer.push(event.text);
+        } else {
+          res.write(`event: token\ndata: ${JSON.stringify({ text: event.text })}\n\n`);
+        }
       } else if (event.type === 'search') {
         res.write(`event: search\ndata: ${JSON.stringify({ query: event.query })}\n\n`);
       } else if (event.type === 'done') {
@@ -318,14 +328,29 @@ router.post('/stream', rateLimitMiddleware, async (req, res) => {
       fullText = retry.text || '';
       finalEmotion = retry.emotion || 'neutral';
       finalAnimation = retry.animation;
-      res.write(`event: token\ndata: ${JSON.stringify({ text: fullText })}\n\n`);
+      if (dcmBuffer) {
+        dcmBuffer.push(fullText);
+      } else {
+        res.write(`event: token\ndata: ${JSON.stringify({ text: fullText })}\n\n`);
+      }
     }
 
+    console.log(`[Chat] Stream parseResponse — desktopCompanionMode=${data.desktopCompanionMode}, text length=${fullText?.length}, first 80 chars="${fullText?.substring(0, 80).replace(/\n/g, '\\n')}"`);
     const parsed = data.desktopCompanionMode
       ? parseResponse(fullText, true)
       : { text: fullText, toggles: getDefaultToggles(), search_query: '', wasJson: false };
+    console.log(`[Chat] Stream parsed — wasJson=${parsed.wasJson}, toggles=${JSON.stringify(parsed.toggles)}, search_query="${parsed.search_query}"`);
 
     const finalText = parsed.text || fullText;
+
+    // If DCM was buffered, flush the clean parsed text as token(s) now
+    if (dcmBuffer && parsed.wasJson) {
+      res.write(`event: token\ndata: ${JSON.stringify({ text: finalText })}\n\n`);
+    } else if (dcmBuffer && !parsed.wasJson) {
+      // JSON parsing failed — flush the buffer as-is
+      const raw = dcmBuffer.join('');
+      res.write(`event: token\ndata: ${JSON.stringify({ text: raw })}\n\n`);
+    }
 
     saveMessage(data.conversationId, 'assistant', finalText);
 
