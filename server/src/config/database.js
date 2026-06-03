@@ -452,6 +452,10 @@ const dbWrapper = {
 // Initialize the database
 await dbWrapper.init();
 
+export function saveNow() {
+  saveDb();
+}
+
 export function runBackup() {
   createBackup();
 }

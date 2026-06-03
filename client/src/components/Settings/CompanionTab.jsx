@@ -61,7 +61,7 @@ export default function CompanionTab({ companion, setCompanion }) {
           type="checkbox"
           id="desktop-companion-mode"
           checked={!!companion.desktopCompanionMode}
-          onChange={(e) => setCompanion((p) => ({ ...p, desktopCompanionMode: e.target.checked ? 1 : 0 }))}
+          onChange={(e) => setCompanion((p) => ({ ...p, desktopCompanionMode: e.target.checked }))}
         />
         <label htmlFor="desktop-companion-mode" className="switch-label">
           Desktop Companion Mode

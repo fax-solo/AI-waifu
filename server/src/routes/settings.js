@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { encrypt, decrypt } from '../utils/crypto.js';
 import { getRateLimitStatus } from '../middleware/rateLimit.js';
-import db, { listBackups, runBackup } from '../config/database.js';
+import db, { listBackups, runBackup, saveNow } from '../config/database.js';
 
 const router = Router();
 
@@ -15,7 +15,7 @@ router.get('/', (req, res) => {
       'SELECT * FROM companion_settings WHERE user_id = ?'
     ).get(userId);
 
-    console.log('[Settings] Found user:', !!user, 'Found companion:', !!companion);
+    console.log('[Settings] Found user:', !!user, 'Found companion:', !!companion, 'desktop_companion_mode:', companion?.desktop_companion_mode);
 
     const hasCustomKey = !!companion?.custom_api_key_encrypted;
     const hasGroqKey = !!companion?.groq_api_key_encrypted;
@@ -147,6 +147,11 @@ router.put('/', (req, res) => {
           companion.shortcuts ? JSON.stringify(companion.shortcuts) : null
         );
       }
+
+      // Debug: verify what was saved
+      const saved = db.prepare('SELECT desktop_companion_mode FROM companion_settings WHERE user_id = ?').get(userId);
+      console.log(`[Settings] Saved desktop_companion_mode = ${saved?.desktop_companion_mode}`);
+      saveNow();
     }
 
     res.json({ success: true });
