@@ -34,6 +34,7 @@ __pycache__/
 *.pth
 *.weights
 *.h5
+*.partial
 python/*.onnx
 python/*.bin
 
