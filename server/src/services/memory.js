@@ -348,6 +348,148 @@ export function autoTitle(conversationId, firstMessage) {
   ).run(title, conversationId);
 }
 
+/**
+ * Retrieve semantically relevant conversation summaries from other conversations.
+ * Uses keyword scoring (no API calls) for fast, zero-cost retrieval.
+ *
+ * @param {string} userId
+ * @param {string} query - The user's current message
+ * @param {string} _apiKey - Unused (kept for interface compatibility)
+ * @param {number} maxResults - Max summaries to return
+ * @returns {Array<{summary: string, title: string}>}
+ */
+export function getRelevantSummaries(userId, query, _apiKey, maxResults = 3) {
+  try {
+    const conversations = db.prepare(
+      `SELECT id, title, summary FROM conversations 
+       WHERE user_id = ? AND summary != '' AND summary IS NOT NULL
+       ORDER BY updated_at DESC LIMIT 20`
+    ).all(userId);
+
+    if (!conversations.length) return [];
+
+    const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+    if (queryWords.length === 0) return [];
+
+    const scored = [];
+    for (const conv of conversations) {
+      const textToSearch = `${conv.title} ${conv.summary}`.toLowerCase();
+      let score = 0;
+      for (const word of queryWords) {
+        const count = (textToSearch.match(new RegExp(word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length;
+        if (count > 0) score += count * (word.length > 5 ? 2 : 1);
+      }
+      if (score > 0) {
+        scored.push({ summary: conv.summary, title: conv.title, score });
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, maxResults);
+  } catch (err) {
+    console.warn('[Memory] Summary retrieval failed:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Batch save memories with deduplication.
+ * Skips memories that already exist (exact content match).
+ *
+ * @param {string} userId
+ * @param {string[]} memories
+ * @param {string} category
+ */
+export function batchSaveMemories(userId, memories, category = 'general') {
+  if (!memories || memories.length === 0) return;
+
+  const existing = new Set(
+    db.prepare('SELECT content FROM user_memories WHERE user_id = ?')
+      .all(userId)
+      .map(r => r.content.toLowerCase())
+  );
+
+  const insert = db.prepare(
+    'INSERT INTO user_memories (user_id, category, content) VALUES (?, ?, ?)'
+  );
+
+  const inserted = [];
+  for (const memory of memories) {
+    if (!existing.has(memory.toLowerCase())) {
+      insert.run(userId, category, memory);
+      inserted.push(memory);
+    }
+  }
+
+  // Generate embeddings for new memories asynchronously
+  for (const memory of inserted) {
+    generateAndStoreEmbedding(userId, memory);
+  }
+}
+
+/**
+ * Consolidate conversation summaries into long-term memories.
+ * Extracts facts about the user from the summary and saves them as memories.
+ * Called after conversation summarization runs.
+ *
+ * @param {string} conversationId
+ * @param {string} apiKey
+ * @param {string} provider - 'gemini' or 'groq'
+ */
+export async function consolidateMemories(conversationId, apiKey, provider = 'gemini') {
+  try {
+    const conv = db.prepare(
+      'SELECT user_id, summary FROM conversations WHERE id = ?'
+    ).get(conversationId);
+
+    if (!conv || !conv.summary) return;
+
+    const key = apiKey || process.env.GEMINI_API_KEY;
+    if (!key) return;
+
+    const CONSOLIDATE_PROMPT = `Extract any facts about the user from this conversation summary.
+Return a JSON array of short factual strings, or [] if nothing to remember.
+Each fact must start with "User" and be a standalone statement.
+
+Examples:
+["User enjoys playing strategy games", "User is learning Japanese", "User has a dog named Buddy"]
+[]`;
+
+    const body = JSON.stringify({
+      contents: [{
+        parts: [{ text: `${CONSOLIDATE_PROMPT}\n\nSummary:\n${conv.summary}` }]
+      }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 256 }
+    });
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      }
+    );
+
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed) && parsed.every(f => typeof f === 'string') && parsed.length > 0) {
+        batchSaveMemories(conv.user_id, parsed, 'consolidated');
+        console.log(`[Memory] Consolidated ${parsed.length} facts from conversation ${conversationId.slice(0, 8)}...`);
+      }
+    }
+  } catch (err) {
+    console.warn('[Memory] Consolidation failed:', err.message);
+  }
+}
+
 export default {
   saveMemories,
   getMemories,
@@ -359,4 +501,7 @@ export default {
   generateEmbedding,
   saveMessage,
   autoTitle,
+  getRelevantSummaries,
+  batchSaveMemories,
+  consolidateMemories,
 };

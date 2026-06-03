@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { chat as geminiChat, chatStream as geminiChatStream } from '../services/gemini.js';
 import { chat as groqChat } from '../services/groq.js';
 import { groqChatStream } from '../services/groq.js';
-import { buildSystemPrompt, extractMemoryHints } from '../services/personality.js';
+import { buildSystemPrompt, extractLLMMemories } from '../services/personality.js';
 import { shouldSearch, searchWeb, extractSearchQuery } from '../services/search.js';
 import { searchImages } from '../services/imageSearch.js';
 import { parseResponse, getDefaultToggles } from '../utils/responseParser.js';
@@ -21,6 +21,8 @@ import {
   getRelevantMemories,
   autoTitle,
   checkAndTriggerSummarization,
+  getRelevantSummaries,
+  consolidateMemories,
 } from '../services/memory.js';
 import { rateLimitMiddleware } from '../middleware/rateLimit.js';
 import { decrypt } from '../utils/crypto.js';
@@ -85,17 +87,29 @@ async function prepareChatData(req) {
   }
 
   const relevantMemories = await getRelevantMemories(userId, message, apiKey, MAX_RELEVANT_MEMORIES);
+  const relevantSummaries = getRelevantSummaries(userId, message, apiKey, 3);
   const conversationSummary = getConversationSummary(conversationId);
   const history = getConversationHistory(conversationId, WINDOW_SIZE);
 
   let systemPrompt = buildSystemPrompt(settings, relevantMemories, userName, vrmModelName);
+
+  // Inject cross-conversation context from past related conversations
+  if (relevantSummaries.length > 0) {
+    const crossContext = relevantSummaries
+      .map(s => `[${s.title}]\n${s.summary}`)
+      .join('\n\n');
+    const label = relevantSummaries.length === 1
+      ? 'a previous conversation'
+      : 'previous conversations';
+    systemPrompt = `## Context from ${label}\nThe following information comes from other conversations you've had with ${userName}. Use it to maintain continuity.\n\n${crossContext}\n\n${systemPrompt}`;
+  }
+
   if (conversationSummary) {
-    systemPrompt = `## Earlier Conversation Summary\n${conversationSummary}\n\nThe summary above captures the key points from earlier in this conversation. The most recent messages follow below.\n\n${systemPrompt}`;
+    systemPrompt = `## Earlier in This Conversation\n${conversationSummary}\n\nThe summary above captures the key points from earlier in this conversation. The most recent messages follow below.\n\n${systemPrompt}`;
   }
 
   let proactiveResults = null;
   let isSearching = false;
-  let forceSearch = false;
   const searchNeeded = shouldSearch(message);
 
   if (searchNeeded) {
@@ -104,24 +118,20 @@ async function prepareChatData(req) {
     const searchCount = limit?.search_count || 0;
 
     if (searchCount < 10) {
-      isSearching = true;
-      proactiveResults = await searchWeb(message.trim());
+      const searchQuery = extractSearchQuery(message) || message.trim();
+      proactiveResults = await searchWeb(searchQuery);
 
       if (!proactiveResults) {
-        const cleaned = extractSearchQuery(message);
-        if (cleaned && cleaned !== message.trim().toLowerCase().replace(/[^\w\s]/g, '').trim()) {
-          proactiveResults = await searchWeb(cleaned);
-        }
+        proactiveResults = await searchWeb(message.trim());
       }
 
       if (proactiveResults) {
+        isSearching = true;
         db.prepare(`
           INSERT INTO rate_limits (user_id, date, search_count) 
           VALUES (?, ?, 1) 
           ON CONFLICT(user_id, date) DO UPDATE SET search_count = search_count + 1
         `).run(userId, today);
-      } else {
-        forceSearch = true;
       }
     } else {
       console.warn(`[Search] User ${userId} reached daily search limit.`);
@@ -136,10 +146,12 @@ ${proactiveResults}
 [END SEARCH RESULTS]
 
 User Query: ${finalUserMessage}`;
-  } else if (forceSearch) {
+  } else if (searchNeeded) {
+    // Search requested but no results available — let AI answer from its knowledge
+    isSearching = false;
     finalUserMessage = `User Query: ${message.trim()}
 
-MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date information before answering. Do NOT answer from your training data or memory. Search first, then answer based ONLY on the search results.`;
+Note: Web search is currently unavailable, so answer using your existing knowledge. It's OK to rely on your training data for this response.`;
   }
 
   saveMessage(conversationId, 'user', message.trim());
@@ -149,11 +161,6 @@ MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date i
   ).get(conversationId);
   if (messageCount.count <= 1) {
     autoTitle(conversationId, message.trim());
-  }
-
-  const newMemories = extractMemoryHints(message);
-  if (newMemories.length > 0) {
-    saveMemories(userId, newMemories);
   }
 
   const model = settings.llm_model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gemini-2.0-flash-lite');
@@ -174,7 +181,6 @@ MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date i
     history,
     finalUserMessage,
     isSearching,
-    forceSearch,
     desktopCompanionMode,
     chatOptions: {
       apiKey,
@@ -183,7 +189,6 @@ MANDATORY INSTRUCTION: You MUST use the web_search tool now to find up-to-date i
       userMessage: finalUserMessage,
       model,
       searchWeb,
-      forceSearch,
       screenshot: provider === 'gemini' ? screenshot : undefined,
     },
     rateLimit: req.rateLimit || null,
@@ -232,9 +237,21 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
 
     saveMessage(data.conversationId, 'assistant', finalText);
 
+    // Extract long-term memories using the LLM (fire-and-forget)
+    extractLLMMemories(req.body.message?.trim(), finalText, data.apiKey, data.provider)
+      .then(memories => {
+        if (memories.length > 0) {
+          saveMemories(data.userId, memories);
+          console.log(`[Memory] Extracted ${memories.length} memories from chat`);
+        }
+      })
+      .catch(err => console.warn('[Memory] Async extraction failed:', err.message));
+
     checkAndTriggerSummarization(data.conversationId, {
       apiKey: data.apiKey,
       provider: data.provider,
+    }).then(() => {
+      consolidateMemories(data.conversationId, data.apiKey, data.provider);
     });
 
     const resolvedAnim = resolveAnimation(data.finalUserMessage, finalText, emotion, animation);
@@ -354,9 +371,22 @@ router.post('/stream', rateLimitMiddleware, async (req, res) => {
 
     saveMessage(data.conversationId, 'assistant', finalText);
 
+    // Extract long-term memories using the LLM (fire-and-forget)
+    const userOriginalMessage = req.body.message?.trim() || '';
+    extractLLMMemories(userOriginalMessage, finalText, data.apiKey, data.provider)
+      .then(memories => {
+        if (memories.length > 0) {
+          saveMemories(data.userId, memories);
+          console.log(`[Memory] Extracted ${memories.length} memories from chat`);
+        }
+      })
+      .catch(err => console.warn('[Memory] Async extraction failed:', err.message));
+
     checkAndTriggerSummarization(data.conversationId, {
       apiKey: data.apiKey,
       provider: data.provider,
+    }).then(() => {
+      consolidateMemories(data.conversationId, data.apiKey, data.provider);
     });
 
     if (parsed.wasJson) {

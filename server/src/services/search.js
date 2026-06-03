@@ -86,7 +86,8 @@ export function extractSearchQuery(message) {
     'please', 'some', 'the', 'a', 'an', 'is', 'are', 'was', 'what',
     'how', 'where', 'when', 'do', 'and', 'or', 'for', 'of', 'in',
     'on', 'at', 'to', 'i', 'me', 'my', 'we', 'our', 'list', 'all',
-    'okay', 'ok'
+    'okay', 'ok',
+    'search', 'find', 'lookup', 'look', 'check', 'google', 'web',
   ]);
   return message
     .toLowerCase()
@@ -120,8 +121,8 @@ export async function searchWeb(query) {
       body: JSON.stringify({
         api_key: TAVILY_API_KEY,
         query: query,
-        search_depth: 'advanced',
-        include_answer: false,
+        search_depth: 'basic',
+        include_answer: true,
         include_raw_content: false,
         max_results: 5
       })
@@ -137,7 +138,12 @@ export async function searchWeb(query) {
     const MAX_RESULT_CHARS = 1200;
     const MAX_TOTAL_CHARS = 4000;
 
-    let result = data.results.map(r => {
+    let result = '';
+    if (data.answer) {
+      result = `Summary: ${data.answer}\n\n`;
+    }
+
+    result += data.results.map(r => {
       const text = (r.content || '').slice(0, MAX_RESULT_CHARS);
       return `${r.title}: ${text}`;
     }).join('\n\n');

@@ -330,6 +330,29 @@ const dbWrapper = {
   },
 
   /**
+   * Wraps a function in BEGIN/COMMIT/ROLLBACK for atomic transactions.
+   * Mimics better-sqlite3's db.transaction() API.
+   *
+   * Usage:
+   *   const insertMany = db.transaction((items) => { for (...) { insert.run(...); } });
+   *   insertMany(items);
+   */
+  transaction(fn) {
+    const self = this;
+    return (...args) => {
+      self.exec('BEGIN');
+      try {
+        const result = fn(...args);
+        self.exec('COMMIT');
+        return result;
+      } catch (err) {
+        self.exec('ROLLBACK');
+        throw err;
+      }
+    };
+  },
+
+  /**
    * Find a companion image for a VRM file in the gallery directory.
    * Searches top level files first, then subdirectories.
    */

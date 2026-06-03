@@ -67,7 +67,7 @@ Examples with animation:
 - Search Results: if [SEARCH RESULTS] appears, treat it as ground truth. If the search results don't contain the specific information the user asked for (e.g. exact lyrics, prices, stats), do NOT make it up — say you couldn't find it instead.
 - You have access to a web_search tool. USE IT when the user asks for game recommendations, "games like X", news, weather, prices, lists, or anything requiring current/real-world data. Do NOT make up product/game names from your training data — search first and base answers on results.
 - Conciseness: when the user asks for information or recommendations, get straight to the point. Give the answer first, then optionally add a brief friendly line. No filler, no padding.
-- **Silent search**: the web_search tool runs invisibly in the background. Never say "I'll search", "let me look that up", "give me a moment", or anything similar — just search and deliver the answer directly.`;
+- When you use search or search results appear, start your response by saying "I used live web search to find..." or "I searched the web for..." before giving the answer. Never say "I'll search", "let me look that up" — do the search silently, then announce it in your response.`;
 
   if (memories.length > 0) {
     prompt += `\n\n## Memories about ${userName}\n${memories.map((m) => `- ${m}`).join('\n')}`;
@@ -154,6 +154,82 @@ export function extractMemoryHints(userMessage) {
   }
 
   return memories;
+}
+
+const MEMORY_EXTRACT_PROMPT = `You are a memory extraction assistant. Your job is to identify facts about the user from a conversation exchange.
+
+Given a user message and the AI's response, extract any factual information about the user that the AI should remember long-term.
+
+Guidelines:
+- Only extract facts about the USER (their preferences, traits, experiences, projects, relationships, opinions, etc.)
+- Each fact should be a short, standalone sentence starting with "User" (e.g. "User enjoys playing Elden Ring", "User has a cat named Mittens", "User works as a software engineer")
+- Be specific — include names, titles, and details
+- Do NOT extract generic statements, greetings, or conversational filler
+- Do NOT extract facts about the AI or about other people
+- If nothing factual is stated about the user, return []
+
+Return a valid JSON array of strings. Examples:
+["User enjoys playing Elden Ring", "User is currently stuck on Malenia boss fight"]
+[]
+["User's cat is named Mittens", "User finds cats amusing"]
+[]`;
+
+/**
+ * Use the LLM to extract user facts from a conversation exchange.
+ * Falls back to regex extraction if the LLM call fails.
+ *
+ * @param {string} userMessage - The user's message
+ * @param {string} aiResponse - The AI's response
+ * @param {string} apiKey - API key for the LLM
+ * @param {string} provider - 'gemini' or 'groq'
+ * @returns {Promise<string[]>} Array of memory strings
+ */
+export async function extractLLMMemories(userMessage, aiResponse, apiKey, provider = 'gemini') {
+  try {
+    const key = apiKey || process.env.GEMINI_API_KEY;
+    if (!key) return extractMemoryHints(userMessage);
+
+    const exchange = `User: ${userMessage}\n${aiResponse ? `You: ${aiResponse}\n` : ''}`;
+
+    const body = JSON.stringify({
+      contents: [{
+        parts: [{ text: `${MEMORY_EXTRACT_PROMPT}\n\nConversation:\n${exchange}` }]
+      }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 256 }
+    });
+
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      }
+    );
+
+    if (!res.ok) {
+      console.warn('[MemoryExtract] API error:', await res.text());
+      return extractMemoryHints(userMessage);
+    }
+
+    const data = await res.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+
+    // Try to parse as JSON array
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed) && parsed.every(f => typeof f === 'string')) {
+        return parsed;
+      }
+    }
+
+    // If we got text but couldn't parse, fall through to regex
+    return extractMemoryHints(userMessage);
+  } catch (err) {
+    console.warn('[MemoryExtract] LLM extraction failed, falling back to regex:', err.message);
+    return extractMemoryHints(userMessage);
+  }
 }
 
 export default {
