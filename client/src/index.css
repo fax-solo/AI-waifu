@@ -4308,6 +4308,38 @@ input:checked + .slider:before {
   border-radius: var(--radius-full);
 }
 
+/* ── Restart Banner ─────────────────────────────────────────────── */
+.restart-banner {
+  padding: 10px 20px;
+  border-top: 1px solid var(--glass-border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(255, 200, 87, 0.06);
+  border-bottom: 1px solid rgba(255, 200, 87, 0.12);
+  font-size: 0.82rem;
+  color: var(--color-warning);
+  flex-shrink: 0;
+}
+
+.restart-banner .btn {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.restart-banner-dismiss {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  opacity: 0.6;
+}
+
+.restart-banner-dismiss:hover {
+  opacity: 1;
+}
+
 /* ── Settings Footer ────────────────────────────────────────────── */
 .settings-footer {
   padding: 12px 20px;

@@ -68,6 +68,9 @@ export default function CompanionTab({ companion, setCompanion }) {
           <span className="hint" style={{ display: 'block', fontSize: '12px', opacity: 0.6, fontWeight: 400 }}>
             AI can auto-trigger screenshots, screen preview, voice input, and image search
           </span>
+          <span className="hint" style={{ display: 'block', fontSize: '11px', opacity: 0.5, fontWeight: 400, marginTop: 2 }}>
+            Requires a server restart after enabling
+          </span>
         </label>
       </div>
 

@@ -67,6 +67,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
 
   const originalRef = useRef(null);
   const [dirty, setDirty] = useState(false);
+  const [restartRequired, setRestartRequired] = useState(false);
 
   const [currentVRMName, setCurrentVRMName] = useState(null);
   const [avatars, setAvatars] = useState([]);
@@ -299,6 +300,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
       originalRef.current = JSON.stringify({ displayName, companion: { ...companion, shortcuts } });
       setDirty(false);
       showToast('Settings saved!');
+      if (companion.desktopCompanionMode) setRestartRequired(true);
     } catch (err) {
       showToast('Failed to save settings.', 'error');
     } finally {
@@ -724,7 +726,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     showGallery, galleryAvatars, downloadingGalleryId,
     showGalleryUpload, galleryUploadForm, isGalleryUploading,
     audioDevices, testText, micTestStatus, ttsStatus,
-    activeTab, settingsSearch, dirty, showUnsavedDialog,
+    activeTab, settingsSearch, dirty, restartRequired, setRestartRequired, showUnsavedDialog,
     isTestingVoice,
     animations, animLoading, animSearch, testStatus,
 

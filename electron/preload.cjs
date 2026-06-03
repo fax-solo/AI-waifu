@@ -37,4 +37,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('screenshot-captured', (_event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('screenshot-captured');
   },
+  restartApp: () => ipcRenderer.invoke('restart-app'),
 });

@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect } from 'react';
-import { X, Search, User, Sparkles, Image, Volume2, Key, Keyboard, Brain, Download, Info, Database, Film } from 'lucide-react';
+import { X, Search, User, Sparkles, Image, Volume2, Key, Keyboard, Brain, Download, Info, Database, Film, RotateCw } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import useSettings from './useSettings.js';
 import Toast from './Toast.jsx';
@@ -54,7 +54,7 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
     downloadUpdate, installUpdate,
     VOICES, voices, GEMINI_MODELS, GROQ_MODELS,
     settingsLoading, requestClose,
-    showUnsavedDialog, handleUnsavedConfirm, handleUnsavedCancel,
+    restartRequired, setRestartRequired, showUnsavedDialog, handleUnsavedConfirm, handleUnsavedCancel,
     animations, animLoading, animSearch, testStatus,
     animFileInputRef, loadAnimations, handleTestAnimation,
     handleDeleteAnimation, handleUploadAnimation, setAnimSearch,
@@ -238,6 +238,24 @@ export default function Settings({ onClose, onVRMFileSelected, avatarRef, onShor
           </div>
         </div>
 
+        {restartRequired && (
+          <div className="restart-banner">
+            <RotateCw size={16} />
+            <span>Server restart required for Desktop Companion Mode to take effect</span>
+            <button className="btn btn-primary btn-small" onClick={() => {
+              if (window.electronAPI?.restartApp) {
+                window.electronAPI.restartApp();
+              } else {
+                window.location.reload();
+              }
+            }}>
+              Restart Now
+            </button>
+            <button className="restart-banner-dismiss" onClick={() => setRestartRequired(false)}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
         <div className="settings-footer">
           {dirty && <span className="unsaved-badge">Unsaved changes</span>}
           <Toast message={toast?.message} type={toast?.type} onDismiss={() => showToast(null)} />

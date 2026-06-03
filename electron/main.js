@@ -184,6 +184,11 @@ ipcMain.handle('install-update', () => {
   autoUpdater.quitAndInstall();
 });
 
+ipcMain.handle('restart-app', () => {
+  app.relaunch();
+  app.quit();
+});
+
 // ─── GPU Fix: NVIDIA + Wayland/Hyprland + Electron ──────────────────────────
 // Only apply Linux-specific workarounds on Linux (NVIDIA + Wayland).
 // On Windows/macOS these flags may degrade performance or security.
