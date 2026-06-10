@@ -419,6 +419,48 @@ export async function completeSetup(data = {}) {
   });
 }
 
+// ─── Desktop Agent API ───────────────────────────────────────
+
+export async function getAgentStatus() {
+  return fetchApi('/agent/status');
+}
+
+export async function getAgentScreenSize() {
+  return fetchApi('/agent/screen-size');
+}
+
+export async function agentStep(goal, history = [], options = {}) {
+  return fetchApi('/agent/step', {
+    method: 'POST',
+    body: JSON.stringify({
+      goal,
+      history,
+      useSidecar: options.useSidecar ?? true,
+      apiKey: options.apiKey || '',
+      model: options.model || '',
+    }),
+  });
+}
+
+export async function agentExecute(action) {
+  return fetchApi('/agent/execute', {
+    method: 'POST',
+    body: JSON.stringify({ action }),
+  });
+}
+
+export async function agentRun(goal, options = {}) {
+  return fetchApi('/agent/run', {
+    method: 'POST',
+    body: JSON.stringify({
+      goal,
+      useSidecar: options.useSidecar ?? true,
+      apiKey: options.apiKey || '',
+      model: options.model || '',
+    }),
+  });
+}
+
 // ─── Textures API ───────────────────────────────────────────────
 const TEXTURE_BASE = window.location.protocol === 'file:'
   ? 'http://127.0.0.1:3005/textures'

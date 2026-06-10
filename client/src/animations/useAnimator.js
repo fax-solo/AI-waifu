@@ -277,11 +277,12 @@ function lerpKeyframes(keyframes, time) {
   return keyframes.at(-1);
 }
 
-export function useAnimator({ getTexture, onVFX } = {}) {
+export function useAnimator({ getTexture, onVFX, physicsCollision } = {}) {
   const { updateBuiltins, updateBreathingRaw } = useBuiltinAnimations();
   const windowAnchor = useWindowAnchor();
   const vrma = useVRMA();
   const vrmRef = useRef(null);
+  const physicsRef = useRef(physicsCollision);
   const calibrationRef = useRef(null);
   const proxyRef = useRef(null);
   const blendQueueRef = useRef(null);
@@ -324,6 +325,9 @@ export function useAnimator({ getTexture, onVFX } = {}) {
   useEffect(() => {
     onVFXRef.current = onVFX || null;
   }, [onVFX]);
+  useEffect(() => {
+    physicsRef.current = physicsCollision;
+  }, [physicsCollision]);
 
   // Runtime-discovered expression names cache (refs to survive across model changes)
   const exprNamesRef = useRef(null);
@@ -561,6 +565,11 @@ export function useAnimator({ getTexture, onVFX } = {}) {
 
     // 9. Update world matrices once before spring bone physics
     vrm.scene.updateMatrixWorld(true);
+
+    // 10. Physics body self-collision — detect & resolve interpenetrations
+    if (physicsRef.current?.isEnabled()) {
+      physicsRef.current.update(vrm, dt);
+    }
 
     // 11. Process facial queue (blend shapes from JSON keyframes)
     //     Moved BEFORE spring bones so that any bone or expression changes

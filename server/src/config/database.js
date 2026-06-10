@@ -162,6 +162,7 @@ async function initDb() {
     { table: 'companion_settings', name: 'shortcuts', type: 'TEXT' },
     { table: 'companion_settings', name: 'language', type: 'TEXT DEFAULT "en"' },
     { table: 'companion_settings', name: 'desktop_companion_mode', type: 'INTEGER DEFAULT 0' },
+    { table: 'companion_settings', name: 'desktop_agent_mode', type: 'INTEGER DEFAULT 0' },
     { table: 'conversations', name: 'summary', type: 'TEXT DEFAULT ""' },
     { table: 'conversations', name: 'last_summary_msg_count', type: 'INTEGER DEFAULT 0' },
     { table: 'user_memories', name: 'embedding', type: 'BLOB' },

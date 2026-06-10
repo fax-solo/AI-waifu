@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            server/node_modules
+            client/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json', 'server/package-lock.json', 'client/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build client
+        working-directory: client
+        run: node build.mjs
+
+  lint-server:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            server/node_modules
+          key: ${{ runner.os }}-npm-server-${{ hashFiles('package-lock.json', 'server/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-server-
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Check server starts without errors
+        working-directory: server
+        run: node --check src/index.js

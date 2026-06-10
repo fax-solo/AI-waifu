@@ -34,6 +34,7 @@ export default function App() {
     createConversation,
     sendMessage,
     sendMessageStream,
+    sendAgentMessage,
     removeConversation,
     removeMessage,
     setError,
@@ -54,6 +55,22 @@ export default function App() {
   const [mouthExpression, setMouthExpression] = useState(null);
   const [eyeExpression, setEyeExpression] = useState(null);
   const [screenPreviewActive, setScreenPreviewActive] = useState(false);
+  const [agentMode, setAgentMode] = useState(false);
+
+  const handleToggleAgentMode = useCallback(() => {
+    setAgentMode(prev => !prev);
+  }, []);
+
+  const handleSendAgentGoal = useCallback((goal) => {
+    sendAgentMessage(goal, {
+      onDone(action) {
+        addToast(`Agent completed: ${action.summary || 'Done'}`, 'success', 4000);
+      },
+      onError(action) {
+        addToast(`Agent error: ${action.message || 'Something went wrong'}`, 'error', 5000);
+      },
+    });
+  }, [sendAgentMessage, addToast]);
 
   const captureScreenshotRef = useRef(null);
 
@@ -604,6 +621,9 @@ export default function App() {
           images={toggleImages}
           searchQuery={searchQuery}
           onClearImages={clearToggles}
+          agentMode={agentMode}
+          onToggleAgentMode={handleToggleAgentMode}
+          onSendAgentGoal={handleSendAgentGoal}
         />
         {screenPreviewActive && (
           <ScreenPreview onClose={handleStopScreenPreview} />

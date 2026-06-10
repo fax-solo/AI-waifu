@@ -276,6 +276,7 @@ app.whenReady().then(() => {
   });
 
   startSidecar(5000, 'server.py', 'TTS');
+  startSidecar(5001, 'desktop_agent.py', 'DesktopAgent');
   createWindow();
 
   app.on('activate', () => {

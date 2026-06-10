@@ -21,6 +21,7 @@ import { useRenderQueue } from '../../animations/useRenderQueue.js';
 import { useColorSpace } from '../../animations/useColorSpace.js';
 import { useEmissiveGlow } from '../../animations/useEmissiveGlow.js';
 import { useRimLighting } from '../../animations/useRimLighting.js';
+import { usePhysicsCollision } from '../../animations/usePhysicsCollision.js';
 import * as api from '../../utils/api.js';
 
 
@@ -72,7 +73,8 @@ const AvatarViewport = forwardRef(function AvatarViewport({
 
   const { vrm, loading, progress, error, loadVRM, loadVRMFromFile, dispose, restPose } = useVRM();
   const tex = useExpressionTextures(vrm);
-  const animator = useAnimator({ getTexture: tex.getTexture });
+  const physicsCollision = usePhysicsCollision();
+  const animator = useAnimator({ getTexture: tex.getTexture, physicsCollision });
   const springPresets = useSpringBonePresets();
   const vrmColliders = useVRMColliders();
   const materialFix = useMaterialFix();
@@ -96,6 +98,10 @@ const AvatarViewport = forwardRef(function AvatarViewport({
   const [bodyAnims, setBodyAnims] = useState([]);
   const [bodyAnimsLoading, setBodyAnimsLoading] = useState(false);
   const [showDebugColliders, setShowDebugColliders] = useState(false);
+  const [showDebugPhysicsColliders, setShowDebugPhysicsColliders] = useState(false);
+  const [physicsCollisionEnabled, setPhysicsCollisionEnabled] = useState(
+    () => JSON.parse(localStorage.getItem('waifu-physics-collision-enabled') ?? 'true')
+  );
   const [physicsOverrides, setPhysicsOverrides] = useState({});
 
   const currentEmotion = emotion || 'neutral';
@@ -273,6 +279,20 @@ const AvatarViewport = forwardRef(function AvatarViewport({
       springPresets.applyEmotionPhysics(currentEmotion);
     }
   }, [currentEmotion, vrm]);
+
+  // Sync collision physics toggle
+  useEffect(() => {
+    physicsCollision.setEnabled(physicsCollisionEnabled);
+  }, [physicsCollisionEnabled, physicsCollision]);
+
+  useEffect(() => {
+    localStorage.setItem('waifu-physics-collision-enabled', JSON.stringify(physicsCollisionEnabled));
+  }, [physicsCollisionEnabled]);
+
+  // Sync debug physics colliders toggle
+  useEffect(() => {
+    physicsCollision.setDebugEnabled(showDebugPhysicsColliders);
+  }, [showDebugPhysicsColliders, physicsCollision]);
 
   // ─── Three.js Scene Setup (React StrictMode Safe) ───────────
   // CRITICAL: React StrictMode in dev does mount → unmount → mount.
@@ -651,6 +671,7 @@ const AvatarViewport = forwardRef(function AvatarViewport({
     // render queue → height normalization → rim lighting → emissive glow
     if (vrm.humanoid) {
       springPresets.init(vrm);
+      physicsCollision.init(vrm);
       vrmColliders.initFromVRM(vrm, sceneRef.current);
 
       materialFix.reset();
@@ -878,12 +899,22 @@ const AvatarViewport = forwardRef(function AvatarViewport({
                   <input type="checkbox" checked={avatarSettings.autoAnimate}
                     onChange={(e) => updateSetting('autoAnimate', e.target.checked)} />
                 </div>
+                <div className="avatar-toggle-row">
+                  <span>Collision Physics</span>
+                  <input type="checkbox" checked={physicsCollisionEnabled}
+                    onChange={(e) => setPhysicsCollisionEnabled(e.target.checked)} />
+                </div>
 
                 <div className="avatar-section-title" style={{ marginTop: 16 }}>Debug</div>
                 <div className="avatar-toggle-row">
                   <span>Show Colliders</span>
                   <input type="checkbox" checked={showDebugColliders}
                     onChange={(e) => { setShowDebugColliders(e.target.checked); vrmColliders.toggleDebugVisualization(e.target.checked); }} />
+                </div>
+                <div className="avatar-toggle-row">
+                  <span>Show Physics Colliders</span>
+                  <input type="checkbox" checked={showDebugPhysicsColliders}
+                    onChange={(e) => setShowDebugPhysicsColliders(e.target.checked)} />
                 </div>
 
                 {(() => {

@@ -118,11 +118,21 @@ async function prepareChatData(req) {
     const searchCount = limit?.search_count || 0;
 
     if (searchCount < 10) {
-      const searchQuery = extractSearchQuery(message) || message.trim();
-      proactiveResults = await searchWeb(searchQuery);
+      let searchQuery = extractSearchQuery(message);
 
-      if (!proactiveResults) {
-        proactiveResults = await searchWeb(message.trim());
+      // If message is just a short trigger word (e.g. "search"), 
+      // build context from the last AI response
+      if (!searchQuery && message.trim().split(/\s+/).length <= 2) {
+        const lastAiMsg = db.prepare(
+          "SELECT content FROM messages WHERE conversation_id = ? AND role = 'assistant' ORDER BY created_at DESC LIMIT 1"
+        ).get(conversationId);
+        if (lastAiMsg) {
+          searchQuery = extractSearchQuery(lastAiMsg.content);
+        }
+      }
+
+      if (searchQuery) {
+        proactiveResults = await searchWeb(searchQuery);
       }
 
       if (proactiveResults) {
@@ -163,14 +173,15 @@ Note: Web search is currently unavailable, so answer using your existing knowled
     autoTitle(conversationId, message.trim());
   }
 
-  const model = settings.llm_model || (provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gemini-2.0-flash-lite');
+  const model = settings.llm_model || (provider === 'groq' ? 'llama-3.3-70b-versatile' : 'gemini-2.0-flash-lite');
 
   if (screenshot && provider !== 'gemini') {
     console.warn(`[Chat] Screenshot provided but provider is "${provider}" — screenshots only supported with Gemini`);
   }
 
   const desktopCompanionMode = !!(settings.desktop_companion_mode);
-  console.log(`[Chat] desktopCompanionMode=${desktopCompanionMode} from settings.desktop_companion_mode=${settings.desktop_companion_mode}`);
+  const desktopAgentMode = !!(settings.desktop_agent_mode);
+  console.log(`[Chat] desktopCompanionMode=${desktopCompanionMode}, desktopAgentMode=${desktopAgentMode} from settings`);
 
   return {
     conversationId,
@@ -182,6 +193,7 @@ Note: Web search is currently unavailable, so answer using your existing knowled
     finalUserMessage,
     isSearching,
     desktopCompanionMode,
+    desktopAgentMode,
     chatOptions: {
       apiKey,
       systemPrompt,
@@ -235,7 +247,21 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
 
     const finalText = parsed.text || text;
 
-    saveMessage(data.conversationId, 'assistant', finalText);
+    // Parse emotion/animation tags from text (works in both DCM and non-DCM modes)
+    const emotionTagMatch = finalText.match(/^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]/i);
+    if (emotionTagMatch) {
+      emotion = emotionTagMatch[2].toLowerCase();
+    }
+    const animTagMatch = finalText.match(/\[animation:([^\]]+)\]/i);
+    if (animTagMatch) {
+      animation = animTagMatch[1].toLowerCase().replace(/\.vrma$/i, '') + '.vrma';
+    }
+
+    // Strip any remaining emotion/animation tags from displayed text
+    let displayText = finalText.replace(/^\[(?:animation:[^\]]+\]\s*)?(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*/i, '');
+    displayText = displayText.replace(/\[animation:[^\]]+\]\s*/gi, '').trim();
+
+    saveMessage(data.conversationId, 'assistant', displayText);
 
     // Extract long-term memories using the LLM (fire-and-forget)
     extractLLMMemories(req.body.message?.trim(), finalText, data.apiKey, data.provider)
@@ -254,7 +280,7 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
       consolidateMemories(data.conversationId, data.apiKey, data.provider);
     });
 
-    const resolvedAnim = resolveAnimation(data.finalUserMessage, finalText, emotion, animation);
+    const resolvedAnim = resolveAnimation(data.finalUserMessage, displayText, emotion, animation);
 
     let images = [];
     if (parsed.toggles.trigger_image_search && parsed.search_query) {
@@ -262,7 +288,7 @@ router.post('/', rateLimitMiddleware, async (req, res) => {
     }
 
     res.json({
-      message: finalText,
+      message: displayText,
       emotion,
       animation: resolvedAnim.animation,
       loopAnimation: resolvedAnim.loop,
@@ -360,16 +386,26 @@ router.post('/stream', rateLimitMiddleware, async (req, res) => {
 
     const finalText = parsed.text || fullText;
 
-    // If DCM was buffered, flush the clean parsed text as token(s) now
-    if (dcmBuffer && parsed.wasJson) {
-      res.write(`event: token\ndata: ${JSON.stringify({ text: finalText })}\n\n`);
-    } else if (dcmBuffer && !parsed.wasJson) {
-      // JSON parsing failed — flush the buffer as-is
-      const raw = dcmBuffer.join('');
-      res.write(`event: token\ndata: ${JSON.stringify({ text: raw })}\n\n`);
+    // Parse emotion/animation tags from text (works in both DCM and non-DCM modes)
+    const emotionMatch = finalText.match(/^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]/i);
+    if (emotionMatch) {
+      finalEmotion = emotionMatch[2].toLowerCase();
+    }
+    const animMatch = finalText.match(/\[animation:([^\]]+)\]/i);
+    if (animMatch) {
+      finalAnimation = animMatch[1].toLowerCase().replace(/\.vrma$/i, '') + '.vrma';
     }
 
-    saveMessage(data.conversationId, 'assistant', finalText);
+    // Strip any remaining emotion/animation tags from displayed text
+    const displayText = finalText.replace(/^\[(?:animation:[^\]]+\]\s*)?(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]\s*/i, '')
+      .replace(/\[animation:[^\]]+\]\s*/gi, '').trim();
+
+    // If DCM was buffered, flush the clean text as token(s) now
+    if (dcmBuffer) {
+      res.write(`event: token\ndata: ${JSON.stringify({ text: displayText })}\n\n`);
+    }
+
+    saveMessage(data.conversationId, 'assistant', displayText);
 
     // Extract long-term memories using the LLM (fire-and-forget)
     const userOriginalMessage = req.body.message?.trim() || '';
@@ -389,18 +425,7 @@ router.post('/stream', rateLimitMiddleware, async (req, res) => {
       consolidateMemories(data.conversationId, data.apiKey, data.provider);
     });
 
-    if (parsed.wasJson) {
-      const emotionMatch = finalText.match(/^(?:\[animation:([^\]]+)\]\s*)?\[(neutral|happy|angry|sad|relaxed|surprised|excited|embarrassed|nervous|affectionate|playful|tired|thoughtful|smug|loving|grateful|annoyed|curious|worried|proud|disgust|fear)\]/i);
-      if (emotionMatch) {
-        finalEmotion = emotionMatch[2].toLowerCase();
-      }
-      const animMatch = finalText.match(/\[animation:([^\]]+)\]/i);
-      if (animMatch) {
-        finalAnimation = animMatch[1].toLowerCase().replace(/\.vrma$/i, '') + '.vrma';
-      }
-    }
-
-    const resolvedAnim = resolveAnimation(data.finalUserMessage, finalText, finalEmotion, finalAnimation);
+    const resolvedAnim = resolveAnimation(data.finalUserMessage, displayText, finalEmotion, finalAnimation);
 
     let images = [];
     if (parsed.toggles.trigger_image_search && parsed.search_query) {
@@ -413,7 +438,7 @@ router.post('/stream', rateLimitMiddleware, async (req, res) => {
       loopAnimation: resolvedAnim.loop,
       mouthExpression: resolvedAnim.mouthExpression || null,
       eyeExpression: resolvedAnim.eyeExpression || null,
-      message: finalText,
+      message: displayText,
       isSearching: data.isSearching,
       conversationId: data.conversationId,
       rateLimit: data.rateLimit,

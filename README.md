@@ -12,18 +12,28 @@ A state-of-the-art AI companion desktop application featuring a highly interacti
 ## Features
 
 - **3D VRM Avatar** — Full-body anime-style avatar with physics-driven hair, clothing, and natural motion. AI-driven facial expressions that sync with conversation.
+- **Desktop Companion Mode (DCM)** — Autonomous desktop agent: AI can request screen captures, view your screen via Gemini Vision, and control mouse/keyboard to assist you directly.
+- **Advanced Animation System** — VRMA-format body animations with 20+ expressive motions (greeting, thinking, surprised, sad, shooting, peace sign, etc.) triggered by conversation sentiment. Look-at controller and blink system for natural gaze.
+- **Expression Texture Overlays** — Dynamic face compositing: blush, sweat, eye replacements, and viseme mouth shapes auto-detected and aligned to any VRM model's UV layout.
+- **Material Fix Engine** — Auto-detects burnt/black skin textures from misassigned lightmap/AO/normal maps and swaps in the real diffuse, fixing broken model imports.
+- **Render Queue System** — 5-layer depth sorting (Opaque Skin → Transparent Overlays → Cutout → Eyes → Mouth) ensuring proper rendering order on all models.
+- **Spring Bone Physics** — Configurable presets for hair, clothing, and accessory physics with improved collider response.
 - **Multi-Model AI** — Switch between Google Gemini (multiple models) and Groq (Llama 3, Mixtral, Gemma) for blazing-fast responses.
-- **Local TTS** — High-speed voice synthesis via Kokoro ONNX/PyTorch with GPU acceleration. 11 voices across English and Japanese.
+- **Local TTS** — High-speed voice synthesis via Kokoro ONNX with GPU acceleration. 11 voices across English and Japanese.
+- **Emotional TTS** — 8 emotion presets (happy, sad, excited, angry, shy, calm, surprised, affectionate) with pitch shift, reverb, EQ, and energy boost.
 - **Speech-to-Text** — Voice input support with local speech recognition.
-- **Memory System** — Your companion remembers details about you across conversations.
-- **Animation System** — 107+ body animations (BVH) and 23 facial expressions triggered by conversation context.
-- **Custom Avatars** — Upload your own .vrm/.glb files. Browse and download from a built-in gallery.
+- **Image Search** — AI-triggered DuckDuckGo image search with results displayed in a thumbnail gallery with lightbox viewer.
+- **Screen Sharing** — AI can request real-time screen captures. Integrated with DCM for autonomous desktop assistance.
+- **Memory System** — Your companion remembers details about you across conversations. Long conversations are automatically summarized for efficient context management. Atomic database transactions ensure data integrity.
+- **Custom Avatars** — Upload your own .vrm/.glb files. On-demand gallery downloads (~168 MB saved from installer).
 - **Web Search** — Real-time search via Tavily API, results injected into AI context.
 - **Companion Personality** — Fully customizable name, tone, personality, and backstory.
+- **Setup Wizard** — Multi-step first-run wizard with download progress, environment checking, and results summary.
 - **Keyboard Shortcuts** — Fully rebindable shortcuts for all actions.
 - **Export/Import** — Backup or transfer your settings and companion profile as JSON.
 - **RTL Support** — Full Arabic language support with right-to-left layout.
-- **Dark Theme** — Customizable accent color (6 colors).
+- **Dark Theme** — Customizable accent color (6 colors). Toast notifications system with auto-dismiss.
+- **Error Boundary** — Graceful error handling that prevents crashes from bringing down the app.
 
 ---
 
@@ -31,7 +41,7 @@ A state-of-the-art AI companion desktop application featuring a highly interacti
 
 1. **Download `WaifuAI-Setup.exe`** from the [Releases page](https://github.com/fax-solo/AI-waifu/releases).
 2. **Run the installer** and follow the setup wizard.
-3. On first launch, click **"Complete Setup"** — the app auto-downloads models, bootstraps Python, and configures the database.
+3. On first launch, the **Setup Wizard** guides you through downloading models, bootstrapping Python, and configuring the database.
 4. **Start chatting!**
 
 > **Windows SmartScreen**: The app isn't code-signed, so Windows may show "Windows protected your PC". Click **"More Info"** → **"Run Anyway"**. The app is open-source and safe.
@@ -94,7 +104,7 @@ npm run build:client
 npm run build:desktop
 ```
 
-Output: `dist-desktop/WaifuAI-Setup-1.0.0.exe`
+Output: `dist-desktop/WaifuAI-Setup-{version}.exe`
 
 ---
 
@@ -130,10 +140,11 @@ Users can bring their own API keys via the Settings UI to bypass rate limits.
 | Layer | Technology |
 |-------|-----------|
 | **Frontend** | React 19, Three.js, @react-three/fiber, @pixiv/three-vrm, Tailwind CSS v4, Vite 6 |
-| **Backend** | Express 4, SQLite (sql.js), multer |
+| **Backend (Node)** | Express 4, SQLite (sql.js), multer |
 | **Desktop** | Electron 34, electron-builder 26, NSIS installer |
 | **AI** | Google Generative AI SDK, Groq API (OpenAI-compatible) |
-| **TTS** | Kokoro-ONNX / Kokoro PyTorch, FastAPI (Python sidecar) |
+| **TTS (Python)** | Kokoro-ONNX, FastAPI, scipy/numpy audio processing |
+| **Desktop Agent** | Gemini Vision, pyautogui, mss (screen capture) |
 | **Icons** | Lucide React |
 
 ---
@@ -142,32 +153,68 @@ Users can bring their own API keys via the Settings UI to bypass rate limits.
 
 ```
 Waifu/
-├── client/           # React frontend (Vite)
+├── client/                # React frontend (Vite)
 │   ├── src/
+│   │   ├── animations/    # 18 animation/materials hooks
+│   │   │   ├── useAnimator.js         # Central animation driver
+│   │   │   ├── useExpressionTextures.js # Blush/sweat/eye overlays
+│   │   │   ├── useMaterialFix.js      # Burnt/black skin auto-fix
+│   │   │   ├── useRenderQueue.js      # 5-layer depth sorting
+│   │   │   ├── useSpringBonePresets.js # Hair/clothing physics
+│   │   │   ├── useVRMColliders.js     # Collision detection
+│   │   │   ├── useEmissiveGlow.js     # Glow effects
+│   │   │   ├── useRimLighting.js      # Rim light shader
+│   │   │   ├── useColorSpace.js       # Color management
+│   │   │   ├── useWindowAnchor.js     # Smooth window transitions
+│   │   │   ├── useVRMA.js             # VRMA playback
+│   │   │   ├── ExpressionBlendQueue.js
+│   │   │   ├── ExpressionCalibrationMap.js
+│   │   │   ├── ExpressionProxy.js
+│   │   │   ├── LookAtController.js
+│   │   │   ├── boneMapping.js
+│   │   │   ├── useBuiltinAnimations.js
+│   │   │   └── usePhysicsCollision.js
 │   │   ├── components/
-│   │   │   ├── Avatar/      # 3D VRM rendering (Three.js)
-│   │   │   ├── Chat/        # Chat window, messages, input
-│   │   │   ├── Settings/    # 14 settings tab components
-│   │   │   ├── Setup/       # First-run setup wizard
-│   │   │   └── Sidebar/     # Conversation sidebar
-│   │   ├── hooks/           # useChat, useTTS, useShortcuts, useAnimator
-│   │   ├── contexts/        # Language/i18n context
-│   │   ├── translations/    # English + Arabic
-│   │   └── utils/api.js     # API client
-│   └── public/              # Icons
-├── server/           # Express API backend
+│   │   │   ├── Avatar/        # 3D VRM rendering (Three.js)
+│   │   │   ├── Chat/          # Chat, messages, input, images, screen share
+│   │   │   ├── Settings/      # 14+ settings tab components
+│   │   │   ├── SetupWizard/   # Multi-step first-run wizard
+│   │   │   └── Sidebar/       # Conversation sidebar + theme toggle
+│   │   ├── hooks/             # useChat, useTTS, useShortcuts, useToggles
+│   │   ├── contexts/          # Language/i18n, Toast notifications
+│   │   └── utils/api.js       # API client
+│   └── public/
+├── server/                   # Express API backend (port 3005)
 │   └── src/
-│       ├── routes/          # REST endpoints (chat, settings, avatars, etc.)
-│       ├── services/        # Gemini, Groq, memory, search, personality, animation
-│       ├── middleware/      # Rate limiting
-│       ├── config/          # Database setup + migrations
-│       └── utils/           # AES-256-GCM encryption
-├── electron/         # Electron main process
-│   └── main.js
-├── python/           # Python TTS/STT sidecar
-│   └── tts_server.py
-├── dist-desktop/     # Build output
-└── package.json      # Root (Electron + build scripts)
+│       ├── routes/            # chat, conversations, settings, tts, stt
+│       │                      # avatars, setup, animations, agent
+│       ├── services/          # gemini, groq, memory, search, imageSearch
+│       │                      # personality, animationResolver, summarize
+│       ├── middleware/        # Rate limiting
+│       ├── config/            # Database (sql.js, auto-migration, atomic transactions)
+│       └── utils/             # crypto, paths, responseParser
+├── electron/                  # Electron main process
+│   └── main.js                # Window creation, TTS sidecar, auto-updater
+├── python/                    # Python sidecar (port 5000)
+│   ├── server.py              # FastAPI — TTS + STT + emotions
+│   ├── tts_manager.py         # Kokoro ONNX engine with LRU cache
+│   ├── audio_processor.py     # Post-processing (pitch, reverb, EQ)
+│   ├── text_processor.py      # Markdown stripping, emotion text transforms
+│   ├── emotion_presets.py     # 8 emotional voice presets
+│   └── desktop_agent.py       # Gemini Vision autonomous agent (port 5001)
+├── tools/                     # VRM animation toolchain
+│   ├── fbx_to_vrma.mjs        # FBX → VRMA converter
+│   ├── fix_vrma.mjs           # VRMA fixer
+│   ├── debug_vrma.mjs         # VRMA inspector
+│   ├── gen_idle.mjs           # Idle animation generator
+│   └── test_load_vrma.mjs     # VRMA loader test
+├── scripts/                   # BVH batch processing
+│   ├── convert_bvh_to_vrma.mjs
+│   ├── fix_bvh_hierarchy.py
+│   └── fix_idle_arms.py
+├── models.json
+├── RELEASE_NOTES.md
+└── package.json               # Root (Electron + build scripts)
 ```
 
 ---

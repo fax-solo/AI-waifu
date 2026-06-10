@@ -36,6 +36,11 @@ const SEARCH_KEYWORDS = [
   'like what', 'similar artists', 'similar songs',
   'recommend me', 'suggest me',
   'lyrics', 'lyrics for', 'song lyrics', 'lyrics of',
+  // Game/boss/guide keywords
+  'tips', 'tips for', 'tips to', 'strategy', 'strategies',
+  'stuck on', 'stuck at', 'how to', 'how do i', 'guide',
+  'boss', 'kill', 'defeat', 'beat', 'what is the best',
+  'what are the best', 'how do you',
 ];
 
 /**
@@ -48,9 +53,11 @@ export function shouldSearch(query) {
   
   // Explicit "search" commands (High priority)
   const searchPhrases = [
-    'search the web', 'search for', 'google for', 
+    'search the web', 'search for', 'google for',
     'find on the web', 'look up', 'check the internet',
-    'what are the best items', 'what is the meta', 'best build for'
+    'what are the best items', 'what is the meta', 'best build for',
+    'tips to', 'how to', 'stuck on', 'stuck at', 'strategy for',
+    'tips for', 'any tips',
   ];
   if (searchPhrases.some(p => lowercaseQuery.includes(p))) return true;
 
@@ -89,12 +96,13 @@ export function extractSearchQuery(message) {
     'okay', 'ok',
     'search', 'find', 'lookup', 'look', 'check', 'google', 'web',
   ]);
-  return message
+  const cleaned = message
     .toLowerCase()
     .replace(/[^\w\s]/g, '')
     .split(/\s+/)
     .filter(w => w.length > 2 && !stopWords.has(w))
     .join(' ');
+  return cleaned.length < 3 ? null : cleaned;
 }
 
 export async function searchWeb(query) {

@@ -13,7 +13,7 @@ const WEB_SEARCH_TOOL = [{
   }
 }];
 
-export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb, forceSearch }) {
+export async function chat({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb }) {
   const key = (apiKey && apiKey.trim()) || (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.trim());
 
   if (!key) {
@@ -34,10 +34,14 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
   }
 
   const fallbackModels = [
-    'llama-3.1-70b-versatile',
-    'llama-3.1-8b-instant',
-    'mixtral-8x7b-32768',
-    'gemma2-9b-it'
+    // Production models
+    'llama-3.3-70b-versatile',   // Meta Llama 3.3 70B — best quality, 280 t/s, 131K ctx
+    'llama-3.1-8b-instant',      // Meta Llama 3.1 8B — fastest, 560 t/s, 131K ctx
+    'openai/gpt-oss-120b',       // OpenAI GPT-OSS 120B — reasoning + built-in tools, 500 t/s
+    'openai/gpt-oss-20b',        // OpenAI GPT-OSS 20B — fastest chat, 1000 t/s, 131K ctx
+    // Preview models
+    'meta-llama/llama-4-scout-17b-16e-instruct',  // Llama 4 Scout 17B — multimodal, 750 t/s
+    'qwen/qwen3-32b',            // Qwen3 32B — strong reasoning, 400 t/s, 131K ctx
   ];
 
   const modelsToTry = preferredModel
@@ -60,7 +64,7 @@ export async function chat({ apiKey, systemPrompt, history, userMessage, model: 
         body: JSON.stringify({
           model: modelName,
           messages: groqMessages,
-          ...(forceSearch ? { tools: WEB_SEARCH_TOOL, tool_choice: 'required' } : {}),
+          ...(searchWeb ? { tools: WEB_SEARCH_TOOL } : {}),
            temperature: 0.7,
            max_tokens: 8192,
            top_p: 1,
@@ -167,7 +171,7 @@ function parseResponse(fullText) {
   return { emotion: 'neutral', animation, text };
 }
 
-export async function* groqChatStream({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb, forceSearch }) {
+export async function* groqChatStream({ apiKey, systemPrompt, history, userMessage, model: preferredModel, searchWeb }) {
   const key = (apiKey && apiKey.trim()) || (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY.trim());
 
   if (!key) {
@@ -175,10 +179,14 @@ export async function* groqChatStream({ apiKey, systemPrompt, history, userMessa
   }
 
   const fallbackModels = [
-    'llama-3.1-70b-versatile',
-    'llama-3.1-8b-instant',
-    'mixtral-8x7b-32768',
-    'gemma2-9b-it'
+    // Production models
+    'llama-3.3-70b-versatile',   // Meta Llama 3.3 70B — best quality, 280 t/s, 131K ctx
+    'llama-3.1-8b-instant',      // Meta Llama 3.1 8B — fastest, 560 t/s, 131K ctx
+    'openai/gpt-oss-120b',       // OpenAI GPT-OSS 120B — reasoning + built-in tools, 500 t/s
+    'openai/gpt-oss-20b',        // OpenAI GPT-OSS 20B — fastest chat, 1000 t/s, 131K ctx
+    // Preview models
+    'meta-llama/llama-4-scout-17b-16e-instruct',  // Llama 4 Scout 17B — multimodal, 750 t/s
+    'qwen/qwen3-32b',            // Qwen3 32B — strong reasoning, 400 t/s, 131K ctx
   ];
 
   const modelsToTry = preferredModel
@@ -211,7 +219,7 @@ export async function* groqChatStream({ apiKey, systemPrompt, history, userMessa
         body: JSON.stringify({
           model: modelName,
           messages: groqMessages,
-          ...(forceSearch ? { tools: WEB_SEARCH_TOOL, tool_choice: 'required' } : {}),
+          ...(searchWeb ? { tools: WEB_SEARCH_TOOL } : {}),
           temperature: 0.7,
           max_tokens: 8192,
           top_p: 1,

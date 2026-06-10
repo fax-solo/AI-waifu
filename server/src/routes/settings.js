@@ -48,6 +48,7 @@ router.get('/', (req, res) => {
         llmModel: companion?.llm_model || 'gemini-2.0-flash-lite',
         llmProvider: companion?.llm_provider || 'gemini',
         desktopCompanionMode: !!(companion?.desktop_companion_mode),
+        desktopAgentMode: !!(companion?.desktop_agent_mode),
         shortcuts,
       },
       hasCustomApiKey: hasCustomKey,
@@ -97,6 +98,7 @@ router.put('/', (req, res) => {
               llm_model = COALESCE(?, llm_model),
               llm_provider = COALESCE(?, llm_provider),
               desktop_companion_mode = COALESCE(?, desktop_companion_mode),
+              desktop_agent_mode = COALESCE(?, desktop_agent_mode),
               shortcuts = COALESCE(?, shortcuts),
               updated_at = CURRENT_TIMESTAMP
           WHERE user_id = ?
@@ -118,13 +120,14 @@ router.put('/', (req, res) => {
           companion.llmModel || null,
           companion.llmProvider || null,
           companion.desktopCompanionMode !== undefined ? (companion.desktopCompanionMode ? 1 : 0) : null,
+          companion.desktopAgentMode !== undefined ? (companion.desktopAgentMode ? 1 : 0) : null,
           companion.shortcuts ? JSON.stringify(companion.shortcuts) : null,
           userId
         );
       } else {
         db.prepare(`
-          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, lip_sync_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_speed, tts_pitch, tts_volume, tts_max_chars, llm_model, llm_provider, desktop_companion_mode, shortcuts)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO companion_settings (user_id, name, tone, personality, backstory, tts_enabled, lip_sync_enabled, tts_voice, audio_input_device, audio_output_device, tts_device, tts_speed, tts_pitch, tts_volume, tts_max_chars, llm_model, llm_provider, desktop_companion_mode, desktop_agent_mode, shortcuts)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
           companion.name || 'Aria',
@@ -144,6 +147,7 @@ router.put('/', (req, res) => {
           companion.llmModel || 'gemini-2.0-flash-lite',
           companion.llmProvider || 'gemini',
           companion.desktopCompanionMode ? 1 : 0,
+          companion.desktopAgentMode ? 1 : 0,
           companion.shortcuts ? JSON.stringify(companion.shortcuts) : null
         );
       }

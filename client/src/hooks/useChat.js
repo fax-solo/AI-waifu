@@ -312,6 +312,125 @@ export function useChat() {
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
   }, []);
 
+  // ─── Agent Mode ───────────────────────────────────────────────
+
+  const sendAgentMessage = useCallback(async (goal, callbacks = {}) => {
+    if (!goal.trim() || isSending || sendingRef.current) return;
+    sendingRef.current = true;
+
+    let conversationId = activeConversationId;
+    if (!conversationId) {
+      const conversation = await createConversation();
+      if (!conversation) { sendingRef.current = false; return; }
+      conversationId = conversation.id;
+    }
+
+    setIsSending(true);
+    setError(null);
+
+    const userMessage = {
+      id: Date.now(),
+      role: 'user',
+      content: `🤖 Agent Goal: ${goal.trim()}`,
+      isAgentGoal: true,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMessage]);
+    scrollToBottom();
+
+    const agentMsgId = Date.now() + 1;
+    setMessages((prev) => [...prev, {
+      id: agentMsgId,
+      role: 'assistant',
+      content: '',
+      isAgentRunning: true,
+      agentIterations: [],
+      created_at: new Date().toISOString(),
+    }]);
+
+    const updateAgentMessage = (updates) => {
+      setMessages((prev) => {
+        const updated = [...prev];
+        const idx = updated.findIndex(m => m.id === agentMsgId);
+        if (idx !== -1) {
+          updated[idx] = { ...updated[idx], ...updates };
+        }
+        return updated;
+      });
+    };
+
+    try {
+      const iterations = [];
+      let status = 'running';
+
+      while (status === 'running') {
+        const stepData = await api.agentStep(goal.trim(), iterations);
+        const action = stepData.action;
+        const actionType = action?.action;
+
+        iterations.push(action);
+
+        updateAgentMessage({
+          content: formatAgentProgress(actionType, action),
+          agentIterations: [...iterations],
+          agentScreenshot: stepData.screenshot,
+        });
+        scrollToBottom();
+
+        if (actionType === 'done') {
+          status = 'done';
+          updateAgentMessage({
+            content: `✅ **Agent Complete**\n\n${action.summary || 'Goal accomplished.'}`,
+            isAgentRunning: false,
+            agentIterations: [...iterations],
+            agentStatus: 'done',
+          });
+          callbacks.onDone?.(action);
+          break;
+        }
+
+        if (actionType === 'error') {
+          status = 'error';
+          updateAgentMessage({
+            content: `❌ **Agent Error**\n\n${action.message || 'Something went wrong.'}`,
+            isAgentRunning: false,
+            agentIterations: [...iterations],
+            agentStatus: 'error',
+          });
+          callbacks.onError?.(action);
+          break;
+        }
+
+        try {
+          await api.agentExecute(action);
+        } catch (execErr) {
+          updateAgentMessage({
+            content: `⚠️ **Execution Error**\n\n${execErr.message}`,
+            isAgentRunning: false,
+            agentIterations: [...iterations],
+            agentStatus: 'error',
+          });
+          break;
+        }
+
+        await new Promise(r => setTimeout(r, 800));
+      }
+    } catch (err) {
+      updateAgentMessage({
+        content: `❌ **Agent Failed**\n\n${err.data?.error || err.message}`,
+        isAgentRunning: false,
+        agentStatus: 'error',
+      });
+      setError(err.data?.error || err.message);
+    } finally {
+      setIsSending(false);
+      setIsSearching(false);
+      sendingRef.current = false;
+      loadConversations();
+      scrollToBottom();
+    }
+  }, [activeConversationId, isSending, createConversation, loadConversations, scrollToBottom]);
+
   return {
     conversations,
     activeConversationId,
@@ -326,10 +445,27 @@ export function useChat() {
     createConversation,
     sendMessage,
     sendMessageStream,
+    sendAgentMessage,
     removeConversation,
     removeMessage,
     setError,
     loadRateLimit,
     setActiveConversationId,
   };
+}
+
+function formatAgentProgress(actionType, action) {
+  const labels = {
+    mouse_move: '🖱️ Moving mouse',
+    mouse_click: '🖱️ Clicking',
+    double_click: '🖱️ Double-clicking',
+    type_text: '⌨️ Typing text',
+    key_press: '⌨️ Pressing keys',
+    scroll: '📜 Scrolling',
+    wait: '⏳ Waiting',
+    screenshot: '📸 Taking screenshot',
+  };
+  const label = labels[actionType] || `🔧 ${actionType}`;
+  const reasoning = action?.reasoning ? ` — ${action.reasoning}` : '';
+  return `${label}${reasoning}`;
 }

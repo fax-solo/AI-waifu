@@ -23,6 +23,17 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            server/node_modules
+            client/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('package-lock.json', 'server/package-lock.json', 'client/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
       - name: Install server dependencies
         working-directory: server
         run: npm ci

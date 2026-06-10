@@ -1,7 +1,7 @@
 import db from '../config/database.js';
 
-const EMBEDDING_MODEL = 'text-embedding-004';
-const EMBEDDING_DIM = 768;
+const EMBEDDING_MODEL = 'gemini-embedding-001';
+const EMBEDDING_DIM = 3072;
 
 /**
  * Save new memories about a user.
@@ -445,9 +445,6 @@ export async function consolidateMemories(conversationId, apiKey, provider = 'ge
 
     if (!conv || !conv.summary) return;
 
-    const key = apiKey || process.env.GEMINI_API_KEY;
-    if (!key) return;
-
     const CONSOLIDATE_PROMPT = `Extract any facts about the user from this conversation summary.
 Return a JSON array of short factual strings, or [] if nothing to remember.
 Each fact must start with "User" and be a standalone statement.
@@ -456,28 +453,56 @@ Examples:
 ["User enjoys playing strategy games", "User is learning Japanese", "User has a dog named Buddy"]
 []`;
 
-    const body = JSON.stringify({
-      contents: [{
-        parts: [{ text: `${CONSOLIDATE_PROMPT}\n\nSummary:\n${conv.summary}` }]
-      }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 256 }
-    });
+    let text;
 
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`,
-      {
+    if (provider === 'groq') {
+      const key = apiKey || process.env.GROQ_API_KEY;
+      if (!key) return;
+
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      }
-    );
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: CONSOLIDATE_PROMPT },
+            { role: 'user', content: `Summary:\n${conv.summary}` },
+          ],
+          temperature: 0.2,
+          max_tokens: 256,
+        }),
+      });
 
-    if (!res.ok) return;
+      if (!res.ok) return;
+      const data = await res.json();
+      text = data.choices?.[0]?.message?.content?.trim() || '';
+    } else {
+      const key = apiKey || process.env.GEMINI_API_KEY;
+      if (!key) return;
 
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${key}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: `${CONSOLIDATE_PROMPT}\n\nSummary:\n${conv.summary}` }]
+            }],
+            generationConfig: { temperature: 0.2, maxOutputTokens: 256 }
+          }),
+        }
+      );
+
+      if (!res.ok) return;
+      const data = await res.json();
+      text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    }
+
     const jsonMatch = text.match(/\[[\s\S]*\]/);
-
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       if (Array.isArray(parsed) && parsed.every(f => typeof f === 'string') && parsed.length > 0) {

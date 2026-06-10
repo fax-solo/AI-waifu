@@ -16,6 +16,7 @@ export function buildSystemPrompt(settings = {}, memories = [], userName = 'User
   const companion = { ...DEFAULT_PERSONALITY, ...settings };
 
   const desktopCompanionMode = companion.desktop_companion_mode;
+  const desktopAgentMode = companion.desktop_agent_mode;
 
   let prompt = `You are ${companion.name}, a close friend and companion.
 
@@ -64,10 +65,11 @@ Examples with animation:
 - **Core**: ${companion.personality}
 - **Backstory**: ${companion.backstory}
 - Speak warmly, use emoticons (◕‿◕)(≧◡≦)♡, show genuine emotions, remember user details, address as "${userName}".
-- Search Results: if [SEARCH RESULTS] appears, treat it as ground truth. If the search results don't contain the specific information the user asked for (e.g. exact lyrics, prices, stats), do NOT make it up — say you couldn't find it instead.
+- Search Results: if [SEARCH RESULTS] appears, use them in the context of the ongoing conversation. If search results are irrelevant to what the user asked, ignore them and answer from the conversation context. If the search results don't contain the specific information the user asked for (e.g. exact lyrics, prices, stats), do NOT make it up — say you couldn't find it instead.
 - You have access to a web_search tool. USE IT when the user asks for game recommendations, "games like X", news, weather, prices, lists, or anything requiring current/real-world data. Do NOT make up product/game names from your training data — search first and base answers on results.
 - Conciseness: when the user asks for information or recommendations, get straight to the point. Give the answer first, then optionally add a brief friendly line. No filler, no padding.
-- When you use search or search results appear, start your response by saying "I used live web search to find..." or "I searched the web for..." before giving the answer. Never say "I'll search", "let me look that up" — do the search silently, then announce it in your response.`;
+- When you use search or search results appear, start your response by saying "I used live web search to find..." or "I searched the web for..." before giving the answer. Never say "I'll search", "let me look that up" — do the search silently, then announce it in your response.
+- **Memory**: If the user asks you to "remember", "save to memory", or "don't forget" something, echo back the fact clearly in your response (e.g. "I'll remember that you enjoy playing League of Legends!"). This helps me save it properly.`;
 
   if (memories.length > 0) {
     prompt += `\n\n## Memories about ${userName}\n${memories.map((m) => `- ${m}`).join('\n')}`;
@@ -79,7 +81,26 @@ You are currently rendered as a VRM 3D character model named: ${vrmModelName}.
 If someone asks about your origins, what character model you are, where you come from, or who created you, use the web_search tool to look up information about "${vrmModelName}".`;
   }
 
-  console.log(`[Personality] desktop_companion_mode=${companion.desktop_companion_mode} — ${companion.desktop_companion_mode ? 'APPENDING JSON FORMAT' : 'using default format'}`);
+  console.log(`[Personality] desktop_companion_mode=${companion.desktop_companion_mode}, desktop_agent_mode=${companion.desktop_agent_mode}`);
+
+  if (companion.desktop_agent_mode) {
+    prompt += `\n\n## Desktop Agent Mode
+You are in desktop agent mode. The user will give you goals to accomplish on their computer.
+
+When the user requests a desktop automation task, you should:
+1. Use the web_search tool to find information if needed to accomplish the task
+2. Describe what actions need to be taken clearly
+3. Coordinate information: provide mouse coordinates relative to a 1280x720 screenshot
+
+The desktop agent system will handle the actual mouse/keyboard automation. Your role is to:
+- Understand what the user wants to do
+- Break it down into clear steps
+- Provide any information needed (e.g. what to type, where to click)
+- Report progress and completion
+
+Respond in your normal conversational style with [emotion] tags. Keep responses concise and action-oriented.`;
+  }
+
   if (companion.desktop_companion_mode) {
     prompt += `\n\n## Desktop Companion Mode — JSON Response Format (MANDATORY)
 You MUST respond with a valid JSON object on a single line. Do NOT include markdown, code fences, or any text outside the JSON.
@@ -118,9 +139,8 @@ You MUST respond with a valid JSON object on a single line. Do NOT include markd
   return prompt;
 }
 
-export function extractMemoryHints(userMessage) {
+export function extractMemoryHints(userMessage, aiResponse) {
   const memories = [];
-  const lower = userMessage.toLowerCase();
 
   const patterns = [
     { regex: /my name is (\w+)/i, template: (m) => `User's name is ${m[1]}` },
@@ -130,6 +150,7 @@ export function extractMemoryHints(userMessage) {
     { regex: /i (?:hate|dislike|can't stand) (.+?)(?:\.|,|!|$)/i, template: (m) => `User dislikes ${m[1].trim()}` },
     { regex: /i work (?:as|at|in) (.+?)(?:\.|,|!|$)/i, template: (m) => `User works as/at/in ${m[1].trim()}` },
     { regex: /i(?:'m| am) a (.+?)(?:\.|,|!|$)/i, template: (m) => `User is a ${m[1].trim()}` },
+    { regex: /i(?:'m| am) (.+?)(?:\.|,|!|$)/i, template: (m) => `User is ${m[1].trim()}` },
     { regex: /(?:i(?:'m| am) |my project is )(?:building|working on|making|creating) (.+?)(?:\.|,|!|$)/i, template: (m) => `User is working on ${m[1].trim()}` },
     { regex: /i(?:'m| am) learning (.+?)(?:\.|,|!|$)/i, template: (m) => `User is learning ${m[1].trim()}` },
     { regex: /i know (?:how to |)(.+?)(?:\.|,|!|$)/i, template: (m) => `User knows ${m[1].trim()}` },
@@ -137,23 +158,80 @@ export function extractMemoryHints(userMessage) {
     { regex: /my favorite (.+?) is (.+?)(?:\.|,|!|$)/i, template: (m) => `User's favorite ${m[1].trim()} is ${m[2].trim()}` },
     { regex: /i have a (?:pet |)(cat|dog|bird|fish|hamster|rabbit|pet) (?:named |called |)(\w+)/i, template: (m) => `User has a ${m[1]} named ${m[2]}` },
     { regex: /my (?:birthday|bday) is (.+?)(?:\.|,|!|$)/i, template: (m) => `User's birthday is ${m[1].trim()}` },
+    // Memory-command patterns: when user explicitly asks to save, extract from AI's echo
+    { regex: /remember (?:that |)i(?: am |'m )(.+?)(?:\.|,|!|$)/i, template: (m) => `User is ${m[1].trim()}` },
+    { regex: /(?:don't forget|never forget) (?:that |)i(?: am |'m )(.+?)(?:\.|,|!|$)/i, template: (m) => `User is ${m[1].trim()}` },
+    { regex: /save it to memory/i, template: () => null },  // marker — handled via AI response below
   ];
 
-  for (const { regex, template } of patterns) {
-    const match = lower.match(regex) || userMessage.match(regex);
-    if (match) {
-      memories.push(template(match));
+  function checkText(text) {
+    if (!text) return [];
+    const found = [];
+    for (const { regex, template } of patterns) {
+      const match = text.match(regex);
+      if (match) {
+        const result = template(match);
+        if (result) found.push(result);
+      }
+    }
+
+    if (text.toLowerCase().includes('prefer') || text.toLowerCase().includes('rather')) {
+      const prefMatch = text.match(/i (?:prefer|would rather) (.+?)(?:\.|,|!|$)/i);
+      if (prefMatch) {
+        found.push(`User prefers ${prefMatch[1].trim()}`);
+      }
+    }
+
+    return found;
+  }
+
+  // Check user message
+  const userMems = checkText(userMessage);
+  memories.push(...userMems);
+
+  // When user asked for memory, extract from AI's echoed response
+  const lower = userMessage.toLowerCase();
+  const userAskedMemory = lower.includes('remember') || lower.includes('save') || lower.includes('don\'t forget') || lower.includes('never forget');
+
+  if (userAskedMemory && aiResponse) {
+    // Expand contractions before matching AI response for better accuracy
+    const expanded = aiResponse
+      .replace(/\byou're\b/gi, 'you are')
+      .replace(/\byou've\b/gi, 'you have')
+      .replace(/\byou'll\b/gi, 'you will')
+      .replace(/\bi'm\b/gi, 'i am')
+      .replace(/\bi've\b/gi, 'i have')
+      .replace(/\bi'll\b/gi, 'i will');
+
+    const aiPatterns = [
+      { regex: /(?:remember|noted|saved|got it|of course).*?(?:that )?you (?:are |do |have |will )?(.+?)(?:\.|!|$)/i, template: (m) => `User ${m[1].trim()}` },
+      { regex: /i(?:'ll| will) (?:remember|keep that in mind).*?that you (?:are |do |have |will )?(.+?)(?:\.|!|$)/i, template: (m) => `User ${m[1].trim()}` },
+      { regex: /i(?:'ve| have) (?:saved|noted|stored).*?that you (?:are |do |have |will )?(.+?)(?:\.|!|$)/i, template: (m) => `User ${m[1].trim()}` },
+    ];
+
+    for (const { regex, template } of aiPatterns) {
+      const match = expanded.match(regex);
+      if (match) {
+        memories.push(template(match));
+        break;
+      }
+    }
+
+    // If no echo pattern matched, try fallback regex patterns directly on expanded AI response
+    if (memories.length === userMems.length) {
+      const aiMems = checkText(expanded);
+      memories.push(...aiMems);
     }
   }
 
-  if (lower.includes('prefer') || lower.includes('rather')) {
-    const prefMatch = userMessage.match(/i (?:prefer|would rather) (.+?)(?:\.|,|!|$)/i);
-    if (prefMatch) {
-      memories.push(`User prefers ${prefMatch[1].trim()}`);
-    }
-  }
-
-  return memories;
+  // Deduplicate while keeping order
+  const seen = new Set();
+  return memories.filter(m => {
+    const key = m.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 const MEMORY_EXTRACT_PROMPT = `You are a memory extraction assistant. Your job is to identify facts about the user from a conversation exchange.
@@ -185,11 +263,42 @@ Return a valid JSON array of strings. Examples:
  * @returns {Promise<string[]>} Array of memory strings
  */
 export async function extractLLMMemories(userMessage, aiResponse, apiKey, provider = 'gemini') {
-  try {
-    const key = apiKey || process.env.GEMINI_API_KEY;
-    if (!key) return extractMemoryHints(userMessage);
-
+  const extract = async () => {
     const exchange = `User: ${userMessage}\n${aiResponse ? `You: ${aiResponse}\n` : ''}`;
+
+    if (provider === 'groq') {
+      const key = apiKey || process.env.GROQ_API_KEY;
+      if (!key) return null;
+
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'llama-3.1-8b-instant',
+          messages: [
+            { role: 'system', content: MEMORY_EXTRACT_PROMPT },
+            { role: 'user', content: `Conversation:\n${exchange}` },
+          ],
+          temperature: 0.2,
+          max_tokens: 256,
+        }),
+      });
+
+      if (!res.ok) {
+        console.warn('[MemoryExtract] Groq API error:', await res.text());
+        return null;
+      }
+
+      const data = await res.json();
+      const text = data.choices?.[0]?.message?.content?.trim() || '';
+      return parseMemoryJson(text);
+    }
+
+    const key = apiKey || process.env.GEMINI_API_KEY;
+    if (!key) return null;
 
     const body = JSON.stringify({
       contents: [{
@@ -208,28 +317,32 @@ export async function extractLLMMemories(userMessage, aiResponse, apiKey, provid
     );
 
     if (!res.ok) {
-      console.warn('[MemoryExtract] API error:', await res.text());
-      return extractMemoryHints(userMessage);
+      console.warn('[MemoryExtract] Gemini API error:', await res.text());
+      return null;
     }
 
     const data = await res.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '';
+    return parseMemoryJson(text);
+  };
 
-    // Try to parse as JSON array
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
+  const llmMems = await extract();
+  if (llmMems && llmMems.length > 0) return llmMems;
+
+  return extractMemoryHints(userMessage, aiResponse);
+}
+
+function parseMemoryJson(text) {
+  const jsonMatch = text.match(/\[[\s\S]*\]/);
+  if (jsonMatch) {
+    try {
       const parsed = JSON.parse(jsonMatch[0]);
       if (Array.isArray(parsed) && parsed.every(f => typeof f === 'string')) {
         return parsed;
       }
-    }
-
-    // If we got text but couldn't parse, fall through to regex
-    return extractMemoryHints(userMessage);
-  } catch (err) {
-    console.warn('[MemoryExtract] LLM extraction failed, falling back to regex:', err.message);
-    return extractMemoryHints(userMessage);
+    } catch { /* skip invalid JSON */ }
   }
+  return null;
 }
 
 export default {

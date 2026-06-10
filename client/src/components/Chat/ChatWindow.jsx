@@ -1,8 +1,9 @@
 import { useEffect, useState, forwardRef, memo } from 'react';
-import { Menu, Volume2, VolumeX, AudioLines, Search, X as XIcon } from 'lucide-react';
+import { Menu, Volume2, VolumeX, AudioLines, Search, X as XIcon, Bot, Monitor } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext.jsx';
 import MessageBubble from './MessageBubble.jsx';
 import MessageInput from './MessageInput.jsx';
+import AgentInput from './AgentInput.jsx';
 import TypingIndicator from './TypingIndicator.jsx';
 import ImageResults from './ImageResults.jsx';
 
@@ -40,6 +41,9 @@ const ChatWindow = forwardRef(function ChatWindow({
   images,
   searchQuery: aiSearchQuery,
   onClearImages,
+  agentMode,
+  onToggleAgentMode,
+  onSendAgentGoal,
 }, ref) {
   const { t } = useLanguage();
   const [showError, setShowError] = useState(false);
@@ -157,6 +161,16 @@ const ChatWindow = forwardRef(function ChatWindow({
           >
             <AudioLines size={18} />
           </button>
+
+          <button
+            className={`agent-mode-btn ${agentMode ? 'active' : ''}`}
+            onClick={onToggleAgentMode}
+            title={agentMode ? 'Switch to chat mode' : 'Switch to desktop agent mode'}
+            aria-label={agentMode ? 'Switch to chat mode' : 'Switch to desktop agent mode'}
+            aria-pressed={agentMode}
+          >
+            <Bot size={18} />
+          </button>
         </div>
       </div>
 
@@ -264,20 +278,28 @@ const ChatWindow = forwardRef(function ChatWindow({
       )}
 
       {/* Input */}
-      <MessageInput
-        ref={ref}
-        onSend={onSend}
-        onEdit={handleEdit}
-        editMessage={editMessage}
-        isSending={isSending}
-        disabled={isSending || (rateLimit && rateLimit.remaining <= 0 && !rateLimit.bypassed)}
-        placeholder={t('chat.typeMessage')}
-        audioInputDevice={audioInputDevice}
-        screenshot={screenshot}
-        screenshotError={screenshotError}
-        onCaptureScreenshot={onCaptureScreenshot}
-        onClearScreenshot={onClearScreenshot}
-      />
+      {agentMode ? (
+        <AgentInput
+          onSendGoal={onSendAgentGoal}
+          isSending={isSending}
+          disabled={isSending}
+        />
+      ) : (
+        <MessageInput
+          ref={ref}
+          onSend={onSend}
+          onEdit={handleEdit}
+          editMessage={editMessage}
+          isSending={isSending}
+          disabled={isSending || (rateLimit && rateLimit.remaining <= 0 && !rateLimit.bypassed)}
+          placeholder={t('chat.typeMessage')}
+          audioInputDevice={audioInputDevice}
+          screenshot={screenshot}
+          screenshotError={screenshotError}
+          onCaptureScreenshot={onCaptureScreenshot}
+          onClearScreenshot={onClearScreenshot}
+        />
+      )}
     </div>
   );
 });

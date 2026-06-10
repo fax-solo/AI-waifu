@@ -4,6 +4,11 @@ import * as api from '../../utils/api.js';
 import { useState, useRef } from 'react';
 
 export default function CompanionTab({ companion, setCompanion }) {
+  function togglePhysicsCollision(e) {
+    const val = e.target.checked;
+    setCompanion((p) => ({ ...p, physicsCollisionEnabled: val }));
+    try { localStorage.setItem('waifu-physics-collision-enabled', JSON.stringify(val)); } catch {}
+  }
   const { t } = useLanguage();
   const [importMsg, setImportMsg] = useState('');
   const fileInputRef = useRef(null);
@@ -70,6 +75,21 @@ export default function CompanionTab({ companion, setCompanion }) {
           </span>
           <span className="hint" style={{ display: 'block', fontSize: '11px', opacity: 0.5, fontWeight: 400, marginTop: 2 }}>
             Requires a server restart after enabling
+          </span>
+        </label>
+      </div>
+
+      <div className="form-group switch-group">
+        <input
+          type="checkbox"
+          id="physics-collision"
+          checked={!!companion.physicsCollisionEnabled}
+          onChange={togglePhysicsCollision}
+        />
+        <label htmlFor="physics-collision" className="switch-label">
+          Body Collision Physics
+          <span className="hint" style={{ display: 'block', fontSize: '12px', opacity: 0.6, fontWeight: 400 }}>
+            Prevent limbs from clipping through the body during animations
           </span>
         </label>
       </div>

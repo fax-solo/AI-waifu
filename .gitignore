@@ -22,6 +22,7 @@ python/venv*/
 python/.venv/
 python/runtime/
 python/tts_cache/
+python/venv_agent/
 venv/
 .venv/
 __pycache__/
@@ -37,6 +38,10 @@ __pycache__/
 *.partial
 python/*.onnx
 python/*.bin
+
+# Generated TTS cache (root level)
+/tts_cache/
+*.wav
 
 # Local Databases
 server/data/*.sqlite
@@ -57,11 +62,18 @@ server/data/textures/
 .DS_Store
 Thumbs.db
 desktop.ini
-tts_cache/
+
+# OpenCode AI session artifacts
+session-*.md
+.opencode/node_modules/
+.opencode/package-lock.json
 
 # Logs
 *.log
 npm-debug.log*
+
+# Setup marker
+.setup-complete
 
 # Generated documentation artifacts
 summary.md

@@ -32,6 +32,7 @@ import avatarRoutes, { UPLOADS_BASE } from './routes/avatars.js';
 import sttRoutes from './routes/stt.js';
 import animationRoutes from './routes/animations.js';
 import setupRoutes from './routes/setup.js';
+import agentRoutes from './routes/agent.js';
 
 const app = express();
 const PORT = process.env.PORT || 3005;
@@ -132,6 +133,7 @@ app.use('/api/avatars', avatarRoutes);
 app.use('/api/animations', animationRoutes);
 app.use('/api/stt', sttRoutes);
 app.use('/api/setup', setupRoutes);
+app.use('/api/agent', agentRoutes);
 
 // Static files
 app.use('/uploads', express.static(UPLOADS_BASE));
@@ -265,6 +267,7 @@ function startServer(port) {
     // Auto-start sidecars in background (only when not in Electron — Electron's main.js handles it)
     if (!process.versions.electron) {
       ensureSidecar('TTS', 5000, 'server.py', process.env.TTS_SERVER_URL || 'http://127.0.0.1:5000');
+      ensureSidecar('DesktopAgent', 5001, 'desktop_agent.py', process.env.AGENT_SERVER_URL || 'http://127.0.0.1:5001');
     }
   });
   server.on('error', (err) => {

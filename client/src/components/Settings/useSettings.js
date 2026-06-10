@@ -46,6 +46,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     llmModel: 'gemini-2.0-flash-lite',
     llmProvider: 'gemini',
     desktopCompanionMode: false,
+    physicsCollisionEnabled: true,
     shortcuts: DEFAULT_SHORTCUTS
   });
   const [apiKeyInput, setApiKeyInput] = useState('');
