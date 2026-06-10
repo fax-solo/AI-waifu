@@ -83,7 +83,7 @@ jobs:
           Write-Host "Release version: $($p.version)"
 
       - name: Build installer
-        run: npx electron-builder build --win
+        run: npx electron-builder build --win --publish never
 
       - name: Generate release notes
         id: notes
