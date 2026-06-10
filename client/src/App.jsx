@@ -270,10 +270,23 @@ export default function App() {
 
   // Check if setup was completed on first launch
   useEffect(() => {
+    const setupDismissed = localStorage.getItem('waifu-setup-dismissed') === 'true';
+
+    if (setupDismissed) {
+      setShowSetup(false);
+      return;
+    }
+
     api.checkSetupStatus().then(data => {
-      if (!data.completed) setShowSetup(true);
-      else setShowSetup(false);
-    }).catch(() => setShowSetup(false));
+      if (!data.completed) {
+        setShowSetup(true);
+      } else {
+        localStorage.setItem('waifu-setup-dismissed', 'true');
+        setShowSetup(false);
+      }
+    }).catch(() => {
+      setShowSetup(false);
+    });
   }, []);
 
   const handleNewChat = async () => {
@@ -524,8 +537,14 @@ export default function App() {
   if (showSetup) {
     return (
       <WelcomeScreen
-        onSkip={() => setShowSetup(false)}
-        onComplete={() => setShowSetup(false)}
+        onSkip={() => {
+          localStorage.setItem('waifu-setup-dismissed', 'true');
+          setShowSetup(false);
+        }}
+        onComplete={() => {
+          localStorage.setItem('waifu-setup-dismissed', 'true');
+          setShowSetup(false);
+        }}
       />
     );
   }

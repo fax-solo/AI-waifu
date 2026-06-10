@@ -72,7 +72,10 @@ export default function DownloadStep({ onNext, onSkip, backend: initialBackend }
     receivedComplete.current = false;
     setConnected(true);
 
-    const es = new EventSource('/api/setup/download?engine=kokoro');
+    const apiBase = window.location.protocol === 'file:'
+      ? 'http://127.0.0.1:3005/api'
+      : '/api';
+    const es = new EventSource(`${apiBase}/setup/download?engine=kokoro`);
     eventSourceRef.current = es;
 
     es.addEventListener('verify', (e) => {

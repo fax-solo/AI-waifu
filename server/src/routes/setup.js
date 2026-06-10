@@ -452,11 +452,13 @@ router.post('/complete', async (req, res) => {
       db.prepare('INSERT OR REPLACE INTO setup_state (key, value) VALUES (?, ?)').run('backend', backend);
     }
 
-    if (userId) {
+    if (userId && backend) {
+      const device = (backend === 'cuda' || backend === 'vulkan') ? 'gpu' : 'cpu';
       const existing = db.prepare('SELECT user_id FROM companion_settings WHERE user_id = ?').get(userId);
-      if (backend && existing) {
-        const device = (backend === 'cuda' || backend === 'vulkan') ? 'gpu' : 'cpu';
+      if (existing) {
         db.prepare('UPDATE companion_settings SET tts_device = ? WHERE user_id = ?').run(device, userId);
+      } else {
+        db.prepare('INSERT INTO companion_settings (user_id, tts_device) VALUES (?, ?)').run(userId, device);
       }
     }
 

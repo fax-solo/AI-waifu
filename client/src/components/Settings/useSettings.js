@@ -198,7 +198,8 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
     async function checkTTS() {
       while (!cancelled) {
         try {
-          const res = await fetch(`/api/tts/status?t=${Date.now()}`, { signal: abortController.signal, cache: 'no-store' });
+          const ttsBase = window.location.protocol === 'file:' ? 'http://127.0.0.1:3005' : '';
+          const res = await fetch(`${ttsBase}/api/tts/status?t=${Date.now()}`, { signal: abortController.signal, cache: 'no-store' });
           if (cancelled) return;
           const data = await res.json();
           const normalized = {
@@ -212,13 +213,15 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
             return;
           }
           if (!data.running) {
-            fetch('/api/tts/restart', { method: 'POST', signal: abortController.signal }).catch(() => {});
+            const restartBase = window.location.protocol === 'file:' ? 'http://127.0.0.1:3005' : '';
+            fetch(`${restartBase}/api/tts/restart`, { method: 'POST', signal: abortController.signal }).catch(() => {});
           }
           await new Promise(r => setTimeout(r, 3000));
         } catch (err) {
           if (err.name === 'AbortError') return;
           if (!cancelled) setTtsStatus({ status: 'offline', device: 'none', loaded: false });
-          fetch('/api/tts/restart', { method: 'POST' }).catch(() => {});
+          const restartBase = window.location.protocol === 'file:' ? 'http://127.0.0.1:3005' : '';
+          fetch(`${restartBase}/api/tts/restart`, { method: 'POST' }).catch(() => {});
           await new Promise(r => setTimeout(r, 3000));
         }
       }
@@ -324,7 +327,7 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
   const handleSetGroqKey = async () => {
     if (!groqApiKeyInput.trim()) return;
     try {
-      await api.fetchApi('/api/settings/groq-key', {
+      await api.fetchApi('/settings/groq-key', {
         method: 'POST',
         body: JSON.stringify({ apiKey: groqApiKeyInput.trim() })
       });
@@ -661,8 +664,8 @@ export default function useSettings({ onShortcutsChange, onVRMFileSelected, avat
   const handleClearConversations = async () => {
     if (!window.confirm('Delete ALL conversations? This cannot be undone.')) return;
     try {
-      const convs = await api.fetchApi('/api/conversations');
-      for (const c of convs) await api.fetchApi(`/api/conversations/${c.id}`, { method: 'DELETE' });
+      const convs = await api.fetchApi('/conversations');
+      for (const c of convs) await api.fetchApi(`/conversations/${c.id}`, { method: 'DELETE' });
       showToast('All conversations cleared.');
     } catch (err) {
       showToast('Failed to clear conversations.', 'error');
