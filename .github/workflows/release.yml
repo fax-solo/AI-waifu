@@ -82,10 +82,8 @@ jobs:
           $p | ConvertTo-Json -Depth 10 | Set-Content package.json
           Write-Host "Release version: $($p.version)"
 
-      - name: Build installer and publish
-        run: npx electron-builder build --win --publish always
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build installer
+        run: npx electron-builder build --win
 
       - name: Generate release notes
         id: notes
