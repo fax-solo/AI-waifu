@@ -30,6 +30,7 @@ async function downloadFile(url, dest) {
 async function main() {
   try {
     for (const service in models) {
+      if (service === '__packages__') continue;
       for (const asset in models[service]) {
         const { url, path: dest } = models[service][asset];
         await downloadFile(url, dest);
